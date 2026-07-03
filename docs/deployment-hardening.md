@@ -43,12 +43,66 @@ DEPLOYMENT_MODE=hosted
 ALLOW_LOCAL_NETWORK_PROXY=false
 RATE_LIMIT_STORE=upstash
 DOCUMENT_PARSE_JOB_STORE=upstash
+PLUGIN_REGISTRY_STORE=upstash
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
 BYOK_ALLOW_EPHEMERAL_KEY=false
 BYOK_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 BYOK_KEY_ID=prod-2026-07
 ```
+
+## Cloudflare Workers Environment Variables
+
+OpenNext and Cloudflare Workers have separate build-time and runtime
+configuration surfaces.
+
+For Cloudflare Workers Builds, set:
+
+```bash
+Build command: pnpm build:worker
+Deploy command: pnpm exec opennextjs-cloudflare deploy -- --keep-vars
+```
+
+`--keep-vars` prevents deployments from replacing runtime variables configured
+in the Cloudflare dashboard with only the values committed in `wrangler.jsonc`.
+
+Set runtime variables in the Worker dashboard under **Settings -> Variables and
+Secrets**. Use plain variables only for non-sensitive deployment defaults:
+
+```bash
+DEPLOYMENT_MODE=hosted
+RATE_LIMIT_STORE=upstash
+DOCUMENT_PARSE_JOB_STORE=upstash
+PLUGIN_REGISTRY_STORE=upstash
+BYOK_ALLOW_EPHEMERAL_KEY=false
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+```
+
+Use secrets for sensitive values:
+
+```bash
+BYOK_PRIVATE_KEY_PEM
+BYOK_KEY_ID
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+ACCESS_PASSWORD
+DEFAULT_PROVIDER_API_KEY
+DEFAULT_SEARCH_API_KEY
+DEFAULT_RAG_TOKEN
+DEFAULT_LLAMA_PARSE_API_KEY
+DEFAULT_ELEVENLABS_API_KEY
+DEFAULT_MIMO_API_KEY
+```
+
+Workers Builds also has **Settings -> Builds -> Variables and Secrets**. Values
+there are available only during the build step. Add `NEXT_PUBLIC_*` values and
+any non-public values required by static generation there as well as in runtime
+variables when the app also needs them after deployment.
+
+Keep personal API keys and deployment secrets out of source control.
+Deployment-level defaults such as `DEFAULT_PROVIDER_API_KEY` are shared by every
+user of that Worker instance. Leave them unset when users should provide their
+own provider keys in local browser settings.
 
 Hosted mode also disables legacy plugin execution payloads where the browser
 submits a complete plugin manifest and function definition to the server. Plugin

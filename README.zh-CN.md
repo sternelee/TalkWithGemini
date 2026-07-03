@@ -99,14 +99,50 @@ pnpm preview:worker
 pnpm deploy:worker
 ```
 
-Workers 应运行在 hosted 模式，并使用公开 HTTPS 上游。生产 Workers 应使用 Wrangler 设置密钥：
+Workers 应运行在 hosted 模式，并使用公开 HTTPS 上游。使用 Cloudflare
+Workers Builds 时，建议把构建和部署命令分开，确保部署前已经生成
+OpenNext 产物：
+
+```bash
+# Build command
+pnpm build:worker
+
+# Deploy command
+pnpm exec opennextjs-cloudflare deploy -- --keep-vars
+```
+
+`--keep-vars` 会保留 Cloudflare dashboard 中配置的运行时变量和密钥，
+避免部署时只使用仓库里 `wrangler.jsonc` 的值覆盖它们。
+
+生产 Workers 应在 Cloudflare dashboard 的 **Settings -> Variables and
+Secrets** 中配置运行时变量。非敏感部署默认值使用普通变量：
+
+```bash
+DEPLOYMENT_MODE=hosted
+RATE_LIMIT_STORE=upstash
+DOCUMENT_PARSE_JOB_STORE=upstash
+PLUGIN_REGISTRY_STORE=upstash
+BYOK_ALLOW_EPHEMERAL_KEY=false
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+```
+
+部署密码、供应商 key、BYOK 材料和共享存储凭据应使用 secrets：
 
 ```bash
 wrangler secret put BYOK_PRIVATE_KEY_PEM
 wrangler secret put BYOK_KEY_ID
 wrangler secret put UPSTASH_REDIS_REST_URL
 wrangler secret put UPSTASH_REDIS_REST_TOKEN
+wrangler secret put ACCESS_PASSWORD
 ```
+
+使用 Cloudflare Workers Builds 时，如果某个变量需要在 `next build`
+期间可用，尤其是 `NEXT_PUBLIC_*`，还需要在 **Settings -> Builds ->
+Variables and Secrets** 中配置。运行时变量不会自动出现在构建步骤中。
+
+不要把个人 API key 或部署密钥提交到 `wrangler.jsonc`。例如
+`DEFAULT_PROVIDER_API_KEY` 是部署级默认 key，会被该 Worker 实例的所有
+用户共享；如果希望用户在浏览器里使用自己的 key，就保持为空。
 
 生产配置建议见 [Deployment Hardening](docs/deployment-hardening.md)。
 
@@ -275,7 +311,7 @@ pnpm format           # 使用 Prettier 格式化仓库
 pnpm format:check     # 检查仓库格式
 pnpm build:worker     # 构建 Cloudflare Workers
 pnpm preview:worker   # 预览 Worker 构建
-pnpm deploy:worker    # 部署 Worker 构建
+pnpm deploy:worker    # 部署 Worker 构建并保留 dashboard 变量
 pnpm byok:generate    # 生成可复制的 BYOK key
 ```
 

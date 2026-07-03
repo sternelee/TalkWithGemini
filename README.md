@@ -99,14 +99,55 @@ pnpm preview:worker
 pnpm deploy:worker
 ```
 
-Workers should run in hosted mode and use public HTTPS upstreams. Production Workers should set secrets with Wrangler:
+Workers should run in hosted mode and use public HTTPS upstreams. When using
+Cloudflare Workers Builds, use separate build and deploy commands so the
+OpenNext build output exists before deployment:
+
+```bash
+# Build command
+pnpm build:worker
+
+# Deploy command
+pnpm exec opennextjs-cloudflare deploy -- --keep-vars
+```
+
+`--keep-vars` preserves runtime variables and secrets configured in the
+Cloudflare dashboard instead of replacing them with only the values committed in
+`wrangler.jsonc`.
+
+Production Workers should configure runtime variables in the Cloudflare
+dashboard under **Settings -> Variables and Secrets**. Use plain variables for
+non-sensitive deployment defaults:
+
+```bash
+DEPLOYMENT_MODE=hosted
+RATE_LIMIT_STORE=upstash
+DOCUMENT_PARSE_JOB_STORE=upstash
+PLUGIN_REGISTRY_STORE=upstash
+BYOK_ALLOW_EPHEMERAL_KEY=false
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+```
+
+Use secrets for deployment passwords, provider keys, BYOK material, and shared
+store credentials:
 
 ```bash
 wrangler secret put BYOK_PRIVATE_KEY_PEM
 wrangler secret put BYOK_KEY_ID
 wrangler secret put UPSTASH_REDIS_REST_URL
 wrangler secret put UPSTASH_REDIS_REST_TOKEN
+wrangler secret put ACCESS_PASSWORD
 ```
+
+For Cloudflare Workers Builds, also add build-time variables under
+**Settings -> Builds -> Variables and Secrets** when a value must be available
+during `next build`, especially `NEXT_PUBLIC_*` values. Runtime variables are
+not available to the build step unless they are also configured there.
+
+Do not commit personal API keys or deployment secrets to `wrangler.jsonc`.
+Deployment-level provider keys such as `DEFAULT_PROVIDER_API_KEY` are shared by
+everyone using that Worker instance; leave them unset if users should provide
+their own keys in the browser.
 
 See [Deployment Hardening](docs/deployment-hardening.md) for production configuration guidance.
 
@@ -275,7 +316,7 @@ pnpm format           # Format the repository with Prettier
 pnpm format:check     # Check repository formatting
 pnpm build:worker     # Build for Cloudflare Workers
 pnpm preview:worker   # Preview Worker build
-pnpm deploy:worker    # Deploy Worker build
+pnpm deploy:worker    # Deploy Worker build while preserving dashboard vars
 pnpm byok:generate    # Generate copyable BYOK key values
 ```
 

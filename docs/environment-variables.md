@@ -6,6 +6,34 @@ security boundaries, and shared infrastructure configuration.
 
 Use `.env.example` as the source template.
 
+## Cloudflare Workers
+
+For local development, use `.env.local` or `.dev.vars` as appropriate. Do not
+commit production `.env` files.
+
+For production Cloudflare Workers deployments, configure runtime values in the
+Cloudflare dashboard under **Settings -> Variables and Secrets**. Configure
+build-time values separately under **Settings -> Builds -> Variables and
+Secrets** when Workers Builds must read them during `next build`. Build
+variables are not available at runtime.
+
+Use this Workers Builds setup:
+
+```bash
+Build command: pnpm build:worker
+Deploy command: pnpm exec opennextjs-cloudflare deploy -- --keep-vars
+```
+
+`--keep-vars` preserves dashboard-managed runtime variables and secrets across
+deployments. Without it, deployments can replace dashboard variables with only
+the values present in `wrangler.jsonc`.
+
+Only non-sensitive deployment defaults should live in `wrangler.jsonc`. Each
+deployment should set its own secrets in Cloudflare. Provider keys configured as
+`DEFAULT_*_API_KEY` values are deployment-wide defaults shared by all users of
+that Worker instance; leave them empty when users should bring their own keys in
+the browser.
+
 ## Access Control
 
 | Variable          | Purpose                                                                           |
@@ -92,17 +120,17 @@ pnpm byok:generate
 
 ## Voice Defaults
 
-| Variable                          | Purpose                                     |
-| --------------------------------- | ------------------------------------------- |
+| Variable                          | Purpose                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------- |
 | `DEFAULT_VOICE_PROVIDER`          | Default external voice provider. Empty means no default voice provider. |
-| `DEFAULT_ELEVENLABS_API_KEY`      | Deployment-level ElevenLabs API key.        |
-| `DEFAULT_ELEVENLABS_STT_MODEL`    | Default ElevenLabs speech-to-text model.    |
-| `DEFAULT_ELEVENLABS_TTS_MODEL`    | Default ElevenLabs text-to-speech model.    |
-| `DEFAULT_ELEVENLABS_TTS_VOICE_ID` | Default ElevenLabs text-to-speech voice ID. |
-| `DEFAULT_MIMO_API_KEY`            | Deployment-level Mimo API key.              |
-| `DEFAULT_MIMO_STT_MODEL`          | Default Mimo speech-to-text model.          |
-| `DEFAULT_MIMO_TTS_MODEL`          | Default Mimo text-to-speech model.          |
-| `DEFAULT_MIMO_TTS_VOICE_ID`       | Default Mimo text-to-speech voice ID.       |
+| `DEFAULT_ELEVENLABS_API_KEY`      | Deployment-level ElevenLabs API key.                                    |
+| `DEFAULT_ELEVENLABS_STT_MODEL`    | Default ElevenLabs speech-to-text model.                                |
+| `DEFAULT_ELEVENLABS_TTS_MODEL`    | Default ElevenLabs text-to-speech model.                                |
+| `DEFAULT_ELEVENLABS_TTS_VOICE_ID` | Default ElevenLabs text-to-speech voice ID.                             |
+| `DEFAULT_MIMO_API_KEY`            | Deployment-level Mimo API key.                                          |
+| `DEFAULT_MIMO_STT_MODEL`          | Default Mimo speech-to-text model.                                      |
+| `DEFAULT_MIMO_TTS_MODEL`          | Default Mimo text-to-speech model.                                      |
+| `DEFAULT_MIMO_TTS_VOICE_ID`       | Default Mimo text-to-speech voice ID.                                   |
 
 When `DEFAULT_VOICE_PROVIDER` is set to `elevenlabs` or `mimo`, an empty default model disables that single STT or TTS capability. The browser UI falls back to native browser speech for disabled default capabilities.
 
