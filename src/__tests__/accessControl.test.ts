@@ -21,7 +21,7 @@ import {
   getRateLimitClientIp,
   REQUEST_GUARD_ERROR_CODES,
 } from "../lib/security/requestGuards";
-import { config as proxyConfig, proxy } from "../proxy";
+import { config as proxyConfig, middleware as proxy } from "../middleware";
 
 vi.mock("@/lib/security/accessControl", async () =>
   vi.importActual("../lib/security/accessControl"),

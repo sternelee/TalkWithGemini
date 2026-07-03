@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createHash, createPrivateKey, createPublicKey } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,8 +23,8 @@ function parseEnvOutput(output: string): Record<string, string> {
 }
 
 function deriveKeyIdFromPem(escapedPem: string): string {
-  const privateKey = createPrivateKey(escapedPem.replace(/\\n/g, "\n"));
-  const publicKey = createPublicKey(privateKey);
+  const pem = escapedPem.replace(/\\n/g, "\n");
+  const publicKey = createPublicKey(pem);
   const spki = publicKey.export({ format: "der", type: "spki" });
 
   return createHash("sha256").update(spki).digest("base64url").slice(0, 32);

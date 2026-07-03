@@ -1,6 +1,5 @@
 import {
   createHash,
-  createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
 } from "node:crypto";
@@ -16,7 +15,7 @@ describe("BYOK PKCS#8 PEM parsing", () => {
     });
     const pem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
     const spki = new Uint8Array(
-      createPublicKey(createPrivateKey(pem)).export({
+      createPublicKey(pem).export({
         format: "der",
         type: "spki",
       }),

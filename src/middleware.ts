@@ -24,7 +24,7 @@ function jsonError(
   return response;
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const guardResponse = await applyRequestGuards(request);
   if (guardResponse) return guardResponse;
 
