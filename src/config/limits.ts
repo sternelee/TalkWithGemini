@@ -1,0 +1,273 @@
+import type { Attachment } from "@/types";
+
+export const ATTACHMENT_LIMITS = {
+  maxCount: 20,
+  maxFileBytes: 5 * 1024 * 1024,
+  maxBase64Chars: 30 * 1024 * 1024,
+  maxTotalBase64Chars: 30 * 1024 * 1024,
+  maxUrlChars: 4_096,
+  maxFileNameChars: 512,
+  maxMimeTypeChars: 200,
+} as const;
+
+export const VOICE_LIMITS = {
+  maxTranscriptionAudioBytes: 25 * 1024 * 1024,
+} as const;
+
+export const DOCUMENT_LIMITS = {
+  maxParseFileBytes: 50 * 1024 * 1024,
+} as const;
+
+export const KNOWLEDGE_LIMITS = {
+  maxCollections: 100,
+  maxCollectionIdChars: 120,
+  maxCollectionNameChars: 120,
+  maxCollectionDescriptionChars: 1_000,
+  maxCollectionIconChars: 80,
+  maxCollectionColorChars: 40,
+  maxFilesPerCollection: 100,
+  maxFileBytes: DOCUMENT_LIMITS.maxParseFileBytes,
+  maxFileIdChars: 120,
+  maxFileNameChars: 512,
+  maxMimeTypeChars: 200,
+  maxPathChars: 4_096,
+  maxErrorChars: 1_000,
+  maxRagIdChars: 160,
+  maxRagChunkCount: 100_000,
+} as const;
+
+export const RAG_LIMITS = {
+  maxItemsPerRequest: 1_000,
+  minTopK: 1,
+  maxTopK: 20,
+  minChunkSize: 256,
+  maxChunkSize: 8_192,
+  maxBaseUrlChars: 2_048,
+  maxTokenChars: 16_384,
+  maxLlamaParseApiKeyChars: 16_384,
+  maxNamespaceChars: 200,
+} as const;
+
+export const SEARCH_CONFIG_LIMITS = {
+  minResultsLimit: 1,
+  maxResultsLimit: 10,
+  maxApiKeyChars: 16_384,
+  maxBaseUrlChars: 2_048,
+} as const;
+
+export const SEARCH_RESULT_LIMITS = {
+  maxSources: 20,
+  maxImages: 20,
+  maxTitleChars: 500,
+  maxContentChars: 20_000,
+  maxUrlChars: 4_096,
+  maxImageDescriptionChars: 500,
+} as const;
+
+export const PROVIDER_MODEL_LIMITS = {
+  maxModels: 500,
+  maxModelIdChars: 300,
+} as const;
+
+export const PROVIDER_CONFIG_LIMITS = {
+  maxProviders: 20,
+  maxProviderIdChars: 40,
+  maxProviderNameChars: 120,
+  maxBaseUrlChars: 2_048,
+  maxApiKeyChars: 8_192,
+} as const;
+
+export const MODEL_METADATA_LIMITS = {
+  maxEntries: 1_000,
+  maxIdChars: PROVIDER_MODEL_LIMITS.maxModelIdChars,
+  maxNameChars: 200,
+  maxFamilyChars: 120,
+  maxKnowledgeChars: 500,
+  maxDateChars: 80,
+  maxModalities: 12,
+  maxModalityChars: 40,
+  maxContextTokens: 10_000_000,
+  maxOutputTokens: 1_000_000,
+} as const;
+
+export const API_INPUT_LIMITS = {
+  maxJsonBodyBytes: 36 * 1024 * 1024,
+  maxMultipartOverheadBytes: 1024 * 1024,
+  maxModelNameChars: 300,
+  maxChatTextChars: 200_000,
+  maxSystemInstructionChars: 200_000,
+  maxSimplePromptChars: 200_000,
+  maxAuxiliaryTextChars: 20_000,
+  maxAuxiliaryPromptContextChars: 4_000,
+} as const;
+
+export const AUXILIARY_OUTPUT_LIMITS = {
+  maxRelatedQuestions: 5,
+  maxRelatedQuestionChars: 240,
+  maxRagQueries: 3,
+  maxRagQueryChars: 300,
+} as const;
+
+export const CONTEXT_COMPRESSION_LIMITS = {
+  maxSummarySourceChars: 160_000,
+  maxCompressedContentChars: 200_000,
+  base64ChunkBytes: 24_576,
+} as const;
+
+export const PROMPT_CONTEXT_LIMITS = {
+  maxConvertedContentChars: 160_000,
+  maxSingleFileContentChars: 60_000,
+  maxFileNameChars: 300,
+  maxMimeTypeChars: 200,
+  maxSourceTitleChars: 500,
+  maxSourceContentChars: 20_000,
+} as const;
+
+export const CHAT_CONFIG_LIMITS = {
+  minTemperature: 0,
+  maxTemperature: 2,
+  defaultTemperature: 0.7,
+} as const;
+
+export const SYSTEM_SETTINGS_LIMITS = {
+  maxSystemPromptChars: API_INPUT_LIMITS.maxSystemInstructionChars,
+  minCompressionThreshold: 4,
+  maxCompressionThreshold: 20,
+  defaultCompressionThreshold: 12,
+  minHistoryKeepCount: 1,
+  maxHistoryKeepCount: 10,
+  defaultHistoryKeepCount: 4,
+} as const;
+
+export const CHAT_ENTITY_LIMITS = {
+  maxSessionTitleChars: 120,
+  maxSessionSystemInstructionChars: API_INPUT_LIMITS.maxSystemInstructionChars,
+  maxWorkspaceNameChars: 120,
+  maxWorkspaceSystemPromptChars: API_INPUT_LIMITS.maxSystemInstructionChars,
+  maxWorkspaceColorChars: 40,
+  maxWorkspaceKnowledgeCollections: 100,
+  maxWorkspaceKnowledgeCollectionIdChars: 120,
+} as const;
+
+export const CLIENT_URL_LIMITS = {
+  maxInlineImageDataUrlChars: 2 * 1024 * 1024,
+} as const;
+
+export const IMAGE_PREVIEW_LIMITS = {
+  maxImages: 100,
+  maxAltChars: 500,
+  maxDescriptionChars: 500,
+} as const;
+
+export const HTML_PREVIEW_LIMITS = {
+  maxSrcDocChars: 500_000,
+} as const;
+
+export const MARKDOWN_FILE_LIMITS = {
+  maxFiles: 20,
+  maxFileNameChars: 300,
+  maxMimeTypeChars: 200,
+  maxFileContentChars: 120_000,
+} as const;
+
+export const BROWSER_SANDBOX_LIMITS = {
+  maxCodeChars: 100_000,
+  maxOutputChars: 20_000,
+  executionTimeoutMs: 3_000,
+} as const;
+
+export const TOOL_DISPLAY_LIMITS = {
+  maxRenderedChars: 30_000,
+  maxStringChars: 4_000,
+  maxDepth: 6,
+  maxArrayItems: 80,
+  maxObjectEntries: 80,
+  maxToolNameChars: 160,
+} as const;
+
+export const REASONING_UI_LIMITS = {
+  maxTitleScanChars: 20_000,
+  maxTranslationInputChars: 40_000,
+} as const;
+
+export const ARTIFACT_PROMPT_LIMITS = {
+  maxArtifactContentChars: 80_000,
+  maxSystemInstructionChars: 40_000,
+  maxPromptChars: API_INPUT_LIMITS.maxSimplePromptChars,
+} as const;
+
+export const DOWNLOAD_LIMITS = {
+  maxFileNameChars: 180,
+} as const;
+
+export const MARKET_LIMITS = {
+  maxAgents: 500,
+  maxPluginListResponseBytes: 16 * 1024 * 1024,
+  maxAgentIdentifierChars: 120,
+  maxAgentTitleChars: 160,
+  maxAgentDescriptionChars: 1_000,
+  maxAgentAvatarChars: 4_096,
+  maxAgentCategoryChars: 80,
+  maxAgentAuthorChars: 120,
+  maxAgentHomepageChars: 4_096,
+  maxAgentCreatedAtChars: 80,
+  maxAgentTags: 12,
+  maxAgentTagChars: 60,
+  maxAgentSystemRoleChars: 200_000,
+  maxCustomAgents: 100,
+  maxUsedAgents: 50,
+  maxPlugins: 100,
+  maxPluginIdChars: 160,
+  maxPluginTitleChars: 160,
+  maxPluginDescriptionChars: 1_000,
+  maxPluginLogoUrlChars: 4_096,
+  maxPluginManifestUrlChars: 4_096,
+  maxPluginDocsUrlChars: 4_096,
+  maxPluginCategoryChars: 80,
+  maxPluginCategories: 8,
+} as const;
+
+export const PLUGIN_CONFIG_LIMITS = {
+  maxPluginConfigs: MARKET_LIMITS.maxPlugins,
+  maxActivePlugins: MARKET_LIMITS.maxPlugins,
+  maxFunctionRefs: 100,
+  maxFunctionNameChars: 160,
+  maxAuthValueChars: 16_384,
+  maxAuthKeyChars: 200,
+} as const;
+
+export const PLUGIN_EXECUTION_LIMITS = {
+  maxFunctionNameChars: 128,
+  maxArgsJsonChars: 256 * 1024,
+  maxRequestBodyChars: 512 * 1024,
+  maxArgDepth: 20,
+  maxArgEntries: 5_000,
+  maxToolRounds: 20,
+  maxStreamedToolCalls: 100,
+  maxToolCallIdChars: 200,
+} as const;
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+export function getAttachmentPayloadChars(attachment: Attachment): number {
+  return attachment.data?.length || 0;
+}
+
+export function getAttachmentsPayloadChars(attachments: Attachment[]): number {
+  return attachments.reduce(
+    (total, attachment) => total + getAttachmentPayloadChars(attachment),
+    0,
+  );
+}

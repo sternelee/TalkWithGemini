@@ -1,0 +1,116 @@
+import {
+  CHAT_CONFIG_LIMITS,
+  SYSTEM_SETTINGS_LIMITS,
+} from "../../config/limits";
+import {
+  DEFAULT_CHAT_CONFIG,
+  DEFAULT_SYSTEM_SETTINGS,
+} from "../../config/defaults";
+import type { ChatConfig, SystemSettings } from "../../types";
+
+function clampInteger(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function clampNumber(
+  value: unknown,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function trimString(value: unknown, maxChars: number, fallback = ""): string {
+  if (typeof value !== "string") return fallback;
+  return value.slice(0, maxChars);
+}
+
+function normalizeFontSize(
+  value: unknown,
+  fallback: SystemSettings["fontSize"],
+): SystemSettings["fontSize"] {
+  return value === "small" || value === "medium" || value === "large"
+    ? value
+    : fallback;
+}
+
+export function normalizeChatConfig(config: unknown): ChatConfig {
+  const raw =
+    config && typeof config === "object" ? (config as Partial<ChatConfig>) : {};
+
+  return {
+    useSearch:
+      typeof raw.useSearch === "boolean"
+        ? raw.useSearch
+        : DEFAULT_CHAT_CONFIG.useSearch,
+    useReasoning:
+      typeof raw.useReasoning === "boolean"
+        ? raw.useReasoning
+        : DEFAULT_CHAT_CONFIG.useReasoning,
+    useRAG:
+      typeof raw.useRAG === "boolean" ? raw.useRAG : DEFAULT_CHAT_CONFIG.useRAG,
+    temperature: clampNumber(
+      raw.temperature,
+      CHAT_CONFIG_LIMITS.minTemperature,
+      CHAT_CONFIG_LIMITS.maxTemperature,
+      DEFAULT_CHAT_CONFIG.temperature,
+    ),
+  };
+}
+
+export function normalizeSystemSettings(
+  settings: unknown,
+  defaults: SystemSettings = DEFAULT_SYSTEM_SETTINGS,
+): SystemSettings {
+  const raw =
+    settings && typeof settings === "object"
+      ? (settings as Partial<SystemSettings>)
+      : {};
+
+  return {
+    systemPrompt: trimString(
+      raw.systemPrompt,
+      SYSTEM_SETTINGS_LIMITS.maxSystemPromptChars,
+      defaults.systemPrompt,
+    ),
+    enableAutoTitle:
+      typeof raw.enableAutoTitle === "boolean"
+        ? raw.enableAutoTitle
+        : defaults.enableAutoTitle,
+    enableRelatedQuestions:
+      typeof raw.enableRelatedQuestions === "boolean"
+        ? raw.enableRelatedQuestions
+        : defaults.enableRelatedQuestions,
+    enableAutoCompression:
+      typeof raw.enableAutoCompression === "boolean"
+        ? raw.enableAutoCompression
+        : defaults.enableAutoCompression,
+    compressionThreshold: clampInteger(
+      raw.compressionThreshold,
+      SYSTEM_SETTINGS_LIMITS.minCompressionThreshold,
+      SYSTEM_SETTINGS_LIMITS.maxCompressionThreshold,
+      defaults.compressionThreshold,
+    ),
+    historyKeepCount: clampInteger(
+      raw.historyKeepCount,
+      SYSTEM_SETTINGS_LIMITS.minHistoryKeepCount,
+      SYSTEM_SETTINGS_LIMITS.maxHistoryKeepCount,
+      defaults.historyKeepCount,
+    ),
+    enableCodeCollapse:
+      typeof raw.enableCodeCollapse === "boolean"
+        ? raw.enableCodeCollapse
+        : defaults.enableCodeCollapse,
+    fontSize: normalizeFontSize(raw.fontSize, defaults.fontSize),
+  };
+}

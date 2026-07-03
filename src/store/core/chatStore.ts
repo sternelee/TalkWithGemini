@@ -1,0 +1,1439 @@
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { v7 as uuidv7 } from "uuid";
+import {
+  Session,
+  Message,
+  ChatConfig,
+  Workspace,
+  Attachment,
+  SessionConfig,
+  SessionMessageTree,
+} from "@/types";
+import {
+  appDb,
+  getAppDbStorage,
+  STORAGE_KEYS,
+  STORAGE_VERSION,
+} from "../storage/storageConfig";
+import { normalizeMessage, normalizeMessages } from "../storage/migrations";
+import { normalizeChatConfig } from "../../lib/settings/appConfig";
+import {
+  normalizeSession,
+  normalizeSessionConfig,
+  normalizeSessionTitle,
+  normalizeWorkspace,
+} from "../../lib/chat/entities";
+import { DEFAULT_CHAT_CONFIG } from "../../config/defaults";
+import { deleteFromOPFS } from "@/utils/opfs";
+import { logDevError } from "../../lib/utils/devLogger";
+import {
+  appendMessageToActivePath,
+  cloneMessageTreeWithNewIds,
+  createModelResponseBranch,
+  createUserMessageBranch,
+  getActiveMessagePath,
+  getAllMessagesFromTree,
+  isMessageInActivePath,
+  isSessionMessageTree,
+  normalizeSessionMessageTree,
+  removeMessageFromTree,
+  removeMessageSubtree,
+  switchMessageBranch,
+  updateMessageInTree,
+} from "../../lib/chat/messageTree";
+
+let selectSessionRequestId = 0;
+const sessionMessageWriteQueues = new Map<string, Promise<void>>();
+
+const createEmptyMessageTree = () => normalizeSessionMessageTree([]);
+
+const normalizeStoredMessageTree = (
+  stored: Message[] | SessionMessageTree | null | undefined,
+) => {
+  if (isSessionMessageTree(stored)) {
+    return normalizeSessionMessageTree(stored);
+  }
+
+  return normalizeSessionMessageTree(normalizeMessages(stored));
+};
+
+const getAttachmentUrls = (files: Attachment[] = []): string[] => {
+  const urls = new Set<string>();
+
+  for (const file of files) {
+    if (file.url) {
+      urls.add(file.url);
+    }
+  }
+
+  return Array.from(urls);
+};
+
+const getReferencedWorkspaceFileUrls = (workspaces: Workspace[]) => {
+  const urls = new Set<string>();
+
+  for (const workspace of workspaces) {
+    for (const url of getAttachmentUrls(workspace.files)) {
+      urls.add(url);
+    }
+  }
+
+  return urls;
+};
+
+const getMessageAttachmentUrls = (messages: Message[] = []) => {
+  const urls = new Set<string>();
+
+  for (const message of messages) {
+    for (const url of getAttachmentUrls(message.attachments)) {
+      urls.add(url);
+    }
+  }
+
+  return urls;
+};
+
+const getReferencedChatMessageFileUrls = async ({
+  candidateUrls,
+  sessions,
+  currentSessionId,
+  activeMessageTree,
+  includeCurrentPersistedMessages = false,
+}: {
+  candidateUrls: string[];
+  sessions: Session[];
+  currentSessionId: string | null;
+  activeMessageTree: SessionMessageTree;
+  includeCurrentPersistedMessages?: boolean;
+}) => {
+  const urls = getMessageAttachmentUrls(
+    getAllMessagesFromTree(activeMessageTree),
+  );
+
+  for (const session of sessions) {
+    if (!includeCurrentPersistedMessages && session.id === currentSessionId) {
+      continue;
+    }
+
+    try {
+      const messageTree = normalizeStoredMessageTree(
+        await appDb.getItem<Message[] | SessionMessageTree>(
+          `session_messages_${session.id}`,
+        ),
+      );
+      for (const url of getMessageAttachmentUrls(
+        getAllMessagesFromTree(messageTree),
+      )) {
+        urls.add(url);
+      }
+    } catch (error) {
+      logDevError(
+        "Failed to scan session messages before workspace file cleanup",
+        error,
+      );
+      candidateUrls.forEach((url) => urls.add(url));
+      return urls;
+    }
+  }
+
+  return urls;
+};
+
+const getReferencedWorkspaceAndMessageFileUrls = async ({
+  candidateUrls,
+  workspaces,
+  sessions,
+  currentSessionId,
+  activeMessageTree,
+  includeCurrentPersistedMessages,
+}: {
+  candidateUrls: string[];
+  workspaces: Workspace[];
+  sessions: Session[];
+  currentSessionId: string | null;
+  activeMessageTree: SessionMessageTree;
+  includeCurrentPersistedMessages?: boolean;
+}) => {
+  const urls = getReferencedWorkspaceFileUrls(workspaces);
+  const messageUrls = await getReferencedChatMessageFileUrls({
+    candidateUrls,
+    sessions,
+    currentSessionId,
+    activeMessageTree,
+    includeCurrentPersistedMessages,
+  });
+
+  messageUrls.forEach((url) => urls.add(url));
+  return urls;
+};
+
+const DEPRECATED_DEFAULT_SELECTED_MODEL = "GEMINI:gemini-flash-latest";
+
+const getRemovedWorkspaceFileUrls = (
+  previousFiles: Attachment[] = [],
+  nextFiles: Attachment[] = [],
+) => {
+  const nextUrls = new Set(getAttachmentUrls(nextFiles));
+
+  return getAttachmentUrls(previousFiles).filter((url) => !nextUrls.has(url));
+};
+
+const cleanupUnreferencedAttachmentUrls = async (
+  urls: string[],
+  getReferencedUrls: () => Promise<Set<string>>,
+) => {
+  const referencedUrls = await getReferencedUrls();
+  const urlsToCleanup = Array.from(new Set(urls)).filter(
+    (url) => !referencedUrls.has(url),
+  );
+
+  const results = await Promise.allSettled(
+    urlsToCleanup.map((url) => deleteFromOPFS(url)),
+  );
+
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logDevError(
+        "Failed to clean up OPFS attachment file",
+        urlsToCleanup[index],
+        result.reason,
+      );
+    }
+  });
+};
+
+const enqueueSessionMessageWrite = async (
+  sessionId: string,
+  write: () => Promise<void>,
+) => {
+  const previousWrite = sessionMessageWriteQueues.get(sessionId);
+  const queuedWrite = (previousWrite ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(write);
+
+  sessionMessageWriteQueues.set(sessionId, queuedWrite);
+
+  try {
+    await queuedWrite;
+  } finally {
+    if (sessionMessageWriteQueues.get(sessionId) === queuedWrite) {
+      sessionMessageWriteQueues.delete(sessionId);
+    }
+  }
+};
+
+interface ChatState {
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
+  sessions: Session[]; // Metadata Only
+  workspaces: Workspace[]; // New: Workspaces
+  currentSessionId: string | null;
+  activeMessages: Message[]; // Currently loaded messages
+  activeMessageTree: SessionMessageTree;
+  isActiveSessionLoading: boolean;
+
+  selectedModel: string;
+  chatConfig: ChatConfig;
+
+  // Actions
+  createSession: (
+    systemInstruction?: string,
+    title?: string,
+    workspaceId?: string,
+    initialAttachments?: Attachment[],
+    config?: SessionConfig,
+  ) => string;
+  selectSession: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
+  updateSessionTitle: (id: string, newTitle: string) => void;
+  updateSessionInstruction: (id: string, instruction: string) => void;
+  updateSessionCompression: (
+    id: string,
+    compression: Session["compression"],
+  ) => void;
+  moveSessionToWorkspace: (
+    sessionId: string,
+    workspaceId: string | null,
+  ) => void;
+
+  toggleSessionPin: (id: string) => void;
+  duplicateSession: (id: string) => Promise<void>;
+
+  addMessage: (sessionId: string, message: Message) => Promise<void>;
+  updateMessageContent: (
+    sessionId: string,
+    messageId: string,
+    content: string,
+    reasoning?: string,
+  ) => void;
+  updateMessage: (
+    sessionId: string,
+    messageId: string,
+    updates: Partial<Message>,
+  ) => void;
+  setMessages: (sessionId: string, messages: Message[]) => void;
+
+  // Workspace Actions
+  createWorkspace: (workspace: Omit<Workspace, "createdAt">) => void;
+  updateWorkspace: (id: string, updates: Partial<Workspace>) => Promise<void>;
+  deleteWorkspace: (id: string) => Promise<void>;
+
+  // Persistence Helper
+  syncActiveSession: (
+    sessionId?: string,
+    messages?: Message[] | SessionMessageTree,
+  ) => Promise<void>;
+
+  // Versioning Actions
+  addMessageVersion: (
+    sessionId: string,
+    messageId: string,
+    model: string,
+  ) => string | null;
+  createEditedUserMessageBranch: (
+    sessionId: string,
+    messageId: string,
+    userBranch: Message,
+    modelBranch: Message,
+  ) => { userMessageId: string; modelMessageId: string } | null;
+  switchMessageVersion: (
+    sessionId: string,
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void;
+
+  deleteMessage: (sessionId: string, messageId: string) => Promise<void>;
+  deleteMessageAndSubsequent: (
+    sessionId: string,
+    messageId: string,
+  ) => Promise<void>;
+
+  // Suggestions
+  setSuggestedQuestions: (
+    sessionId: string,
+    messageId: string,
+    questions: string[],
+  ) => void;
+
+  setModel: (model: string) => void;
+  setChatConfig: (config: Partial<ChatConfig>) => void;
+
+  // Helper to get current session metadata
+  getCurrentSession: () => Session | undefined;
+}
+
+const getMessageTreeFromState = (state: {
+  activeMessages: Message[];
+  activeMessageTree: SessionMessageTree;
+}) => {
+  if (
+    getAllMessagesFromTree(state.activeMessageTree).length === 0 &&
+    state.activeMessages.length > 0
+  ) {
+    return normalizeSessionMessageTree(state.activeMessages);
+  }
+
+  return state.activeMessageTree;
+};
+
+const DEFAULT_SESSION_TITLE = "New Chat";
+
+const normalizedConfigKey = (config?: SessionConfig) =>
+  JSON.stringify(normalizeSessionConfig(config) ?? {});
+
+const isReusableEmptySession = (
+  session: Session,
+  state: Pick<
+    ChatState,
+    "currentSessionId" | "activeMessages" | "activeMessageTree"
+  >,
+  {
+    title,
+    systemInstruction,
+    workspaceId,
+    config,
+  }: {
+    title: string;
+    systemInstruction?: string;
+    workspaceId?: string;
+    config?: SessionConfig;
+  },
+) => {
+  if (title !== DEFAULT_SESSION_TITLE) return false;
+  if (session.title !== DEFAULT_SESSION_TITLE) return false;
+  if (session.messageCount !== 0) return false;
+  if ((session.workspaceId ?? "") !== (workspaceId ?? "")) return false;
+  if ((session.systemInstruction ?? "") !== (systemInstruction ?? "")) {
+    return false;
+  }
+  if (normalizedConfigKey(session.config) !== normalizedConfigKey(config)) {
+    return false;
+  }
+
+  if (state.currentSessionId !== session.id) return true;
+
+  return (
+    state.activeMessages.length === 0 &&
+    getAllMessagesFromTree(state.activeMessageTree).length === 0
+  );
+};
+
+const applySessionConfig = (
+  currentConfig: ChatConfig,
+  sessionConfig?: SessionConfig,
+): ChatConfig => {
+  if (!sessionConfig) return currentConfig;
+
+  return {
+    ...currentConfig,
+    useSearch: sessionConfig.useSearch ?? currentConfig.useSearch,
+    useReasoning: sessionConfig.useReasoning ?? currentConfig.useReasoning,
+  };
+};
+
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
+      _hasHydrated: false,
+      setHasHydrated: (state) => {
+        set({ _hasHydrated: state });
+      },
+      sessions: [],
+      workspaces: [],
+      currentSessionId: null,
+      activeMessages: [],
+      activeMessageTree: createEmptyMessageTree(),
+      isActiveSessionLoading: false,
+      selectedModel: "",
+      chatConfig: { ...DEFAULT_CHAT_CONFIG },
+
+      createSession: (
+        systemInstruction,
+        title = "New Chat",
+        workspaceId,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _initialAttachments = [],
+        config,
+      ) => {
+        const normalizedTitle = normalizeSessionTitle(title);
+        const normalizedConfig = normalizeSessionConfig(config);
+        const reusableSession = get().sessions.find((session) =>
+          isReusableEmptySession(session, get(), {
+            title: normalizedTitle,
+            systemInstruction,
+            workspaceId,
+            config: normalizedConfig,
+          }),
+        );
+
+        if (reusableSession) {
+          selectSessionRequestId += 1;
+          set((state) => ({
+            currentSessionId: reusableSession.id,
+            activeMessages: [],
+            activeMessageTree: createEmptyMessageTree(),
+            isActiveSessionLoading: false,
+            chatConfig: applySessionConfig(
+              state.chatConfig,
+              reusableSession.config,
+            ),
+          }));
+          return reusableSession.id;
+        }
+
+        selectSessionRequestId += 1;
+        const newSession = normalizeSession({
+          id: uuidv7(),
+          title: normalizedTitle,
+          updatedAt: Date.now(),
+          model: get().selectedModel,
+          systemInstruction: systemInstruction,
+          pinned: false,
+          messageCount: 0,
+          workspaceId: workspaceId,
+          config: normalizedConfig,
+        });
+
+        // Initial Messages
+        const initialMessageTree = createEmptyMessageTree();
+
+        appDb.setItem(`session_messages_${newSession.id}`, initialMessageTree);
+
+        // Apply config to global state if this becomes active
+        const sessionConfig = newSession.config;
+        if (sessionConfig) {
+          set({
+            chatConfig: applySessionConfig(get().chatConfig, sessionConfig),
+          });
+        }
+
+        set((state) => ({
+          sessions: [newSession, ...state.sessions],
+          currentSessionId: newSession.id,
+          activeMessages: [],
+          activeMessageTree: initialMessageTree,
+        }));
+
+        return newSession.id;
+      },
+
+      selectSession: async (id) => {
+        const requestId = selectSessionRequestId + 1;
+        selectSessionRequestId = requestId;
+        set({ isActiveSessionLoading: true });
+
+        // Fetch data first
+        let messageTree = createEmptyMessageTree();
+        try {
+          messageTree = normalizeStoredMessageTree(
+            await appDb.getItem<Message[] | SessionMessageTree>(
+              `session_messages_${id}`,
+            ),
+          );
+        } catch (e) {
+          logDevError("Failed to load session messages", e);
+        }
+
+        if (requestId !== selectSessionRequestId) return;
+
+        // Apply Session Config to State
+        const session = get().sessions.find((s) => s.id === id);
+        if (!session) {
+          set({
+            currentSessionId: null,
+            activeMessages: [],
+            activeMessageTree: createEmptyMessageTree(),
+            isActiveSessionLoading: false,
+          });
+          return;
+        }
+
+        const activeMessages = getActiveMessagePath(messageTree);
+
+        if (session && session.config) {
+          set({
+            chatConfig: applySessionConfig(get().chatConfig, session.config),
+          });
+        }
+
+        set({
+          currentSessionId: id,
+          activeMessages,
+          activeMessageTree: messageTree,
+          isActiveSessionLoading: false,
+          sessions: get().sessions.map((s) =>
+            s.id === id ? { ...s, messageCount: activeMessages.length } : s,
+          ),
+        });
+      },
+
+      deleteSession: async (id) => {
+        selectSessionRequestId += 1;
+        const deleteRequestId = selectSessionRequestId;
+        const stateBeforeDelete = get();
+        const deletedSession = stateBeforeDelete.sessions.find(
+          (session) => session.id === id,
+        );
+        const deletedMessagesPromise =
+          stateBeforeDelete.currentSessionId === id
+            ? Promise.resolve(
+                getAllMessagesFromTree(stateBeforeDelete.activeMessageTree),
+              )
+            : appDb
+                .getItem<Message[] | SessionMessageTree>(
+                  `session_messages_${id}`,
+                )
+                .then((messages) =>
+                  getAllMessagesFromTree(normalizeStoredMessageTree(messages)),
+                )
+                .catch((error) => {
+                  logDevError(
+                    "Failed to load deleted session messages for attachment cleanup",
+                    error,
+                  );
+                  return null;
+                });
+
+        // Remove metadata from state
+        set((state) => {
+          const filtered = state.sessions.filter((s) => s.id !== id);
+          let nextId = state.currentSessionId;
+          let nextActiveMessages = state.activeMessages;
+          let nextMessageTree = state.activeMessageTree;
+
+          if (state.currentSessionId === id) {
+            nextId = filtered.length > 0 ? filtered[0].id : null;
+            nextActiveMessages = [];
+            nextMessageTree = createEmptyMessageTree();
+          }
+
+          return {
+            sessions: filtered,
+            currentSessionId: nextId,
+            activeMessages: nextActiveMessages,
+            activeMessageTree: nextMessageTree,
+          };
+        });
+
+        // Remove from storage
+        const removeMessagesPromise = appDb.removeItem(
+          `session_messages_${id}`,
+        );
+
+        // Trigger load for next session if auto-selected
+        const currentId = get().currentSessionId;
+        if (currentId && currentId !== id) {
+          void get().selectSession(currentId);
+        }
+
+        let deletedMessages: Message[] | null;
+        try {
+          [deletedMessages] = await Promise.all([
+            deletedMessagesPromise,
+            removeMessagesPromise,
+          ]);
+        } catch (error) {
+          if (deletedSession) {
+            set((state) => {
+              if (state.sessions.some((session) => session.id === id)) {
+                return {};
+              }
+
+              const restoredSessions = [...state.sessions];
+              const originalIndex = stateBeforeDelete.sessions.findIndex(
+                (session) => session.id === id,
+              );
+              restoredSessions.splice(
+                Math.min(Math.max(originalIndex, 0), restoredSessions.length),
+                0,
+                deletedSession,
+              );
+
+              const shouldRestoreActiveSession =
+                stateBeforeDelete.currentSessionId === id &&
+                state.currentSessionId === null &&
+                state.activeMessages.length === 0 &&
+                getAllMessagesFromTree(state.activeMessageTree).length === 0 &&
+                selectSessionRequestId === deleteRequestId;
+
+              return {
+                sessions: restoredSessions,
+                ...(shouldRestoreActiveSession
+                  ? {
+                      currentSessionId: id,
+                      activeMessages: stateBeforeDelete.activeMessages,
+                      activeMessageTree: stateBeforeDelete.activeMessageTree,
+                    }
+                  : {}),
+              };
+            });
+          }
+
+          throw error;
+        }
+
+        const removedFileUrls = deletedMessages
+          ? Array.from(getMessageAttachmentUrls(deletedMessages))
+          : [];
+        if (removedFileUrls.length > 0) {
+          await cleanupUnreferencedAttachmentUrls(removedFileUrls, async () => {
+            const state = get();
+            return getReferencedWorkspaceAndMessageFileUrls({
+              candidateUrls: removedFileUrls,
+              workspaces: state.workspaces,
+              sessions: state.sessions,
+              currentSessionId: state.currentSessionId,
+              activeMessageTree: getMessageTreeFromState(state),
+              includeCurrentPersistedMessages: true,
+            });
+          });
+        }
+      },
+
+      updateSessionTitle: (id, newTitle) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id
+              ? normalizeSession({
+                  ...s,
+                  title: newTitle,
+                  updatedAt: Date.now(),
+                })
+              : s,
+          ),
+        }));
+      },
+
+      updateSessionInstruction: (id, instruction) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id
+              ? normalizeSession({
+                  ...s,
+                  systemInstruction: instruction,
+                  updatedAt: Date.now(),
+                })
+              : s,
+          ),
+        }));
+      },
+
+      updateSessionCompression: (id, compression) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id
+              ? normalizeSession({
+                  ...s,
+                  compression: compression,
+                  updatedAt: Date.now(),
+                })
+              : s,
+          ),
+        }));
+      },
+
+      moveSessionToWorkspace: (sessionId, workspaceId) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  workspaceId: workspaceId || undefined,
+                  updatedAt: Date.now(),
+                }
+              : s,
+          ),
+        }));
+      },
+
+      toggleSessionPin: (id) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id ? { ...s, pinned: !s.pinned } : s,
+          ),
+        }));
+      },
+
+      duplicateSession: async (id) => {
+        const requestId = selectSessionRequestId + 1;
+        selectSessionRequestId = requestId;
+        const state = get();
+        const original = state.sessions.find((s) => s.id === id);
+        if (!original) return;
+
+        const newId = uuidv7();
+
+        // Load original messages
+        const originalMessageTree = normalizeStoredMessageTree(
+          await appDb.getItem<Message[] | SessionMessageTree>(
+            `session_messages_${id}`,
+          ),
+        );
+
+        const latestState = get();
+        if (!latestState.sessions.some((s) => s.id === id)) {
+          return;
+        }
+
+        const newMessageTree = cloneMessageTreeWithNewIds(
+          originalMessageTree,
+          uuidv7,
+        );
+        const newMessages = getActiveMessagePath(newMessageTree);
+
+        const newSession = normalizeSession({
+          ...normalizeSession(original),
+          id: newId,
+          title: `${original.title} (Copy)`,
+          updatedAt: Date.now(),
+          pinned: false,
+          compression: undefined,
+          messageCount: newMessages.length,
+        });
+
+        // Save new messages
+        await appDb.setItem(`session_messages_${newId}`, newMessageTree);
+
+        const shouldActivateDuplicate = requestId === selectSessionRequestId;
+
+        set((state) => ({
+          sessions: [newSession, ...state.sessions],
+          currentSessionId: shouldActivateDuplicate
+            ? newId
+            : state.currentSessionId,
+          activeMessages: shouldActivateDuplicate
+            ? newMessages
+            : state.activeMessages,
+          activeMessageTree: shouldActivateDuplicate
+            ? newMessageTree
+            : state.activeMessageTree,
+        }));
+      },
+
+      addMessage: async (sessionId, message) => {
+        const normalizedMessage = normalizeMessage({ ...message });
+
+        let sessionExists = false;
+        let activeTreeToPersist: SessionMessageTree | null = null;
+
+        // Update State Memory
+        set((state) => {
+          const targetSession = state.sessions.find((s) => s.id === sessionId);
+          if (!targetSession) return {};
+
+          sessionExists = true;
+          const isActiveSession = state.currentSessionId === sessionId;
+          const currentMessageTree = getMessageTreeFromState(state);
+          const newActiveMessageTree = isActiveSession
+            ? appendMessageToActivePath(currentMessageTree, normalizedMessage)
+            : currentMessageTree;
+          const newActiveMessages = isActiveSession
+            ? getActiveMessagePath(newActiveMessageTree)
+            : state.activeMessages;
+
+          if (isActiveSession) {
+            activeTreeToPersist = newActiveMessageTree;
+          }
+
+          return {
+            activeMessages: newActiveMessages,
+            activeMessageTree: newActiveMessageTree,
+            sessions: state.sessions.map((s) => {
+              if (s.id === sessionId) {
+                return {
+                  ...s,
+                  messageCount: isActiveSession
+                    ? newActiveMessages.length
+                    : s.messageCount + 1,
+                  updatedAt: Date.now(),
+                };
+              }
+              return s;
+            }),
+          };
+        });
+
+        if (!sessionExists) return;
+
+        // Save to DB
+        // We need to fetch current messages if not active, or use the mutation snapshot if active.
+        if (activeTreeToPersist) {
+          await appDb.setItem(
+            `session_messages_${sessionId}`,
+            activeTreeToPersist,
+          );
+          return;
+        }
+
+        await enqueueSessionMessageWrite(sessionId, async () => {
+          if (!get().sessions.some((s) => s.id === sessionId)) return;
+          const existing = normalizeStoredMessageTree(
+            await appDb.getItem<Message[] | SessionMessageTree>(
+              `session_messages_${sessionId}`,
+            ),
+          );
+          if (!get().sessions.some((s) => s.id === sessionId)) return;
+
+          const messageTreeToSave = appendMessageToActivePath(
+            existing,
+            normalizedMessage,
+          );
+          await appDb.setItem(
+            `session_messages_${sessionId}`,
+            messageTreeToSave,
+          );
+        });
+      },
+
+      updateMessageContent: (sessionId, messageId, content, reasoning) => {
+        // Memory Update Only (Fast for streaming)
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {}; // Ignore updates for non-active sessions
+
+          const newMessageTree = updateMessageInTree(
+            getMessageTreeFromState(state),
+            messageId,
+            (message) => {
+              const newMessage = {
+                ...message,
+                content: content,
+              };
+              if (reasoning !== undefined) {
+                newMessage.reasoning = reasoning;
+              }
+              return newMessage;
+            },
+          );
+
+          return {
+            activeMessageTree: newMessageTree,
+            activeMessages: getActiveMessagePath(newMessageTree),
+          };
+        });
+      },
+
+      updateMessage: (sessionId, messageId, updates) => {
+        let treeToPersist: SessionMessageTree | null = null;
+
+        // Memory Update
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+
+          const newMessageTree = updateMessageInTree(
+            getMessageTreeFromState(state),
+            messageId,
+            (message) => ({ ...message, ...updates }),
+          );
+
+          treeToPersist = newMessageTree;
+          return {
+            activeMessageTree: newMessageTree,
+            activeMessages: getActiveMessagePath(newMessageTree),
+          };
+        });
+
+        // Persist Update
+        if (treeToPersist) {
+          get().syncActiveSession(sessionId, treeToPersist);
+        }
+      },
+
+      setMessages: (sessionId, messages) => {
+        const normalizedMessages = normalizeMessages(messages);
+        const messageTree = normalizeSessionMessageTree(normalizedMessages);
+        let treeToPersist: SessionMessageTree | null = null;
+        const activeMessages = getActiveMessagePath(messageTree);
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+          treeToPersist = messageTree;
+          return {
+            activeMessages,
+            activeMessageTree: messageTree,
+            sessions: state.sessions.map((s) =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    messageCount: activeMessages.length,
+                    updatedAt: Date.now(),
+                  }
+                : s,
+            ),
+          };
+        });
+        if (treeToPersist) {
+          get().syncActiveSession(sessionId, treeToPersist);
+        }
+      },
+
+      // Helper to explicitly save active messages to DB
+      syncActiveSession: async (sessionId, messages) => {
+        const { currentSessionId, activeMessageTree } = get();
+        const targetSessionId = sessionId ?? currentSessionId;
+        if (!targetSessionId) return;
+
+        const treeToSave = Array.isArray(messages)
+          ? normalizeSessionMessageTree(normalizeMessages(messages))
+          : (messages ??
+            (currentSessionId === targetSessionId ? activeMessageTree : null));
+
+        if (!treeToSave) return;
+
+        await appDb.setItem(`session_messages_${targetSessionId}`, treeToSave);
+      },
+
+      addMessageVersion: (sessionId, messageId, modelName) => {
+        let treeToPersist: SessionMessageTree | null = null;
+        let branchMessageId: string | null = null;
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+
+          const currentMessageTree = getMessageTreeFromState(state);
+          const sourceMessage =
+            currentMessageTree.nodesById[messageId]?.message;
+          if (!sourceMessage || sourceMessage.role !== "model") return {};
+
+          branchMessageId = uuidv7();
+          const branchMessage: Message = {
+            id: branchMessageId,
+            role: "model",
+            content: "",
+            reasoning: "",
+            timestamp: Date.now(),
+            model: modelName,
+          };
+          const newMessageTree = createModelResponseBranch(
+            currentMessageTree,
+            messageId,
+            branchMessage,
+          );
+          const newMessages = getActiveMessagePath(newMessageTree);
+
+          treeToPersist = newMessageTree;
+          return {
+            activeMessageTree: newMessageTree,
+            activeMessages: newMessages,
+            sessions: state.sessions.map((s) => {
+              if (s.id !== sessionId) return s;
+
+              const shouldClearCompression =
+                !!s.compression?.lastCompressedMessageId &&
+                !isMessageInActivePath(
+                  newMessageTree,
+                  s.compression.lastCompressedMessageId,
+                );
+
+              return {
+                ...s,
+                messageCount: newMessages.length,
+                updatedAt: Date.now(),
+                compression: shouldClearCompression ? undefined : s.compression,
+              };
+            }),
+          };
+        });
+        if (treeToPersist) {
+          get().syncActiveSession(sessionId, treeToPersist);
+        }
+        return branchMessageId;
+      },
+
+      createEditedUserMessageBranch: (
+        sessionId,
+        messageId,
+        userBranch,
+        modelBranch,
+      ) => {
+        let treeToPersist: SessionMessageTree | null = null;
+        let result: { userMessageId: string; modelMessageId: string } | null =
+          null;
+
+        const normalizedUserBranch = normalizeMessage({ ...userBranch });
+        const normalizedModelBranch = normalizeMessage({ ...modelBranch });
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+
+          const currentMessageTree = getMessageTreeFromState(state);
+          const sourceMessage =
+            currentMessageTree.nodesById[messageId]?.message;
+          if (!sourceMessage || sourceMessage.role !== "user") return {};
+
+          const userBranchTree = createUserMessageBranch(
+            currentMessageTree,
+            messageId,
+            normalizedUserBranch,
+          );
+          const newMessageTree = appendMessageToActivePath(
+            userBranchTree,
+            normalizedModelBranch,
+          );
+          const newMessages = getActiveMessagePath(newMessageTree);
+
+          result = {
+            userMessageId: normalizedUserBranch.id,
+            modelMessageId: normalizedModelBranch.id,
+          };
+          treeToPersist = newMessageTree;
+
+          return {
+            activeMessageTree: newMessageTree,
+            activeMessages: newMessages,
+            sessions: state.sessions.map((s) => {
+              if (s.id !== sessionId) return s;
+
+              const shouldClearCompression =
+                !!s.compression?.lastCompressedMessageId &&
+                !isMessageInActivePath(
+                  newMessageTree,
+                  s.compression.lastCompressedMessageId,
+                );
+
+              return {
+                ...s,
+                messageCount: newMessages.length,
+                updatedAt: Date.now(),
+                compression: shouldClearCompression ? undefined : s.compression,
+              };
+            }),
+          };
+        });
+
+        if (treeToPersist) {
+          get().syncActiveSession(sessionId, treeToPersist);
+        }
+        return result;
+      },
+
+      switchMessageVersion: (sessionId, messageId, direction) => {
+        let treeToPersist: SessionMessageTree | null = null;
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+
+          const newMessageTree = switchMessageBranch(
+            getMessageTreeFromState(state),
+            messageId,
+            direction,
+          );
+          const newMessages = getActiveMessagePath(newMessageTree);
+
+          treeToPersist = newMessageTree;
+          return {
+            activeMessageTree: newMessageTree,
+            activeMessages: newMessages,
+            sessions: state.sessions.map((s) => {
+              if (s.id !== sessionId) return s;
+
+              const shouldClearCompression =
+                !!s.compression?.lastCompressedMessageId &&
+                !isMessageInActivePath(
+                  newMessageTree,
+                  s.compression.lastCompressedMessageId,
+                );
+
+              return {
+                ...s,
+                messageCount: newMessages.length,
+                updatedAt: Date.now(),
+                compression: shouldClearCompression ? undefined : s.compression,
+              };
+            }),
+          };
+        });
+        if (treeToPersist) {
+          get().syncActiveSession(sessionId, treeToPersist);
+        }
+      },
+
+      setSuggestedQuestions: (sessionId, messageId, questions) => {
+        let treeToPersist: SessionMessageTree | null = null;
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+          const newMessageTree = updateMessageInTree(
+            getMessageTreeFromState(state),
+            messageId,
+            (message) => ({ ...message, suggestedQuestions: questions }),
+          );
+          treeToPersist = newMessageTree;
+          return {
+            activeMessageTree: newMessageTree,
+            activeMessages: getActiveMessagePath(newMessageTree),
+          };
+        });
+        if (treeToPersist) {
+          get().syncActiveSession(sessionId, treeToPersist);
+        }
+      },
+
+      deleteMessage: async (sessionId, messageId) => {
+        let treeToPersist: SessionMessageTree | null = null;
+        let previousMessages: Message[] | null = null;
+        let previousMessageTree: SessionMessageTree | null = null;
+        let previousSession: Session | undefined;
+        let removedMessages: Message[] = [];
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+          previousMessages = state.activeMessages;
+          const currentMessageTree = getMessageTreeFromState(state);
+          previousMessageTree = currentMessageTree;
+          previousSession = state.sessions.find((s) => s.id === sessionId);
+          const result = removeMessageFromTree(currentMessageTree, messageId);
+          const newMessages = getActiveMessagePath(result.tree);
+          removedMessages = result.removedMessages;
+          treeToPersist = result.tree;
+          return {
+            activeMessages: newMessages,
+            activeMessageTree: result.tree,
+            sessions: state.sessions.map((s) =>
+              s.id === sessionId
+                ? { ...s, messageCount: newMessages.length }
+                : s,
+            ),
+          };
+        });
+        if (treeToPersist) {
+          try {
+            await get().syncActiveSession(sessionId, treeToPersist);
+          } catch (error) {
+            logDevError(
+              "Failed to persist deleted message before attachment cleanup",
+              error,
+            );
+            set((state) => {
+              if (
+                state.currentSessionId !== sessionId ||
+                state.activeMessageTree !== treeToPersist ||
+                !previousMessages ||
+                !previousMessageTree
+              ) {
+                return {};
+              }
+
+              return {
+                activeMessages: previousMessages,
+                activeMessageTree: previousMessageTree,
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId && previousSession
+                    ? {
+                        ...s,
+                        messageCount: previousSession.messageCount,
+                        updatedAt: previousSession.updatedAt,
+                      }
+                    : s,
+                ),
+              };
+            });
+            throw error;
+          }
+
+          const removedFileUrls = Array.from(
+            getMessageAttachmentUrls(removedMessages),
+          );
+          if (removedFileUrls.length > 0) {
+            await cleanupUnreferencedAttachmentUrls(
+              removedFileUrls,
+              async () => {
+                const state = get();
+                return getReferencedWorkspaceAndMessageFileUrls({
+                  candidateUrls: removedFileUrls,
+                  workspaces: state.workspaces,
+                  sessions: state.sessions,
+                  currentSessionId: state.currentSessionId,
+                  activeMessageTree: getMessageTreeFromState(state),
+                });
+              },
+            );
+          }
+        }
+      },
+
+      deleteMessageAndSubsequent: async (sessionId, messageId) => {
+        let treeToPersist: SessionMessageTree | null = null;
+        let previousMessages: Message[] | null = null;
+        let previousMessageTree: SessionMessageTree | null = null;
+        let previousSession: Session | undefined;
+        let removedMessages: Message[] = [];
+
+        set((state) => {
+          if (state.currentSessionId !== sessionId) return {};
+          previousMessages = state.activeMessages;
+          const currentMessageTree = getMessageTreeFromState(state);
+          previousMessageTree = currentMessageTree;
+          previousSession = state.sessions.find((s) => s.id === sessionId);
+          const result = removeMessageSubtree(currentMessageTree, messageId);
+          if (result.removedMessages.length === 0) return {};
+
+          const newMessages = getActiveMessagePath(result.tree);
+          removedMessages = result.removedMessages;
+          treeToPersist = result.tree;
+          return {
+            activeMessages: newMessages,
+            activeMessageTree: result.tree,
+            sessions: state.sessions.map((s) =>
+              s.id === sessionId
+                ? {
+                    ...s,
+                    messageCount: newMessages.length,
+                    updatedAt: Date.now(),
+                  }
+                : s,
+            ),
+          };
+        });
+        if (treeToPersist) {
+          try {
+            await get().syncActiveSession(sessionId, treeToPersist);
+          } catch (error) {
+            logDevError(
+              "Failed to persist deleted message range before attachment cleanup",
+              error,
+            );
+            set((state) => {
+              if (
+                state.currentSessionId !== sessionId ||
+                state.activeMessageTree !== treeToPersist ||
+                !previousMessages ||
+                !previousMessageTree
+              ) {
+                return {};
+              }
+
+              return {
+                activeMessages: previousMessages,
+                activeMessageTree: previousMessageTree,
+                sessions: state.sessions.map((s) =>
+                  s.id === sessionId && previousSession
+                    ? {
+                        ...s,
+                        messageCount: previousSession.messageCount,
+                        updatedAt: previousSession.updatedAt,
+                      }
+                    : s,
+                ),
+              };
+            });
+            throw error;
+          }
+
+          const removedFileUrls = Array.from(
+            getMessageAttachmentUrls(removedMessages),
+          );
+          if (removedFileUrls.length > 0) {
+            await cleanupUnreferencedAttachmentUrls(
+              removedFileUrls,
+              async () => {
+                const state = get();
+                return getReferencedWorkspaceAndMessageFileUrls({
+                  candidateUrls: removedFileUrls,
+                  workspaces: state.workspaces,
+                  sessions: state.sessions,
+                  currentSessionId: state.currentSessionId,
+                  activeMessageTree: getMessageTreeFromState(state),
+                });
+              },
+            );
+          }
+        }
+      },
+
+      // --- Workspace Actions ---
+      createWorkspace: (workspaceData) => {
+        const newWorkspace: Workspace = {
+          ...normalizeWorkspace(workspaceData as Workspace),
+          id: workspaceData.id || uuidv7(),
+          createdAt: Date.now(),
+        };
+        set((state) => ({ workspaces: [...state.workspaces, newWorkspace] }));
+      },
+
+      updateWorkspace: async (id, updates) => {
+        let removedFileUrls: string[] = [];
+
+        set((state) => ({
+          workspaces: state.workspaces.map((w) => {
+            if (w.id !== id) return w;
+
+            const updatedWorkspace = normalizeWorkspace({ ...w, ...updates });
+            if ("files" in updates) {
+              removedFileUrls = getRemovedWorkspaceFileUrls(
+                w.files,
+                updatedWorkspace.files,
+              );
+            }
+
+            return updatedWorkspace;
+          }),
+        }));
+
+        if (removedFileUrls.length > 0) {
+          await cleanupUnreferencedAttachmentUrls(removedFileUrls, async () => {
+            const state = get();
+            return getReferencedWorkspaceAndMessageFileUrls({
+              candidateUrls: removedFileUrls,
+              workspaces: state.workspaces,
+              sessions: state.sessions,
+              currentSessionId: state.currentSessionId,
+              activeMessageTree: getMessageTreeFromState(state),
+            });
+          });
+        }
+      },
+
+      deleteWorkspace: async (id) => {
+        const workspace = get().workspaces.find((w) => w.id === id);
+        const fileUrlsToCleanup = getAttachmentUrls(workspace?.files);
+
+        // Move sessions in this workspace back to root (workspaceId = undefined)
+        set((state) => {
+          const updatedSessions = state.sessions.map((s) =>
+            s.workspaceId === id ? { ...s, workspaceId: undefined } : s,
+          );
+          return {
+            workspaces: state.workspaces.filter((w) => w.id !== id),
+            sessions: updatedSessions,
+          };
+        });
+
+        if (fileUrlsToCleanup.length > 0) {
+          await cleanupUnreferencedAttachmentUrls(
+            fileUrlsToCleanup,
+            async () => {
+              const state = get();
+              return getReferencedWorkspaceAndMessageFileUrls({
+                candidateUrls: fileUrlsToCleanup,
+                workspaces: state.workspaces,
+                sessions: state.sessions,
+                currentSessionId: state.currentSessionId,
+                activeMessageTree: getMessageTreeFromState(state),
+              });
+            },
+          );
+        }
+      },
+
+      setModel: (model) => set({ selectedModel: model }),
+
+      setChatConfig: (config) =>
+        set((state) => ({
+          chatConfig: normalizeChatConfig({ ...state.chatConfig, ...config }),
+        })),
+
+      getCurrentSession: () => {
+        const state = get();
+        return state.sessions.find((s) => s.id === state.currentSessionId);
+      },
+    }),
+    {
+      name: STORAGE_KEYS.CHAT,
+      storage: createJSONStorage(getAppDbStorage),
+      version: STORAGE_VERSION,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<ChatState>;
+        return {
+          ...state,
+          sessions: (state.sessions || []).map((session) =>
+            normalizeSession(session),
+          ),
+          workspaces: (state.workspaces || []).map((workspace) =>
+            normalizeWorkspace(workspace),
+          ),
+          activeMessages: normalizeMessages(state.activeMessages),
+          activeMessageTree: normalizeSessionMessageTree(state.activeMessages),
+          selectedModel:
+            state.selectedModel === DEPRECATED_DEFAULT_SELECTED_MODEL
+              ? ""
+              : state.selectedModel || "",
+          chatConfig: normalizeChatConfig(state.chatConfig),
+        } as ChatState;
+      },
+      skipHydration: false,
+      // Only persist metadata and config, do NOT persist activeMessages in main key
+      partialize: (state) => ({
+        sessions: state.sessions,
+        workspaces: state.workspaces, // Persist workspaces
+        currentSessionId: state.currentSessionId,
+        selectedModel: state.selectedModel,
+        chatConfig: state.chatConfig,
+      }),
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (typeof window === "undefined") return;
+          if (error) {
+            logDevError("Chat store hydration failed:", error);
+          } else if (state) {
+            state.setHasHydrated(true);
+            // Post-hydration check: if currentSessionId exists, load its messages
+            if (state.currentSessionId) {
+              state.selectSession(state.currentSessionId);
+            }
+          }
+        };
+      },
+    },
+  ),
+);

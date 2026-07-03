@@ -1,53 +1,41 @@
 name: Feature request
-description: Suggest an idea for this project
-title: '[Feature Request]: '
-labels: ['feature']
-
+description: Suggest an improvement or new capability.
+title: "[Feature]: "
+labels: ["enhancement"]
 body:
-  - type: markdown
-    attributes:
-      value: '## Is your feature request related to a problem? Please describe.'
   - type: textarea
-    id: problem-description
+    id: problem
     attributes:
-      label: Problem Description
-      description: "A clear and concise description of what the problem is. Example: I'm always frustrated when [...]"
-      placeholder: 'Explain the problem you are facing...'
+      label: Problem
+      description: What user problem would this solve?
     validations:
       required: true
-
-  - type: markdown
-    attributes:
-      value: "## Describe the solution you'd like"
   - type: textarea
-    id: desired-solution
+    id: proposal
     attributes:
-      label: Solution Description
-      description: A clear and concise description of what you want to happen.
-      placeholder: "Describe the solution you'd like..."
+      label: Proposal
+      description: Describe the smallest useful version of the feature.
     validations:
       required: true
-
-  - type: markdown
+  - type: dropdown
+    id: area
     attributes:
-      value: "## Describe alternatives you've considered"
-  - type: textarea
-    id: alternatives-considered
-    attributes:
-      label: Alternatives Considered
-      description: A clear and concise description of any alternative solutions or features you've considered.
-      placeholder: "Describe any alternative solutions or features you've considered..."
+      label: Area
+      options:
+        - Chat
+        - Providers
+        - Assistants
+        - Plugins
+        - Search
+        - Knowledge/RAG
+        - Voice
+        - Deployment
+        - Documentation
+        - Other
     validations:
-      required: false
-
-  - type: markdown
-    attributes:
-      value: '## Additional context'
+      required: true
   - type: textarea
-    id: additional-context
+    id: alternatives
     attributes:
-      label: Additional Context
-      description: Add any other context or screenshots about the feature request here.
-      placeholder: 'Add any other context or screenshots about the feature request here...'
-    validations:
-      required: false
+      label: Alternatives considered
+      description: What workarounds or other approaches have you tried?

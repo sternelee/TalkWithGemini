@@ -1,0 +1,278 @@
+import { generateKeyPairSync } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+import { clearByokPublicKeyCache, encryptSecret } from "../lib/byok/client";
+import { decryptSecretEnvelope, getByokPublicKey } from "../lib/byok/server";
+import {
+  clearLocalSecretKeyCache,
+  encryptLocalSecret,
+  LOCAL_SECRET_CONTEXTS,
+} from "../lib/security/localSecrets";
+
+const originalEnv = {
+  BYOK_ALLOW_EPHEMERAL_KEY: process.env.BYOK_ALLOW_EPHEMERAL_KEY,
+  BYOK_KEY_ID: process.env.BYOK_KEY_ID,
+  BYOK_PRIVATE_KEY_PEM: process.env.BYOK_PRIVATE_KEY_PEM,
+  NODE_ENV: process.env.NODE_ENV,
+};
+
+function restoreEnv() {
+  for (const [key, value] of Object.entries(originalEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      setEnv(key, value);
+    }
+  }
+}
+
+function setEnv(key: string, value: string) {
+  (process.env as Record<string, string | undefined>)[key] = value;
+}
+
+function resetByokKeyMaterial() {
+  globalThis.__neoChatByokKeyMaterial = undefined;
+}
+
+describe("BYOK secret envelopes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    restoreEnv();
+    resetByokKeyMaterial();
+    clearByokPublicKeyCache();
+    clearLocalSecretKeyCache();
+    globalThis.__neoChatLocalSecretKeyMaterial = undefined;
+  });
+
+  it("requires a stable private key in production", async () => {
+    vi.resetModules();
+    resetByokKeyMaterial();
+    setEnv("NODE_ENV", "production");
+    delete process.env.BYOK_ALLOW_EPHEMERAL_KEY;
+    delete process.env.BYOK_PRIVATE_KEY_PEM;
+
+    const { getByokPublicKey: freshGetByokPublicKey } =
+      await import("../lib/byok/server");
+
+    await expect(freshGetByokPublicKey()).rejects.toMatchObject({
+      code: "BYOK_KEY_NOT_CONFIGURED",
+    });
+  });
+
+  it("imports escaped-newline private keys from the environment", async () => {
+    vi.resetModules();
+    resetByokKeyMaterial();
+    const { privateKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicExponent: 0x10001,
+    });
+    const pem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+    setEnv("NODE_ENV", "production");
+    process.env.BYOK_PRIVATE_KEY_PEM = pem.replace(/\n/g, "\\n");
+
+    const {
+      decryptSecretEnvelope: freshDecryptSecretEnvelope,
+      getByokPublicKey: freshGetByokPublicKey,
+    } = await import("../lib/byok/server");
+    const { encryptSecret: freshEncryptSecret } =
+      await import("../lib/byok/client");
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json(await freshGetByokPublicKey()),
+    );
+
+    const envelope = await freshEncryptSecret("escaped-pem", "provider:Gemini");
+
+    await expect(
+      freshDecryptSecretEnvelope(envelope!, "provider:Gemini"),
+    ).resolves.toBe("escaped-pem");
+  });
+
+  it("rejects invalid public key responses", async () => {
+    vi.resetModules();
+    const { encryptSecret: freshEncryptSecret } =
+      await import("../lib/byok/client");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        kid: "bad-key",
+        alg: "RSA-OAEP-256+A256GCM",
+        publicKeyJwk: { kty: "EC" },
+      }),
+    );
+
+    await expect(
+      freshEncryptSecret("secret", "provider:Gemini"),
+    ).rejects.toThrow(/Invalid BYOK RSA public key/);
+  });
+
+  it("refreshes the public key and retries BYOK auth failures once", async () => {
+    vi.resetModules();
+    resetByokKeyMaterial();
+    const { encryptSecret: freshEncryptSecret, fetchWithByokRetry } =
+      await import("../lib/byok/client");
+    const { getByokPublicKey: freshGetByokPublicKey } =
+      await import("../lib/byok/server");
+    const apiBodies: string[] = [];
+    let apiCalls = 0;
+    let publicKeyCalls = 0;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input) === "/api/byok/public-key") {
+        publicKeyCalls += 1;
+        return Response.json(await freshGetByokPublicKey());
+      }
+
+      apiCalls += 1;
+      apiBodies.push(String(init?.body || ""));
+      if (apiCalls === 1) {
+        return Response.json(
+          {
+            error: "BYOK key id does not match this server",
+            code: "AUTH_ERROR",
+            statusCode: 401,
+          },
+          { status: 401 },
+        );
+      }
+
+      return Response.json({ ok: true });
+    });
+
+    const response = await fetchWithByokRetry(async () => {
+      const apiKeySecret = await freshEncryptSecret(
+        "retry-secret",
+        "provider:Gemini",
+      );
+      return fetch("/api/test", {
+        method: "POST",
+        body: JSON.stringify({ apiKeySecret }),
+      });
+    });
+
+    expect(response.status).toBe(200);
+    expect(apiCalls).toBe(2);
+    expect(publicKeyCalls).toBe(2);
+    expect(JSON.stringify(apiBodies)).not.toContain("retry-secret");
+  });
+
+  it("retries loading the public key after a failed request", async () => {
+    vi.resetModules();
+    const { encryptSecret: freshEncryptSecret } =
+      await import("../lib/byok/client");
+    const {
+      decryptSecretEnvelope: freshDecryptSecretEnvelope,
+      getByokPublicKey: freshGetByokPublicKey,
+    } = await import("../lib/byok/server");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockImplementation(async () =>
+        Response.json(await freshGetByokPublicKey()),
+      );
+
+    await expect(
+      freshEncryptSecret("retry-secret", "provider:Gemini"),
+    ).rejects.toThrow(/Failed to load BYOK public key/);
+
+    const envelope = await freshEncryptSecret(
+      "retry-secret",
+      "provider:Gemini",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(
+      freshDecryptSecretEnvelope(envelope!, "provider:Gemini"),
+    ).resolves.toBe("retry-secret");
+  });
+
+  it("roundtrips encrypted secrets through the server keypair", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json(await getByokPublicKey()),
+    );
+
+    const envelope = await encryptSecret("sk-test-secret", "provider:Gemini");
+
+    expect(envelope).toMatchObject({
+      v: 1,
+      alg: "RSA-OAEP-256+A256GCM",
+      context: "provider:Gemini",
+    });
+    expect(JSON.stringify(envelope)).not.toContain("sk-test-secret");
+    await expect(
+      decryptSecretEnvelope(envelope!, "provider:Gemini"),
+    ).resolves.toBe("sk-test-secret");
+  });
+
+  it("builds provider BYOK envelopes from encrypted local secrets", async () => {
+    vi.resetModules();
+    resetByokKeyMaterial();
+    const {
+      decryptSecretEnvelope: freshDecryptSecretEnvelope,
+      getByokPublicKey: freshGetByokPublicKey,
+    } = await import("../lib/byok/server");
+    const { buildProviderRuntimeConfig } = await import("../lib/byok/client");
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json(await freshGetByokPublicKey()),
+    );
+    const apiKeySecret = await encryptLocalSecret(
+      "local-provider-secret",
+      LOCAL_SECRET_CONTEXTS.providerApiKey("LOCAL1"),
+    );
+
+    const runtime = await buildProviderRuntimeConfig({
+      id: "LOCAL1",
+      name: "Local Gemini",
+      type: "Gemini",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKey: "",
+      apiKeySecret,
+      enabled: true,
+      models: [],
+      modelsList: [],
+    });
+
+    expect(JSON.stringify(runtime)).not.toContain("local-provider-secret");
+    await expect(
+      freshDecryptSecretEnvelope(runtime.apiKeySecret!, "provider:Gemini"),
+    ).resolves.toBe("local-provider-secret");
+  });
+
+  it("rejects mismatched key ids and contexts", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json(await getByokPublicKey()),
+    );
+
+    const envelope = await encryptSecret("secret", "search:tavily");
+
+    await expect(
+      decryptSecretEnvelope(
+        { ...envelope!, kid: "other-key" },
+        "search:tavily",
+      ),
+    ).rejects.toMatchObject({ name: "AuthenticationError" });
+    await expect(
+      decryptSecretEnvelope(envelope!, "search:exa"),
+    ).rejects.toMatchObject({ name: "AuthenticationError" });
+  });
+
+  it("rejects tampered ciphertext", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json(await getByokPublicKey()),
+    );
+
+    const envelope = await encryptSecret("secret", "rag:token");
+
+    await expect(
+      decryptSecretEnvelope(
+        {
+          ...envelope!,
+          ciphertext: `${envelope!.ciphertext[0] === "A" ? "B" : "A"}${envelope!.ciphertext.slice(1)}`,
+        },
+        "rag:token",
+      ),
+    ).rejects.toMatchObject({ name: "AuthenticationError" });
+  });
+});

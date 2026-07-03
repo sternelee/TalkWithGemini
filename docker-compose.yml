@@ -1,14 +1,29 @@
-version: '3.9'
 services:
-  talk-with-gemini:
-    image: xiangfa/talk-with-gemini
-    container_name: talk-with-gemini
-    environment:
-      - ACCESS_PASSWORD=$ACCESS_PASSWORD
-      - GEMINI_API_KEY=$GEMINI_API_KEY
-      - GEMINI_API_BASE_URL=$GEMINI_API_BASE_URL
-      - NEXT_PUBLIC_GEMINI_MODEL_LIST=$NEXT_PUBLIC_GEMINI_MODEL_LIST
-      - NEXT_PUBLIC_UPLOAD_LIMIT=$NEXT_PUBLIC_UPLOAD_LIMIT
-      - HEAD_SCRIPTS=$HEAD_SCRIPTS
+  neo-chat:
+    build:
+      context: .
+    image: neo-chat:local
     ports:
-      - 5481:3000
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      DEPLOYMENT_MODE: ${DEPLOYMENT_MODE:-local}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      ACCESS_PASSWORD: ${ACCESS_PASSWORD:-}
+      BYOK_PRIVATE_KEY_PEM: ${BYOK_PRIVATE_KEY_PEM:-}
+      BYOK_KEY_ID: ${BYOK_KEY_ID:-}
+      BYOK_ALLOW_EPHEMERAL_KEY: ${BYOK_ALLOW_EPHEMERAL_KEY:-true}
+      RATE_LIMIT_STORE: ${RATE_LIMIT_STORE:-memory}
+      DOCUMENT_PARSE_JOB_STORE: ${DOCUMENT_PARSE_JOB_STORE:-memory}
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

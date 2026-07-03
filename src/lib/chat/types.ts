@@ -1,0 +1,252 @@
+import type { PluginFunctionRisk } from "../plugin/types";
+import type { ImageSource, Source } from "../search/types";
+
+export interface Attachment {
+  id: string;
+  mimeType: string;
+  data?: string;
+  url?: string;
+  fileName: string;
+}
+
+export interface MessageVersion {
+  id: string;
+  content: string;
+  reasoning?: string;
+  timestamp: number;
+  model: string;
+  timing?: {
+    startTime: number;
+    endTime: number;
+    duration: number;
+  };
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: any;
+  status:
+    | "pending"
+    | "awaiting_confirmation"
+    | "running"
+    | "success"
+    | "error"
+    | "skipped"
+    | "denied";
+  result?: any;
+  isError?: boolean;
+  risk?: PluginFunctionRisk;
+  confirmation?: {
+    required: boolean;
+    state: "pending" | "approved" | "denied";
+    decidedAt?: number;
+  };
+  errorInfo?: {
+    code?: string;
+    message: string;
+    recoverable?: boolean;
+  };
+  auth?: {
+    type: "bearer" | "apiKey" | "none";
+    value?: string;
+    key?: string;
+    addTo?: "header" | "query";
+  };
+}
+
+export interface Message {
+  id: string;
+  role: "user" | "model";
+  content: string;
+  reasoning?: string;
+  timestamp: number;
+  attachments?: Attachment[];
+  toolCalls?: ToolCall[];
+  model?: string;
+  generationError?: {
+    message: string;
+    recoverable?: boolean;
+    code?: string;
+  };
+  searchSources?: Source[];
+  searchImages?: ImageSource[];
+  isSearching?: boolean;
+  ragSources?: Source[];
+  versions?: MessageVersion[];
+  activeVersionId?: string;
+  timing?: {
+    startTime: number;
+    endTime: number;
+    duration: number;
+  };
+  usageMetadata?: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+  };
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  suggestedQuestions?: string[];
+}
+
+export interface MessageTreeNode {
+  id: string;
+  message: Message;
+  parentMessageId?: string;
+  childMessageIds: string[];
+  activeChildMessageId?: string;
+}
+
+export interface SessionMessageTree {
+  nodesById: Record<string, MessageTreeNode>;
+  rootMessageIds: string[];
+  activeRootMessageId?: string;
+}
+
+export type ChatPipelinePhase =
+  "attachments" | "rag" | "search" | "plugins" | "model";
+
+export type ChatPipelinePhaseState =
+  "idle" | "running" | "success" | "warning" | "error";
+
+export interface ChatPipelineStatus {
+  phase: ChatPipelinePhase;
+  state: ChatPipelinePhaseState;
+  message?: string;
+}
+
+export interface ChatPipelineState {
+  attachments: ChatPipelineStatus;
+  rag: ChatPipelineStatus;
+  search: ChatPipelineStatus;
+  plugins: ChatPipelineStatus;
+  model: ChatPipelineStatus;
+}
+
+export type ChatGenerationStatus =
+  | "idle"
+  | "pending"
+  | "attachments"
+  | "rag"
+  | "searching"
+  | "tool"
+  | "model"
+  | "done"
+  | "error"
+  | "aborted";
+
+export interface ChatGenerationState {
+  status: ChatGenerationStatus;
+  activeRunId?: number;
+  sessionId?: string;
+  userMessageId?: string;
+  modelMessageId?: string;
+  pipeline: ChatPipelineState;
+  stopRequested: boolean;
+  error?: {
+    message: string;
+    recoverable?: boolean;
+    code?: string;
+  };
+}
+
+export interface BackgroundTaskSnapshot {
+  runId: number;
+  sessionId: string;
+  messageId: string;
+  messageContent: string;
+  sessionUpdatedAt?: number;
+}
+
+export type ChatGenerationEvent =
+  | {
+      type: "start";
+      runId: number;
+      sessionId: string;
+      userMessageId: string;
+    }
+  | {
+      type: "pipeline";
+      runId: number;
+      phase: ChatPipelinePhase;
+      phaseState: ChatPipelinePhaseState;
+      message?: string;
+    }
+  | {
+      type: "optional-capability-failed";
+      runId: number;
+      phase: Exclude<ChatPipelinePhase, "model">;
+      message: string;
+    }
+  | {
+      type: "stream-started";
+      runId: number;
+      modelMessageId: string;
+    }
+  | { type: "stop-requested"; runId: number }
+  | { type: "completed"; runId: number }
+  | {
+      type: "failed";
+      runId: number;
+      error: string;
+      recoverable?: boolean;
+      code?: string;
+    }
+  | { type: "aborted"; runId: number; reason?: string }
+  | { type: "reset" };
+
+export interface SessionConfig {
+  useSearch?: boolean;
+  useReasoning?: boolean;
+  activePlugins?: string[];
+}
+
+export interface Session {
+  id: string;
+  title: string;
+  messages?: Message[];
+  messageCount: number;
+  updatedAt: number;
+  model: string;
+  systemInstruction?: string;
+  pinned?: boolean;
+  workspaceId?: string;
+  config?: SessionConfig;
+  compression?: {
+    compressedContent: string;
+    lastCompressedMessageId: string;
+  };
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  systemPrompt?: string;
+  knowledgeCollectionIds: string[];
+  files: Attachment[];
+  color?: string;
+  enableSearch?: boolean;
+  enableReasoning?: boolean;
+  activePlugins?: string[];
+  createdAt: number;
+}
+
+export interface Assistant {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  systemInstruction?: string;
+  color: string;
+}
+
+export interface ChatConfig {
+  useSearch: boolean;
+  useReasoning: boolean;
+  useRAG?: boolean;
+  temperature: number;
+}

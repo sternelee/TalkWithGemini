@@ -1,0 +1,136 @@
+import { describe, expect, it } from "vitest";
+import {
+  ATTACHMENT_LIMITS,
+  CHAT_ENTITY_LIMITS,
+  CONTEXT_COMPRESSION_LIMITS,
+} from "../config/limits";
+import {
+  normalizeSession,
+  normalizeSessionTitle,
+  normalizeWorkspace,
+} from "../lib/chat/entities";
+import type { Session, Workspace } from "../types";
+
+describe("chat entity normalization", () => {
+  it("normalizes generated session titles", () => {
+    expect(normalizeSessionTitle('```text\n1. "Launch plan"\n```')).toBe(
+      "Launch plan",
+    );
+    expect(normalizeSessionTitle("Title:\u0007\n- Fallback title")).toBe(
+      "Fallback title",
+    );
+    expect(normalizeSessionTitle("x".repeat(200))).toHaveLength(
+      CHAT_ENTITY_LIMITS.maxSessionTitleChars,
+    );
+    expect(normalizeSessionTitle("\u0000\n```")).toBe("New Chat");
+  });
+
+  it("normalizes session metadata and plugin refs", () => {
+    const session = normalizeSession({
+      id: "s1",
+      title: ` ${"t".repeat(CHAT_ENTITY_LIMITS.maxSessionTitleChars + 10)}`,
+      messageCount: -10,
+      updatedAt: Number.NaN,
+      model: "model",
+      systemInstruction: "i".repeat(
+        CHAT_ENTITY_LIMITS.maxSessionSystemInstructionChars + 1,
+      ),
+      config: {
+        activePlugins: ["search", "search", "", "image"],
+      },
+      compression: {
+        compressedContent: "c".repeat(
+          CONTEXT_COMPRESSION_LIMITS.maxCompressedContentChars + 10,
+        ),
+        lastCompressedMessageId: "m".repeat(160),
+      },
+    } as Session);
+
+    expect(session.title).toHaveLength(CHAT_ENTITY_LIMITS.maxSessionTitleChars);
+    expect(session.messageCount).toBe(0);
+    expect(session.updatedAt).toEqual(expect.any(Number));
+    expect(session.systemInstruction).toHaveLength(
+      CHAT_ENTITY_LIMITS.maxSessionSystemInstructionChars,
+    );
+    expect(session.config?.activePlugins).toEqual(["search", "image"]);
+    expect(session.compression?.compressedContent).toHaveLength(
+      CONTEXT_COMPRESSION_LIMITS.maxCompressedContentChars,
+    );
+    expect(session.compression?.lastCompressedMessageId).toHaveLength(120);
+  });
+
+  it("omits empty session plugin presets", () => {
+    expect(
+      normalizeSession({
+        id: "s1",
+        title: "New Chat",
+        messageCount: 0,
+        updatedAt: 1,
+        model: "model",
+        config: {
+          useSearch: true,
+        },
+      } as Session).config,
+    ).toEqual({ useSearch: true });
+
+    expect(
+      normalizeSession({
+        id: "s2",
+        title: "New Chat",
+        messageCount: 0,
+        updatedAt: 1,
+        model: "model",
+        config: {
+          activePlugins: [],
+        },
+      } as Session).config,
+    ).toEqual({});
+  });
+
+  it("normalizes workspace metadata, references, and files", () => {
+    const workspace = normalizeWorkspace({
+      id: "w1",
+      name: ` ${"w".repeat(CHAT_ENTITY_LIMITS.maxWorkspaceNameChars + 10)}`,
+      systemPrompt: "p".repeat(
+        CHAT_ENTITY_LIMITS.maxWorkspaceSystemPromptChars + 1,
+      ),
+      knowledgeCollectionIds: [" kb1 ", "kb1", "", "kb2"],
+      files: [
+        {
+          id: "a1",
+          fileName: "x".repeat(ATTACHMENT_LIMITS.maxFileNameChars + 1),
+          mimeType: "text/plain",
+          url: "opfs://workspace/file.txt",
+        },
+        {
+          id: "bad",
+          fileName: "",
+          mimeType: "text/plain",
+          url: "opfs://workspace/bad.txt",
+        },
+      ],
+      color: "not-a-color",
+      activePlugins: ["reader", "reader"],
+      enableSearch: "yes",
+      enableReasoning: true,
+      createdAt: Number.NaN,
+    } as unknown as Workspace);
+
+    expect(workspace.name).toHaveLength(
+      CHAT_ENTITY_LIMITS.maxWorkspaceNameChars,
+    );
+    expect(workspace.systemPrompt).toHaveLength(
+      CHAT_ENTITY_LIMITS.maxWorkspaceSystemPromptChars,
+    );
+    expect(workspace.knowledgeCollectionIds).toEqual(["kb1", "kb2"]);
+    expect(workspace.files).toHaveLength(1);
+    expect(workspace.files[0]?.fileName).toHaveLength(
+      ATTACHMENT_LIMITS.maxFileNameChars,
+    );
+    expect(workspace.color).toBe("blue");
+    expect(workspace.activePlugins).toEqual(["reader"]);
+    expect(workspace.enableSearch).toBe(false);
+    expect(workspace.enableReasoning).toBe(true);
+    expect(workspace.createdAt).toEqual(expect.any(Number));
+  });
+});

@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import { MODEL_METADATA_LIMITS } from "../config/limits";
+import {
+  extractKnownProviderModelMetadata,
+  normalizeModelMetadata,
+  normalizeModelMetadataMap,
+} from "../lib/providers/metadata";
+
+describe("model metadata normalization", () => {
+  it("trims model metadata fields and normalizes modalities", () => {
+    const metadata = normalizeModelMetadata({
+      id: " model-a ",
+      name: "x".repeat(MODEL_METADATA_LIMITS.maxNameChars + 10),
+      family: " family ",
+      attachment: true,
+      reasoning: "yes",
+      modalities: {
+        input: [" text ", "text", "", "image"],
+        output: ["audio"],
+      },
+      cost: {
+        input: 1,
+        output: 2,
+        reasoning: -10,
+      },
+      limit: {
+        context: MODEL_METADATA_LIMITS.maxContextTokens + 10,
+        output: MODEL_METADATA_LIMITS.maxOutputTokens + 10,
+      },
+    });
+
+    expect(metadata).toMatchObject({
+      id: "model-a",
+      family: "family",
+      attachment: true,
+      modalities: {
+        input: ["text", "image"],
+        output: ["audio"],
+      },
+      cost: {
+        input: 1,
+        output: 2,
+        reasoning: 0,
+      },
+      limit: {
+        context: MODEL_METADATA_LIMITS.maxContextTokens,
+        output: MODEL_METADATA_LIMITS.maxOutputTokens,
+      },
+    });
+    expect(metadata?.name).toHaveLength(MODEL_METADATA_LIMITS.maxNameChars);
+    expect(metadata?.reasoning).toBeUndefined();
+  });
+
+  it("uses fallback ids and caps metadata maps", () => {
+    const source = Object.fromEntries(
+      Array.from(
+        { length: MODEL_METADATA_LIMITS.maxEntries + 5 },
+        (_, index) => [`model-${index}`, { name: `Model ${index}` }],
+      ),
+    );
+    const normalized = normalizeModelMetadataMap(source);
+
+    expect(Object.keys(normalized)).toHaveLength(
+      MODEL_METADATA_LIMITS.maxEntries,
+    );
+    expect(normalized["model-0"]).toMatchObject({
+      id: "model-0",
+      name: "Model 0",
+    });
+  });
+
+  it("extracts only known providers from external provider metadata", () => {
+    const metadata = extractKnownProviderModelMetadata({
+      openai: {
+        id: "openai",
+        models: {
+          "gpt-5": { id: "gpt-5", name: "GPT-5" },
+        },
+      },
+      unknown: {
+        id: "unknown",
+        models: {
+          "bad-model": { id: "bad-model", name: "Bad" },
+        },
+      },
+      malformed: null,
+    });
+
+    expect(metadata).toEqual({
+      "gpt-5": { id: "gpt-5", name: "GPT-5" },
+    });
+  });
+});

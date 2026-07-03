@@ -1,0 +1,61 @@
+import { cookies, headers } from "next/headers";
+import { getRequestConfig } from "next-intl/server";
+
+export const SUPPORTED_LOCALES = ["en", "zh"] as const;
+export type Locale = (typeof SUPPORTED_LOCALES)[number];
+export const DEFAULT_LOCALE: Locale = "en";
+
+/** Cookie name used to persist the interface language across requests. */
+export const LOCALE_COOKIE = "NEXT_LOCALE";
+
+const isSupported = (value: string): value is Locale =>
+  (SUPPORTED_LOCALES as readonly string[]).includes(value);
+
+/**
+ * Resolve the active locale from a persisted cookie value, falling back to the
+ * browser's `Accept-Language` header when the cookie is missing or set to
+ * "auto". Always returns a supported locale (defaults to {@link DEFAULT_LOCALE}).
+ *
+ * Pure function — no I/O — so it can be unit tested directly.
+ */
+export function resolveLocale(
+  cookieValue: string | undefined | null,
+  acceptLanguage: string | undefined | null,
+): Locale {
+  if (cookieValue && cookieValue !== "auto" && isSupported(cookieValue)) {
+    return cookieValue;
+  }
+
+  // Parse `Accept-Language` (e.g. "zh-CN,zh;q=0.9,en;q=0.8") in preference order.
+  if (acceptLanguage) {
+    const ordered = acceptLanguage
+      .split(",")
+      .map((part) => {
+        const [tag, q] = part.trim().split(";q=");
+        return { tag: tag.toLowerCase(), q: q ? parseFloat(q) : 1 };
+      })
+      .sort((a, b) => b.q - a.q);
+
+    for (const { tag } of ordered) {
+      const base = tag.split("-")[0];
+      if (isSupported(base)) return base;
+    }
+  }
+
+  return DEFAULT_LOCALE;
+}
+
+export default getRequestConfig(async () => {
+  const cookieStore = await cookies();
+  const headerStore = await headers();
+
+  const locale = resolveLocale(
+    cookieStore.get(LOCALE_COOKIE)?.value,
+    headerStore.get("accept-language"),
+  );
+
+  return {
+    locale,
+    messages: (await import(`./locales/${locale}.json`)).default,
+  };
+});

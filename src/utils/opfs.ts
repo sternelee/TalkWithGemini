@@ -1,0 +1,183 @@
+import { dir, file as read, write } from "opfs-tools";
+import { v7 as uuidv7 } from "uuid";
+import { logDevError, logDevWarn } from "../lib/utils/devLogger";
+
+/**
+ * Utility for interacting with the Origin Private File System (OPFS).
+ * Supports the custom 'opfs://' protocol for internal file references.
+ */
+
+const OPFS_PROTOCOL = "opfs://";
+const MAX_OPFS_PATH_LENGTH = 1024;
+
+function getSafeRelativeOPFSPath(filePath: string): string | null {
+  if (
+    !filePath ||
+    filePath.length > MAX_OPFS_PATH_LENGTH ||
+    filePath.includes("\0") ||
+    filePath.includes("\\") ||
+    filePath.startsWith("/")
+  ) {
+    return null;
+  }
+
+  const segments = filePath.split("/");
+  if (
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+
+  return filePath;
+}
+
+export function getSafeOPFSPath(url: string): string | null {
+  if (!url.startsWith(OPFS_PROTOCOL)) return null;
+
+  return getSafeRelativeOPFSPath(url.slice(OPFS_PROTOCOL.length));
+}
+
+/**
+ * Saves a File object to the OPFS and returns an internal opfs:// URL.
+ * Uses uuidv7 + extension for filename.
+ * Supports optional directory prefix.
+ *
+ * @param file - The standard browser File object to save.
+ * @param prefix - Optional directory prefix (e.g., 'images', 'chat/123').
+ * @returns The opfs:// URL of the saved file.
+ */
+export async function saveToOPFS(
+  file: File,
+  prefix: string = "",
+): Promise<string> {
+  // Generate filename: uuidv7 + extension
+  const nameParts = file.name.split(".");
+  const rawExt = nameParts.length > 1 ? nameParts.pop() : "";
+  const ext = rawExt && /^[a-z0-9]{1,16}$/i.test(rawExt) ? rawExt : "";
+  const fileName = `${uuidv7()}${ext ? "." + ext : ""}`;
+
+  // Construct full path with prefix
+  // Remove leading/trailing slashes from prefix to avoid issues
+  const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "");
+  const filePath = cleanPrefix ? `${cleanPrefix}/${fileName}` : fileName;
+
+  // Write file (opfs-tools handles directory creation automatically)
+  // We use file.stream() (ReadableStream) or arrayBuffer() because File objects
+  // are not Transferable (only Structured Cloneable), and opfs-tools might
+  // try to transfer the content to its worker, causing errors if passed directly
+  // in some contexts. ReadableStream is Transferable.
+  if (file.stream) {
+    await write(filePath, file.stream());
+  } else {
+    // Fallback for older environments
+    const buffer = await file.arrayBuffer();
+    await write(filePath, buffer);
+  }
+
+  return `${OPFS_PROTOCOL}${filePath}`;
+}
+
+/**
+ * Writes string content to an existing OPFS URL.
+ */
+export async function writeToOPFS(url: string, content: string): Promise<void> {
+  const filePath = getSafeOPFSPath(url);
+  if (!filePath) throw new Error("Invalid OPFS URL");
+  await write(filePath, content);
+}
+
+/**
+ * Deletes an OPFS URL if it exists.
+ */
+export async function deleteFromOPFS(url?: string): Promise<void> {
+  if (!url) return;
+  const filePath = getSafeOPFSPath(url);
+  if (!filePath) return;
+  const target = read(filePath);
+  if (await target.exists()) {
+    await target.remove({ force: true });
+  }
+}
+
+/**
+ * Deletes an app-owned OPFS directory recursively.
+ */
+export async function deleteOPFSDirectory(path: string): Promise<void> {
+  const safePath = getSafeRelativeOPFSPath(path);
+  if (!safePath) return;
+
+  const target = dir(safePath);
+  if (await target.exists()) {
+    await target.remove({ force: true });
+  }
+}
+
+function normalizeOPFSPath(path: string): string {
+  return path.replace(/^\/+/, "");
+}
+
+async function collectOPFSFilePaths(path: string): Promise<string[]> {
+  const target = dir(path);
+  if (!(await target.exists())) return [];
+
+  const children = await target.children();
+  const childPaths = await Promise.all(
+    children.map((child) => {
+      const childPath = normalizeOPFSPath(child.path);
+      if (child.kind === "file") return Promise.resolve([childPath]);
+      return collectOPFSFilePaths(childPath);
+    }),
+  );
+
+  return childPaths.flat();
+}
+
+/**
+ * Lists app-owned file paths under an OPFS directory recursively.
+ */
+export async function listOPFSDirectory(path: string): Promise<string[]> {
+  const safePath = getSafeRelativeOPFSPath(path);
+  if (!safePath) return [];
+
+  return collectOPFSFilePaths(safePath);
+}
+
+/**
+ * Resolves an opfs:// URL to a local ObjectURL (blob:).
+ * Remember to revoke the URL when no longer needed to prevent memory leaks.
+ */
+export async function resolveOPFSUrl(url: string): Promise<string> {
+  if (!url.startsWith(OPFS_PROTOCOL)) return url;
+
+  const filePath = getSafeOPFSPath(url);
+  if (!filePath) {
+    logDevWarn("Invalid OPFS URL");
+    return "";
+  }
+
+  try {
+    const file = read(filePath);
+    if (!(await file.exists())) {
+      logDevWarn(`OPFS File not found: ${filePath}`);
+      return "";
+    }
+
+    // Create Blob and ObjectURL
+    const fileBlob = await file.getOriginFile();
+    if (!fileBlob) {
+      logDevWarn(`Failed to get file blob: ${filePath}`);
+      return "";
+    }
+    return URL.createObjectURL(fileBlob);
+  } catch (error) {
+    logDevError(`Failed to resolve OPFS file: ${filePath}`, error);
+    return "";
+  }
+}
+
+/**
+ * Checks if a URL is an OPFS protocol URL.
+ */
+export function isOPFSUrl(url?: string): boolean {
+  return !!url && url.startsWith(OPFS_PROTOCOL);
+}

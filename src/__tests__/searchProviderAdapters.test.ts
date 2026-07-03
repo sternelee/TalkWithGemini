@@ -1,0 +1,196 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+import { runSearchProvider } from "../lib/search/providerAdapters";
+
+describe("search provider adapters", () => {
+  it("builds Tavily requests and normalizes source and image results", async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        results: [
+          {
+            title: "Neo",
+            content: "fallback content",
+            raw_content: "markdown content",
+            url: "https://example.com/neo",
+          },
+          {
+            title: "Missing content",
+            url: "https://example.com/empty",
+          },
+        ],
+        images: [{ url: "https://example.com/neo.png", description: "Neo" }],
+      },
+    });
+
+    const result = await runSearchProvider({
+      provider: "tavily",
+      query: '"neo\\chat"',
+      scope: "news",
+      apiKey: "tvly-key",
+      maxResultNumber: 2,
+      fetchJson,
+    });
+
+    expect(fetchJson).toHaveBeenCalledOnce();
+    const [url, init, options] = fetchJson.mock.calls[0]!;
+    expect(url).toBe("https://api.tavily.com/search");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer tvly-key",
+      },
+    });
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      query: "neochat",
+      topic: "news",
+      max_results: 2,
+      include_images: true,
+    });
+    expect(options).toMatchObject({ timeoutMs: 30_000 });
+    expect(result).toEqual({
+      sources: [
+        {
+          title: "Neo",
+          content: "markdown content",
+          url: "https://example.com/neo",
+        },
+      ],
+      images: [{ url: "https://example.com/neo.png", description: "Neo" }],
+    });
+  });
+
+  it("maps Bocha image descriptions from matching web results", async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        data: {
+          webPages: {
+            value: [
+              {
+                name: "Bocha Result",
+                summary: "summary",
+                snippet: "snippet",
+                url: "https://example.com/result",
+              },
+            ],
+          },
+          images: {
+            value: [
+              {
+                contentUrl: "https://example.com/image.jpg",
+                hostPageUrl: "https://example.com/result",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    const result = await runSearchProvider({
+      provider: "bocha",
+      query: "neo chat",
+      maxResultNumber: 3,
+      fetchJson,
+    });
+
+    expect(result.images).toEqual([
+      {
+        url: "https://example.com/image.jpg",
+        description: "Bocha Result",
+      },
+    ]);
+  });
+
+  it("builds Firecrawl v2 requests without an API key and maps web and image results", async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        data: {
+          web: [
+            {
+              title: "Firecrawl Result",
+              description: "snippet",
+              markdown: "# Full result",
+              url: "https://example.com/firecrawl",
+            },
+            {
+              title: "Missing URL",
+              description: "skip",
+            },
+          ],
+          images: [
+            {
+              title: "Firecrawl image",
+              imageUrl: "https://example.com/firecrawl.png",
+              url: "https://example.com/firecrawl",
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await runSearchProvider({
+      provider: "firecrawl",
+      query: "neo chat",
+      maxResultNumber: 4,
+      fetchJson,
+    });
+
+    expect(fetchJson).toHaveBeenCalledOnce();
+    const [url, init] = fetchJson.mock.calls[0]!;
+    expect(url).toBe("https://api.firecrawl.dev/v2/search");
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      undefined,
+    );
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      query: "neo chat",
+      limit: 4,
+      sources: ["web", "images"],
+    });
+    expect(result).toEqual({
+      sources: [
+        {
+          title: "Firecrawl Result",
+          content: "# Full result",
+          url: "https://example.com/firecrawl",
+        },
+      ],
+      images: [
+        {
+          url: "https://example.com/firecrawl.png",
+          description: "Firecrawl image",
+        },
+      ],
+    });
+  });
+
+  it("throws provider errors with the upstream status", async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      response: new Response(null, { status: 503 }),
+      data: {},
+    });
+
+    await expect(
+      runSearchProvider({
+        provider: "firecrawl",
+        query: "neo chat",
+        maxResultNumber: 5,
+        fetchJson,
+      }),
+    ).rejects.toMatchObject({
+      name: "SearchProviderError",
+      message: "Firecrawl search failed",
+      status: 503,
+    });
+  });
+});

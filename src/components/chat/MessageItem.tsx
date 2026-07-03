@@ -1,0 +1,1429 @@
+"use client";
+import React, { useState, useRef, useEffect, useMemo, useId } from "react";
+import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
+import { Message } from "@/types";
+import MarkdownRenderer from "../content/MarkdownRenderer";
+import Tooltip from "../ui/Tooltip";
+import Artifact from "../content/Artifact";
+import ReasoningBlock from "../content/ReasoningBlock";
+import SourceBlock from "../content/SourceBlock";
+import ToolCallBlock from "../content/ToolCallBlock";
+import MessageAttachmentView from "./MessageAttachmentView";
+import RAGBlock from "../knowledge/RAGBlock";
+import AddToKnowledgeModal from "../knowledge/AddToKnowledgeModal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Edit2,
+  Copy,
+  Trash2,
+  Volume2,
+  VolumeX,
+  Bot,
+  User,
+  Check,
+  Undo2,
+  FileText,
+  MoreHorizontal,
+  Maximize2,
+  Download,
+  Minimize2,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Info,
+  Loader2,
+  RefreshCw,
+  Library,
+  PencilSparkles,
+} from "lucide-react";
+import { BubblesLoading } from "../ui/Icons";
+import { useChatStore } from "@/store/core/chatStore";
+import { useUIStore } from "@/store/core/uiStore";
+import { getTaskModel, useSettingsStore } from "@/store/core/settingsStore";
+import { streamGenerateContent } from "@/services/api/chatService";
+import { synthesizeSpeech } from "@/services/api/voiceService";
+import { polishTextContent } from "@/services/artifactService";
+import type { DisposableAudioElement } from "@/lib/utils/disposableAudio";
+import { sanitizeDownloadFilename } from "@/lib/utils/filename";
+import {
+  normalizeMarkdownGeneratedFile,
+  type MarkdownGeneratedFile,
+} from "@/lib/utils/markdownFiles";
+import { copyTextToClipboard } from "@/lib/utils/clipboard";
+import { getNextTypewriterFrame } from "@/lib/utils/typewriter";
+import {
+  createSpeechSynthesisPoller,
+  type DisposablePoller,
+} from "@/lib/utils/speechPolling";
+import {
+  createTimedStatusResetController,
+  type TimedStatusResetController,
+} from "@/lib/utils/timedStatus";
+import { logDevError } from "@/lib/utils/devLogger";
+import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
+
+interface MessageItemProps {
+  message: Message;
+  branchInfo?: {
+    index: number;
+    count: number;
+  };
+  onEdit: (id: string, newContent: string) => void;
+  onDelete: (id: string) => void;
+  onRegenerate?: () => void;
+  onRetract?: () => void;
+  canEditUserMessage?: boolean;
+  onSubmitUserEdit?: (id: string, newContent: string) => void | Promise<void>;
+  onVersionChange?: (id: string, direction: "prev" | "next") => void;
+  isLast: boolean;
+  isTyping?: boolean;
+}
+
+type CopyStatus = "idle" | "copied" | "error";
+
+const logMessageItemError = logDevError;
+
+const actionButtonFocusClass =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
+
+// Helper for accurate token/word counting
+const getTokenCount = (text: string) => {
+  if (!text) return 0;
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter("en-US", { granularity: "word" });
+    let count = 0;
+    for (const segment of segmenter.segment(text)) {
+      if (segment.isWordLike) count += 1;
+    }
+    if (count > 0) return count;
+  }
+  return Math.ceil(text.length / 4);
+};
+
+interface UserMessageEditorProps {
+  initialContent: string;
+  onCancel: () => void;
+  onSubmit: (content: string) => void | Promise<void>;
+}
+
+const UserMessageEditor = ({
+  initialContent,
+  onCancel,
+  onSubmit,
+}: UserMessageEditorProps) => {
+  const t = useTranslations("Message");
+  const [draft, setDraft] = useState(initialContent);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPolishing, setIsPolishing] = useState(false);
+  const [polishError, setPolishError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mountedRef = useRef(true);
+  const polishRunRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      polishRunRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, [draft]);
+
+  const handlePolish = async () => {
+    const originalText = draft;
+    if (!originalText.trim() || isPolishing || isSubmitting) return;
+
+    const runId = polishRunRef.current + 1;
+    polishRunRef.current = runId;
+    setIsPolishing(true);
+    setPolishError(null);
+
+    try {
+      let replacement = "";
+      await streamGenerateContent(
+        getTaskModel("promptOptimization"),
+        polishTextContent(originalText),
+        (text) => {
+          if (!mountedRef.current || polishRunRef.current !== runId) return;
+          replacement = text;
+          setDraft(text);
+        },
+      );
+
+      if (!mountedRef.current || polishRunRef.current !== runId) return;
+      if (!replacement.trim()) {
+        setDraft(originalText);
+        setPolishError(t("polishUserMessageFailed"));
+      }
+    } catch (error) {
+      logMessageItemError("Failed to polish user message", error);
+      if (mountedRef.current && polishRunRef.current === runId) {
+        setDraft(originalText);
+        setPolishError(t("polishUserMessageFailed"));
+      }
+    } finally {
+      if (mountedRef.current && polishRunRef.current === runId) {
+        setIsPolishing(false);
+      }
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!draft.trim() || isSubmitting || isPolishing) return;
+    if (draft === initialContent) {
+      onCancel();
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit(draft);
+    } finally {
+      if (mountedRef.current) {
+        setIsSubmitting(false);
+      }
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-input bg-background shadow-sm">
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setPolishError(null);
+        }}
+        className="max-h-72 min-h-28 w-full resize-none bg-transparent px-3 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+        aria-label={t("editUserMessageAria")}
+        autoFocus
+      />
+      {polishError ? (
+        <div className="px-3 pb-2 text-xs text-red-600 dark:text-red-300">
+          {polishError}
+        </div>
+      ) : null}
+      <div className="flex items-center justify-between gap-3 border-t border-border/70 px-2 py-2">
+        <Tooltip
+          content={
+            isPolishing ? t("polishingUserMessage") : t("polishUserMessage")
+          }
+          position="top"
+        >
+          <button
+            type="button"
+            aria-label={t("polishUserMessageAria")}
+            aria-busy={isPolishing || undefined}
+            onClick={handlePolish}
+            disabled={!draft.trim() || isPolishing || isSubmitting}
+            className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 text-xs font-medium text-gray-600 transition-[background-color,border-color,color,opacity] hover:border-white/40 hover:bg-gray-100 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-foreground/85 dark:hover:border-border dark:hover:bg-accent dark:hover:text-foreground ${actionButtonFocusClass}`}
+          >
+            {isPolishing ? (
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <PencilSparkles size={14} aria-hidden="true" />
+            )}
+            <span>{t("polishUserMessageShort")}</span>
+          </button>
+        </Tooltip>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 ${actionButtonFocusClass}`}
+          >
+            {t("cancelEdit")}
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!draft.trim() || isSubmitting || isPolishing}
+            className={`inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-foreground dark:text-background ${actionButtonFocusClass}`}
+          >
+            {isSubmitting ? (
+              <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+            ) : null}
+            {t("sendEdit")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MessageItem: React.FC<MessageItemProps> = ({
+  message,
+  branchInfo,
+  onEdit,
+  onDelete,
+  onRegenerate,
+  onRetract,
+  canEditUserMessage = false,
+  onSubmitUserEdit,
+  onVersionChange,
+  isTyping = false,
+}) => {
+  const t = useTranslations("Message");
+  const [isEditing, setIsEditing] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
+  const isCopied = copyStatus === "copied";
+  const copyTooltip =
+    copyStatus === "copied"
+      ? t("copied")
+      : copyStatus === "error"
+        ? t("copyFailed")
+        : t("copy");
+
+  // More Menu State
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
+  const [showAddToKnowledgeModal, setShowAddToKnowledgeModal] = useState(false);
+
+  // Immersive / Reading Mode State
+  const [readingMode, setReadingMode] = useState<"none" | "message" | "file">(
+    "none",
+  );
+  const [fileToRead, setFileToRead] = useState<MarkdownGeneratedFile | null>(
+    null,
+  );
+
+  // Typewriter effect state
+  const [displayedContent, setDisplayedContent] = useState(
+    isTyping ? "" : message.content,
+  );
+  const displayedContentRef = useRef(displayedContent);
+
+  // TTS State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isTTSLoading, setIsTTSLoading] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
+  const currentAudioRef = useRef<DisposableAudioElement | null>(null);
+  const speechPollerRef = useRef<DisposablePoller | null>(null);
+  const copyStatusResetRef =
+    useRef<TimedStatusResetController<CopyStatus> | null>(null);
+  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const readingDialogRef = useRef<HTMLDivElement>(null);
+  const readingRestoreFocusRef = useRef<HTMLElement | null>(null);
+  const readingDialogTitleId = useId();
+  const readingDialogDescriptionId = useId();
+
+  // Get Store Data
+  const { getCurrentSession, selectedModel, activeMessages } = useChatStore();
+  const { openImagePreview } = useUIStore();
+  const { voice } = useSettingsStore();
+
+  const stopCurrentAudio = () => {
+    currentAudioRef.current?.dispose();
+    currentAudioRef.current = null;
+    speechPollerRef.current?.dispose();
+    speechPollerRef.current = null;
+  };
+
+  const setCopyFeedback = (status: Exclude<CopyStatus, "idle">) => {
+    const controller =
+      copyStatusResetRef.current ||
+      createTimedStatusResetController<CopyStatus>({
+        setStatus: setCopyStatus,
+        resetValue: "idle",
+      });
+    copyStatusResetRef.current = controller;
+    controller.set(status);
+  };
+
+  const clearDeleteConfirmTimer = () => {
+    if (deleteConfirmTimerRef.current) {
+      clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
+  };
+
+  const resetDeleteConfirmation = () => {
+    clearDeleteConfirmTimer();
+    setIsDeleteConfirming(false);
+  };
+
+  const handleDeleteClick = () => {
+    if (isDeleteConfirming) {
+      resetDeleteConfirmation();
+      setShowMoreMenu(false);
+      onDelete(message.id);
+      return;
+    }
+
+    setIsDeleteConfirming(true);
+    clearDeleteConfirmTimer();
+    deleteConfirmTimerRef.current = setTimeout(() => {
+      deleteConfirmTimerRef.current = null;
+      setIsDeleteConfirming(false);
+    }, 3500);
+  };
+
+  // Handle ESC key to exit immersive mode or close the mobile overflow menu
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+
+      if (readingMode !== "none") {
+        setReadingMode("none");
+        setFileToRead(null);
+        return;
+      }
+
+      if (showMoreMenu) {
+        setShowMoreMenu(false);
+        if (deleteConfirmTimerRef.current) {
+          clearTimeout(deleteConfirmTimerRef.current);
+          deleteConfirmTimerRef.current = null;
+        }
+        setIsDeleteConfirming(false);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [readingMode, showMoreMenu]);
+
+  useEffect(() => {
+    if (readingMode === "none") {
+      readingRestoreFocusRef.current?.focus();
+      readingRestoreFocusRef.current = null;
+      return;
+    }
+
+    if (!readingRestoreFocusRef.current) {
+      readingRestoreFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      readingDialogRef.current?.focus();
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [readingMode]);
+
+  // Cleanup Audio on unmount
+  useEffect(() => {
+    return () => {
+      copyStatusResetRef.current?.dispose();
+      clearDeleteConfirmTimer();
+      stopCurrentAudio();
+      // Also stop browser synthesis if running
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (deleteConfirmTimerRef.current) {
+      clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
+    setIsDeleteConfirming(false);
+  }, [message.id]);
+
+  // Typewriter Effect Logic using requestAnimationFrame
+  useEffect(() => {
+    const updateDisplayedContent = (value: string) => {
+      displayedContentRef.current = value;
+      setDisplayedContent(value);
+    };
+
+    if (!isTyping) {
+      updateDisplayedContent(message.content);
+      return;
+    }
+
+    // Immediate reset if content is cleared (e.g. regeneration start)
+    if (message.content.length === 0) {
+      updateDisplayedContent("");
+      return;
+    }
+
+    let animationFrameId: number | null = null;
+    let cancelled = false;
+
+    const animate = () => {
+      const nextFrame = getNextTypewriterFrame(
+        displayedContentRef.current,
+        message.content,
+      );
+      updateDisplayedContent(nextFrame.content);
+
+      if (!cancelled && !nextFrame.done) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    return () => {
+      cancelled = true;
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+    };
+  }, [isTyping, message.content]);
+
+  const handleCopy = async () => {
+    const copied = await copyTextToClipboard(message.content);
+    setCopyFeedback(copied ? "copied" : "error");
+  };
+
+  const handleEditClick = () => {
+    setIsEditing(true);
+  };
+
+  const handleDownload = () => {
+    // Find current message index to get the previous user prompt
+    const msgIndex = activeMessages.findIndex((m) => m.id === message.id);
+    let filename = `message_${message.id.slice(0, 8)}`;
+
+    if (msgIndex > 0) {
+      const prevMsg = activeMessages[msgIndex - 1];
+      if (prevMsg.role === "user") {
+        // Get first 10 words
+        const words = prevMsg.content.split(/\s+/);
+        const truncated = words.slice(0, 10).join(" ");
+        // Clean up filename
+        filename =
+          truncated.replace(/[^\w\s\u4e00-\u9fa5-]/gi, "").trim() || filename;
+        if (words.length > 10) {
+          filename += "…";
+        }
+      }
+    }
+
+    // Create Blob and trigger download
+    const blob = new Blob([message.content], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = sanitizeDownloadFilename(`${filename}.md`, "message.md");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowMoreMenu(false);
+  };
+
+  const handleAddToKnowledge = () => {
+    setShowAddToKnowledgeModal(true);
+    setShowMoreMenu(false);
+  };
+
+  const handleImmersiveReading = () => {
+    setReadingMode("message");
+    setShowMoreMenu(false);
+  };
+
+  const handleFileClick = (file: MarkdownGeneratedFile) => {
+    setFileToRead(normalizeMarkdownGeneratedFile(file));
+    setReadingMode("file");
+  };
+
+  const handleDownloadFile = () => {
+    if (!fileToRead) return;
+    const blob = new Blob([fileToRead.content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = sanitizeDownloadFilename(fileToRead.name, "attachment.txt");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleToggleReadAloud = async () => {
+    if (isPlaying) {
+      // Stop
+      stopCurrentAudio();
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsPlaying(false);
+    } else {
+      // Start
+      setIsTTSLoading(true);
+      setTtsError(null);
+      try {
+        const audio = await synthesizeSpeech(message.content, voice);
+
+        if (audio) {
+          // API Based (Audio Element)
+          currentAudioRef.current = audio;
+          audio.onended = () => {
+            setIsPlaying(false);
+            currentAudioRef.current = null;
+          };
+          await audio.play();
+          setIsPlaying(true);
+        } else {
+          // Browser Based (Fire and forget, but we can detect start)
+          speechPollerRef.current?.dispose();
+          setIsPlaying(true);
+          speechPollerRef.current = createSpeechSynthesisPoller({
+            isSpeaking: () => window.speechSynthesis.speaking,
+            onIdle: () => {
+              speechPollerRef.current = null;
+              setIsPlaying(false);
+            },
+          });
+        }
+      } catch (e) {
+        logMessageItemError("TTS Failed", e);
+        setTtsError(
+          t("failedToSynthesize", {
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        );
+        setIsPlaying(false);
+      } finally {
+        setIsTTSLoading(false);
+      }
+    }
+  };
+
+  // Heuristic: If content is empty for a model, we are probably waiting for tokens (Regenerating),
+  // even if isTyping (which is based on last message) is false for mid-chat edits.
+  const isWaitingForResponse =
+    message.role === "model" &&
+    message.content.length === 0 &&
+    !message.attachments?.length &&
+    !message.reasoning &&
+    !message.generationError &&
+    !message.searchSources &&
+    (!message.toolCalls || message.toolCalls.length === 0);
+
+  // Accurate token count with API usage priority
+  const tokenCount = useMemo(() => {
+    if (message.role === "user") {
+      // For user messages, show prompt tokens if available
+      if (message.usageMetadata) {
+        return message.usageMetadata.promptTokenCount ?? 0;
+      }
+      if (message.usage) {
+        return message.usage.prompt_tokens ?? 0;
+      }
+      // Fallback to estimation
+      return getTokenCount(message.content);
+    } else {
+      // For model messages, show completion tokens
+      if (message.usageMetadata) {
+        // Gemini style: usageMetadata.totalTokenCount - usageMetadata.promptTokenCount = candidatesTokenCount (output)
+        return (
+          message.usageMetadata.candidatesTokenCount ??
+          message.usageMetadata.totalTokenCount -
+            message.usageMetadata.promptTokenCount
+        );
+      }
+      if (message.usage) {
+        // OpenAI style
+        return message.usage.completion_tokens;
+      }
+      // Fallback
+      return getTokenCount(message.content);
+    }
+  }, [message.role, message.content, message.usageMetadata, message.usage]);
+
+  // Optimized Loading State: Show bubbles if active (typing/waiting) AND no content is displayed yet.
+  const isLoading = (isTyping || isWaitingForResponse) && !displayedContent;
+
+  // Detect error messages for styling (starts with Error:)
+  const isErrorMessage =
+    message.role === "model" && message.content.startsWith("Error:");
+  const generationError = message.generationError;
+
+  // Branch navigation checks
+  const hasMultipleBranches = !!branchInfo && branchInfo.count > 1;
+  const currentBranchIndex = branchInfo?.index ?? 0;
+  const branchCount = branchInfo?.count ?? 1;
+  const canEditCurrentUserMessage =
+    message.role === "user" && canEditUserMessage && !!onSubmitUserEdit;
+
+  // --- Display Info Calculation ---
+  const displayTimestamp = message.timestamp;
+  const displayTiming = message.timing;
+  const rawReasoning = message.reasoning;
+
+  // Reasoning Thinking State & Icon Logic
+  // Also check if tools are running
+  const isThinking =
+    isTyping &&
+    message.role === "model" &&
+    message.content.length === 0 &&
+    !message.searchSources &&
+    (!message.toolCalls ||
+      message.toolCalls.some(
+        (tc) =>
+          tc.status === "pending" ||
+          tc.status === "running" ||
+          (tc.status === undefined && tc.result === undefined),
+      ));
+
+  // Formatting helpers
+  const getDisplayTime = () => {
+    const ts =
+      message.role === "model" && displayTiming?.endTime
+        ? displayTiming.endTime
+        : displayTimestamp;
+    return new Date(ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  const getDurationString = () => {
+    if (message.role === "model" && displayTiming?.duration) {
+      return `${(displayTiming.duration / 1000).toFixed(1)}s`;
+    }
+    return null;
+  };
+
+  const durationString = getDurationString();
+  const timeString = getDisplayTime();
+  const tokenText =
+    tokenCount > 0 ? t("tokenCount", { count: tokenCount }) : "";
+  const mobileMetaRows = buildMobileMessageMetaTooltip({
+    durationString,
+    tokenText,
+    labels: {
+      duration: t("duration"),
+      tokens: t("tokens"),
+    },
+  });
+
+  // Search Data from Message
+  const sources = message.searchSources || [];
+  const images = message.searchImages || [];
+  const isSearching = message.isSearching;
+
+  // RAG Data
+  const ragSources = message.ragSources || [];
+
+  // Tool Data
+  const toolCalls = message.toolCalls || [];
+
+  const handleAttachmentClick = (index: number) => {
+    if (!message.attachments) return;
+
+    // Filter out non-image attachments for preview
+    const imageAttachments = message.attachments.filter((att) =>
+      att.mimeType.startsWith("image/"),
+    );
+    const clickedAttachment = message.attachments[index];
+
+    if (!clickedAttachment.mimeType.startsWith("image/")) return;
+
+    const previewImages = imageAttachments.map((att) => ({
+      url:
+        att.url || (att.data ? `data:${att.mimeType};base64,${att.data}` : ""),
+      alt: att.fileName,
+      description: att.fileName,
+    }));
+
+    // Find the new index in the filtered array
+    const newIndex = imageAttachments.findIndex(
+      (att) => att.id === clickedAttachment.id,
+    );
+
+    openImagePreview(previewImages, newIndex);
+  };
+
+  const handleReadingDialogKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (event.key !== "Tab") return;
+
+    const dialog = readingDialogRef.current;
+    if (!dialog) return;
+
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <>
+      {showAddToKnowledgeModal && (
+        <AddToKnowledgeModal
+          onClose={() => setShowAddToKnowledgeModal(false)}
+          defaultTitle={`${getCurrentSession()?.title || t("readingMessage")}.md`}
+          defaultContent={message.content}
+        />
+      )}
+
+      {/* Immersive / Reading Modal */}
+      {readingMode !== "none" &&
+        createPortal(
+          <div
+            ref={readingDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={readingDialogTitleId}
+            aria-describedby={readingDialogDescriptionId}
+            tabIndex={-1}
+            onKeyDown={handleReadingDialogKeyDown}
+            className="fixed inset-0 z-999 bg-white dark:bg-background overflow-y-auto overscroll-contain animate-in fade-in duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400/40"
+          >
+            <h2 id={readingDialogTitleId} className="sr-only">
+              {readingMode === "file" && fileToRead
+                ? t("readingFile", { name: fileToRead.name })
+                : t("readingMessage")}
+            </h2>
+            <p id={readingDialogDescriptionId} className="sr-only">
+              {t("pressEscapeToClose")}
+            </p>
+            <div className="max-w-5xl mx-auto px-4 pb-4 pt-4 md:pt-8 min-h-screen relative flex flex-col">
+              {readingMode === "file" && fileToRead && (
+                <div className="mb-4 pb-2 border-b border-gray-100 dark:border-border flex items-center justify-between shrink-0">
+                  <div className="flex min-w-0 items-center gap-2 text-gray-700 dark:text-foreground font-semibold">
+                    <FileText
+                      size={20}
+                      className="text-blue-500 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{fileToRead.name}</span>
+                    {fileToRead.truncated ? (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
+                        {t("truncated")}
+                      </span>
+                    ) : null}
+                    {fileToRead.incomplete ? (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-muted dark:text-foreground/85">
+                        {t("incomplete")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={t("downloadFileAria", {
+                      name: fileToRead.name,
+                    })}
+                    onClick={handleDownloadFile}
+                    className={`p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-muted rounded-lg transition-colors ${actionButtonFocusClass}`}
+                  >
+                    <Download size={18} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex-1 overflow-auto custom-scrollbar">
+                {readingMode === "file" && fileToRead ? (
+                  <div className="bg-gray-50 dark:bg-card rounded-lg border border-gray-200 dark:border-border p-4">
+                    <pre className="font-mono text-sm whitespace-pre-wrap wrap-break-word text-gray-800 dark:text-foreground">
+                      {fileToRead.content}
+                    </pre>
+                  </div>
+                ) : (
+                  <MarkdownRenderer
+                    content={message.content}
+                    searchSources={
+                      readingMode === "message" ? sources : undefined
+                    }
+                  />
+                )}
+              </div>
+
+              <div className="sticky bottom-4 mt-4 left-0 right-0 flex justify-center pointer-events-none shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReadingMode("none");
+                    setFileToRead(null);
+                  }}
+                  className={`pointer-events-auto flex items-center gap-2 px-5 py-2.5 bg-red-500/80 hover:bg-red-600/80 backdrop-blur-md text-white rounded-full shadow-lg transition-[background-color,box-shadow,color] font-medium text-sm ${actionButtonFocusClass}`}
+                >
+                  {readingMode === "file" ? (
+                    <X size={18} aria-hidden="true" />
+                  ) : (
+                    <Minimize2 size={18} aria-hidden="true" />
+                  )}
+                  {readingMode === "file" ? t("closeFile") : t("exitReading")}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      <div className="message-item group relative flex flex-col md:flex-row gap-2 md:gap-3 rounded-md transition-[background-color,border-color] duration-200 border border-transparent px-3 py-3 bg-gray-50/0 hover:bg-gray-50/80 dark:hover:bg-muted/40">
+        {/* Avatar & Header Section */}
+        <div className="flex items-center w-full md:w-auto justify-between md:justify-start gap-2 md:block md:shrink-0 md:mt-0.5 select-none">
+          <div className="flex items-center gap-2">
+            {message.role === "model" ? (
+              <Tooltip content={message.model || t("model")} position="right">
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-red-300 shadow-sm border border-white dark:border-border flex items-center justify-center text-white">
+                  <Bot size={14} className="md:hidden" aria-hidden="true" />
+                  <Bot
+                    size={18}
+                    className="hidden md:block"
+                    aria-hidden="true"
+                  />
+                </div>
+              </Tooltip>
+            ) : (
+              <div className="w-6 h-6 md:w-8 md:h-8 rounded-lg md:rounded-xl bg-green-300 shadow-sm border border-white dark:border-border flex items-center justify-center text-white">
+                <User size={14} className="md:hidden" aria-hidden="true" />
+                <User
+                  size={18}
+                  className="hidden md:block"
+                  aria-hidden="true"
+                />
+              </div>
+            )}
+            <span className="text-sm font-medium text-gray-700 dark:text-foreground md:hidden">
+              {message.role === "model"
+                ? message.model || t("model")
+                : t("user")}
+            </span>
+          </div>
+
+          <Tooltip content={t("sentTime")} position="left">
+            <span className="text-[10px] text-gray-400 dark:text-muted-foreground/70 font-normal md:hidden">
+              {timeString}
+            </span>
+          </Tooltip>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 min-w-0 pl-1 md:pl-0">
+          {/* Attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-3 mb-2">
+              {message.attachments.map((att, idx) => (
+                <MessageAttachmentView
+                  key={att.id}
+                  attachment={att}
+                  onImageClick={() => handleAttachmentClick(idx)}
+                />
+              ))}
+            </div>
+          )}
+
+          {isEditing ? (
+            message.role === "user" ? (
+              <UserMessageEditor
+                initialContent={message.content}
+                onCancel={() => setIsEditing(false)}
+                onSubmit={async (newContent) => {
+                  await onSubmitUserEdit?.(message.id, newContent);
+                  setIsEditing(false);
+                }}
+              />
+            ) : (
+              <Artifact
+                initialContent={message.content}
+                initialTimestamp={message.timestamp}
+                onSave={(newContent) => {
+                  onEdit(message.id, newContent);
+                  setIsEditing(false);
+                }}
+                onCancel={() => setIsEditing(false)}
+                systemInstruction={getCurrentSession()?.systemInstruction}
+                model={selectedModel}
+              />
+            )
+          ) : (
+            <>
+              {/* RAG Block Component */}
+              <RAGBlock sources={ragSources} />
+
+              {/* Source Block Component */}
+              <SourceBlock
+                sources={sources}
+                images={images}
+                isSearching={isSearching}
+              />
+
+              {/* Tool Calls Block */}
+              <ToolCallBlock toolCalls={toolCalls} />
+
+              {/* Reasoning Block Component */}
+              <ReasoningBlock
+                reasoning={rawReasoning || ""}
+                isThinking={isThinking}
+              />
+
+              {generationError ? (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100"
+                >
+                  <div className="font-semibold">{t("generationFailed")}</div>
+                  <div className="mt-1 wrap-break-word">
+                    {generationError.message}
+                  </div>
+                  {generationError.recoverable ? (
+                    <div className="mt-1 text-xs opacity-80">
+                      {t("generationRecoverable")}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Loading State */}
+              {isLoading ? (
+                <div
+                  className="relative -top-0.5 h-8 w-14 text-red-300 dark:text-red-400"
+                  role="status"
+                  aria-label={t("generatingResponse")}
+                >
+                  <BubblesLoading
+                    className="w-full h-full"
+                    aria-hidden="true"
+                  />
+                </div>
+              ) : (
+                <div
+                  className={isTyping ? "animate-in fade-in duration-500" : ""}
+                >
+                  <div>
+                    <MarkdownRenderer
+                      content={displayedContent}
+                      className={isErrorMessage ? "text-red-500" : undefined}
+                      searchSources={sources}
+                      onFileClick={handleFileClick}
+                      isStreaming={isTyping}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {ttsError ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+            >
+              {ttsError}
+            </div>
+          ) : null}
+
+          {/* Footer / Toolbar */}
+          {!isEditing && !isTyping && (
+            <div className="flex items-center justify-between mt-1 h-6 opacity-100 md:opacity-40 md:group-hover:opacity-100 transition-opacity duration-200">
+              <div className="flex items-center text-xs text-gray-400 dark:text-muted-foreground/70 select-none [&>span:not(:last-child)]:after:content-['·'] [&>span:not(:last-child)]:after:mx-1 [&>span:not(:last-child)]:after:text-gray-300 dark:[&>span:not(:last-child)]:after:text-border">
+                <span className="hidden md:inline hover:text-gray-600 dark:hover:text-foreground/85 transition-colors cursor-default">
+                  <Tooltip
+                    className="inline-flex"
+                    content={t("generationTime")}
+                    position="top"
+                  >
+                    {timeString}
+                  </Tooltip>
+                </span>
+                {durationString && (
+                  <span className="hidden md:inline hover:text-gray-600 dark:hover:text-foreground/85 transition-colors cursor-default">
+                    <Tooltip
+                      className="inline-flex"
+                      content={t("duration")}
+                      position="top"
+                    >
+                      {durationString}
+                    </Tooltip>
+                  </span>
+                )}
+                {tokenCount > 0 && (
+                  <span className="hidden md:inline hover:text-gray-600 dark:hover:text-foreground/85 transition-colors cursor-default">
+                    <Tooltip
+                      className="inline-flex"
+                      content={t("tokens")}
+                      position="top"
+                    >
+                      {t("tokenCount", { count: tokenCount })}
+                    </Tooltip>
+                  </span>
+                )}
+                {mobileMetaRows.length > 0 && (
+                  <span className="inline-flex md:hidden">
+                    <Tooltip
+                      className="inline-flex"
+                      trigger="click"
+                      content={
+                        <span className="flex flex-col gap-0.5 text-left">
+                          {mobileMetaRows.map((row) => (
+                            <span key={row}>{row}</span>
+                          ))}
+                        </span>
+                      }
+                      position="right"
+                    >
+                      <button
+                        type="button"
+                        aria-label={mobileMetaRows.join(", ")}
+                        className={`rounded-lg p-1 text-gray-400 transition-[background-color,color] hover:bg-gray-100 hover:text-gray-600 dark:text-muted-foreground/70 dark:hover:bg-muted dark:hover:text-foreground/85 ${actionButtonFocusClass}`}
+                      >
+                        <Info size={13} aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 text-gray-400 dark:text-muted-foreground/70 relative">
+                {hasMultipleBranches && onVersionChange && (
+                  <>
+                    <div className="flex items-center gap-0.5">
+                      <ActionButton
+                        icon={<ChevronLeft size={13} />}
+                        tooltip={t("previousVersion")}
+                        onClick={() => onVersionChange(message.id, "prev")}
+                        disabled={currentBranchIndex === 0}
+                        className={
+                          currentBranchIndex === 0
+                            ? "opacity-30 cursor-not-allowed"
+                            : ""
+                        }
+                      />
+                      <span className="hidden md:inline text-[9px] font-mono px-0.5 select-none text-gray-400">
+                        {currentBranchIndex + 1}/{branchCount}
+                      </span>
+                      <ActionButton
+                        icon={<ChevronRight size={13} />}
+                        tooltip={t("nextVersion")}
+                        onClick={() => onVersionChange(message.id, "next")}
+                        disabled={currentBranchIndex === branchCount - 1}
+                        className={
+                          currentBranchIndex === branchCount - 1
+                            ? "opacity-30 cursor-not-allowed"
+                            : ""
+                        }
+                      />
+                    </div>
+                    <div className="hidden md:block w-px h-3 bg-gray-200 dark:bg-accent mx-1.5" />
+                  </>
+                )}
+
+                {message.role === "user" && (
+                  <>
+                    {onRetract && (
+                      <ActionButton
+                        icon={<Undo2 size={13} />}
+                        tooltip={t("retract")}
+                        onClick={onRetract}
+                      />
+                    )}
+                    {canEditCurrentUserMessage && (
+                      <ActionButton
+                        icon={<Edit2 size={13} />}
+                        tooltip={t("edit")}
+                        onClick={handleEditClick}
+                      />
+                    )}
+                    <ActionButton
+                      icon={isCopied ? <Check size={13} /> : <Copy size={13} />}
+                      tooltip={copyTooltip}
+                      onClick={handleCopy}
+                      className={
+                        copyStatus === "error"
+                          ? "text-red-500 dark:text-red-400"
+                          : ""
+                      }
+                    />
+                    <ActionButton
+                      icon={
+                        isTTSLoading ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : isPlaying ? (
+                          <VolumeX size={13} />
+                        ) : (
+                          <Volume2 size={13} />
+                        )
+                      }
+                      tooltip={isPlaying ? t("stop") : t("readAloud")}
+                      onClick={handleToggleReadAloud}
+                      ariaPressed={isPlaying}
+                      ariaBusy={isTTSLoading}
+                      className={
+                        isPlaying ? "text-blue-500 dark:text-blue-400" : ""
+                      }
+                    />
+                  </>
+                )}
+
+                {message.role === "model" && (
+                  <>
+                    <ActionButton
+                      icon={<RefreshCw size={13} />}
+                      tooltip={t("regenerate")}
+                      onClick={onRegenerate}
+                    />
+                    <ActionButton
+                      icon={<Edit2 size={13} />}
+                      tooltip={t("edit")}
+                      onClick={handleEditClick}
+                      containerClass="hidden! md:flex!"
+                    />
+                    <ActionButton
+                      icon={isCopied ? <Check size={13} /> : <Copy size={13} />}
+                      tooltip={copyTooltip}
+                      onClick={handleCopy}
+                      className={
+                        copyStatus === "error"
+                          ? "text-red-500 dark:text-red-400"
+                          : ""
+                      }
+                    />
+                    <ActionButton
+                      icon={
+                        isTTSLoading ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : isPlaying ? (
+                          <VolumeX size={13} />
+                        ) : (
+                          <Volume2 size={13} />
+                        )
+                      }
+                      tooltip={isPlaying ? t("stop") : t("readAloud")}
+                      onClick={handleToggleReadAloud}
+                      ariaPressed={isPlaying}
+                      ariaBusy={isTTSLoading}
+                      className={
+                        isPlaying ? "text-blue-500 dark:text-blue-400" : ""
+                      }
+                    />
+                  </>
+                )}
+
+                {message.role === "model" && (
+                  <>
+                    <ActionButton
+                      icon={<Maximize2 size={13} />}
+                      tooltip={t("reading")}
+                      onClick={handleImmersiveReading}
+                    />
+                    <ActionButton
+                      icon={<Library size={13} />}
+                      tooltip={t("addToKnowledge")}
+                      onClick={handleAddToKnowledge}
+                      containerClass="hidden! md:flex!"
+                    />
+                    <ActionButton
+                      icon={<Download size={13} />}
+                      tooltip={t("download")}
+                      onClick={handleDownload}
+                      containerClass="hidden! md:flex!"
+                    />
+                  </>
+                )}
+
+                <ActionButton
+                  icon={
+                    isDeleteConfirming ? (
+                      <Check size={13} />
+                    ) : (
+                      <Trash2 size={13} />
+                    )
+                  }
+                  tooltip={
+                    isDeleteConfirming ? t("confirmDelete") : t("delete")
+                  }
+                  onClick={handleDeleteClick}
+                  containerClass={
+                    message.role === "user" ? "flex" : "hidden! md:flex!"
+                  }
+                  className={
+                    isDeleteConfirming
+                      ? "text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30"
+                      : "hover:text-red-600 dark:hover:text-red-400"
+                  }
+                />
+
+                {message.role === "model" && (
+                  <div className="relative md:hidden">
+                    <DropdownMenu
+                      open={showMoreMenu}
+                      onOpenChange={(open) => {
+                        if (!open) resetDeleteConfirmation();
+                        setShowMoreMenu(open);
+                      }}
+                    >
+                      <Tooltip content={t("more")} position="top">
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label={t("more")}
+                            className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-muted hover:text-gray-700 dark:hover:text-foreground/85 transition-[background-color,border-color,color,opacity] relative group/btn border border-transparent hover:border-white/50 dark:hover:border-border flex items-center justify-center ${actionButtonFocusClass} ${
+                              showMoreMenu
+                                ? "bg-gray-100 dark:bg-muted text-gray-700 dark:text-foreground/85"
+                                : ""
+                            }`}
+                          >
+                            <MoreHorizontal size={13} aria-hidden="true" />
+                          </button>
+                        </DropdownMenuTrigger>
+                      </Tooltip>
+
+                      <DropdownMenuContent
+                        side="top"
+                        align="end"
+                        className="w-48"
+                      >
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            handleEditClick();
+                            setShowMoreMenu(false);
+                          }}
+                        >
+                          <Edit2
+                            size={14}
+                            className="text-gray-500 dark:text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <span>{t("edit")}</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onSelect={handleAddToKnowledge}>
+                          <Library
+                            size={14}
+                            className="text-gray-500 dark:text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <span>{t("addToKnowledge")}</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem onSelect={handleDownload}>
+                          <Download
+                            size={14}
+                            className="text-gray-500 dark:text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <span>{t("download")}</span>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            handleDeleteClick();
+                          }}
+                          className={
+                            isDeleteConfirming
+                              ? "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-200"
+                              : undefined
+                          }
+                        >
+                          {isDeleteConfirming ? (
+                            <Check size={14} aria-hidden="true" />
+                          ) : (
+                            <Trash2
+                              size={14}
+                              className="group-hover:text-red-600 dark:group-hover:text-red-400"
+                              aria-hidden="true"
+                            />
+                          )}
+                          <span>
+                            {isDeleteConfirming
+                              ? t("confirmDelete")
+                              : t("delete")}
+                          </span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+};
+
+interface ActionButtonProps {
+  icon: React.ReactNode;
+  tooltip: string;
+  onClick?: () => void;
+  className?: string;
+  containerClass?: string;
+  disabled?: boolean;
+  ariaPressed?: boolean;
+  ariaBusy?: boolean;
+  ariaExpanded?: boolean;
+  ariaControls?: string;
+}
+
+const ActionButton = ({
+  icon,
+  tooltip,
+  onClick,
+  className = "",
+  containerClass = "",
+  disabled = false,
+  ariaPressed,
+  ariaBusy,
+  ariaExpanded,
+  ariaControls,
+}: ActionButtonProps) => {
+  const renderedIcon = React.isValidElement(icon)
+    ? React.cloneElement(icon as React.ReactElement<Record<string, unknown>>, {
+        "aria-hidden": true,
+        focusable: "false",
+      })
+    : icon;
+
+  return (
+    <Tooltip content={tooltip} position="top" className={containerClass}>
+      <button
+        type="button"
+        aria-label={tooltip}
+        aria-pressed={ariaPressed}
+        aria-busy={ariaBusy}
+        aria-expanded={ariaExpanded}
+        aria-controls={ariaControls}
+        onClick={onClick}
+        disabled={disabled || !onClick}
+        className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-muted hover:text-gray-700 dark:hover:text-foreground/85 transition-[background-color,border-color,color,opacity] relative group/btn border border-transparent hover:border-white/50 dark:hover:border-border flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-40 ${actionButtonFocusClass} ${className}`}
+      >
+        {renderedIcon}
+      </button>
+    </Tooltip>
+  );
+};
+
+export default MessageItem;

@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "neo-chat",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "vars": {
+    "DEPLOYMENT_MODE": "hosted",
+    "RATE_LIMIT_STORE": "upstash",
+    "DOCUMENT_PARSE_JOB_STORE": "upstash",
+    "BYOK_ALLOW_EPHEMERAL_KEY": "false",
+  },
+}

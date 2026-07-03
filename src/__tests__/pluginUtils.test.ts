@@ -1,0 +1,123 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AGNES_VIDEO_PLUGIN } from "../config/plugins";
+import { executePluginFunction } from "../utils/pluginUtils";
+import type { Plugin } from "../types";
+
+const mockStore = vi.hoisted(() => ({
+  state: {
+    installedPlugins: [] as Plugin[],
+    pluginConfigs: {},
+  },
+}));
+
+vi.mock("../store/core/settingsStore", () => ({
+  useSettingsStore: {
+    getState: () => mockStore.state,
+  },
+}));
+
+const plugin: Plugin = {
+  id: "test-plugin",
+  title: "Test Plugin",
+  description: "",
+  logoUrl: "",
+  manifestUrl: "",
+  baseUrl: "https://api.example.com",
+  functions: [
+    {
+      name: "lookup",
+      description: "Lookup",
+      path: "/lookup",
+      method: "GET",
+      parameters: { type: "object", properties: {} },
+    },
+  ],
+  auth: { type: "none" },
+};
+
+describe("plugin execution utility", () => {
+  beforeEach(() => {
+    mockStore.state = {
+      installedPlugins: [plugin],
+      pluginConfigs: {},
+    };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("returns a stable error when plugin execution response is not JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html>Bad Gateway</html>")),
+    );
+
+    await expect(executePluginFunction("lookup", {})).resolves.toEqual({
+      error: "Error: Plugin execution failed",
+    });
+  });
+
+  it("rejects unsafe plugin arguments before dispatch", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    await expect(executePluginFunction("lookup", circular)).resolves.toEqual({
+      error: "Plugin arguments must not contain circular references.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns Agnes video creation tasks without polling for the final result", async () => {
+    mockStore.state = {
+      installedPlugins: [AGNES_VIDEO_PLUGIN],
+      pluginConfigs: {},
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          result: {
+            taskId: "task_1",
+            videoId: null,
+            status: "queued",
+            generationStatus: "generating",
+            progress: 0,
+            videoUrl: null,
+            error: null,
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const controller = new AbortController();
+    const resultPromise = executePluginFunction(
+      "create_video",
+      {
+        prompt: "A quiet neon control room",
+      },
+      undefined,
+      undefined,
+      controller.signal,
+    );
+    queueMicrotask(() => controller.abort());
+
+    await expect(resultPromise).resolves.toMatchObject({
+      taskId: "task_1",
+      status: "queued",
+      generationStatus: "generating",
+      videoUrl: null,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      JSON.parse(fetchMock.mock.calls[0][1]?.body as string),
+    ).toMatchObject({
+      pluginId: AGNES_VIDEO_PLUGIN.id,
+      functionName: "create_video",
+      args: { prompt: "A quiet neon control room" },
+    });
+  });
+});

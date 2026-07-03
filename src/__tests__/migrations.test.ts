@@ -1,0 +1,266 @@
+import { describe, expect, it } from "vitest";
+import {
+  ensureLegacyGeminiNextChatMigration,
+  normalizeLegacyGeminiMessage,
+} from "../store/storage/legacyGeminiMigration";
+import { normalizeToolCall } from "../store/storage/migrations";
+
+function createAsyncStorage(initial?: Record<string, unknown>) {
+  const items = new Map<string, unknown>(Object.entries(initial || {}));
+  return {
+    items,
+    storage: {
+      getItem: async <T = unknown>(key: string) =>
+        (items.has(key) ? items.get(key) : null) as T | null,
+      setItem: async <T = unknown>(key: string, value: T) => {
+        items.set(key, value);
+        return value;
+      },
+      removeItem: async (key: string) => {
+        items.delete(key);
+      },
+    },
+  };
+}
+
+function createLocalStorage(initial?: Record<string, string>) {
+  const items = new Map<string, string>(Object.entries(initial || {}));
+  return {
+    items,
+    storage: {
+      getItem: (key: string) => (items.has(key) ? items.get(key)! : null),
+      setItem: (key: string, value: string) => {
+        items.set(key, value);
+      },
+      removeItem: (key: string) => {
+        items.delete(key);
+      },
+    } as Storage,
+  };
+}
+
+function persisted(state: unknown) {
+  return { state, version: 1 };
+}
+
+describe("storage migrations", () => {
+  it("derives missing tool call status from legacy fields", () => {
+    expect(
+      normalizeToolCall({
+        id: "a",
+        name: "ok",
+        args: {},
+        result: { value: 1 },
+      }).status,
+    ).toBe("success");
+
+    expect(
+      normalizeToolCall({
+        id: "b",
+        name: "bad",
+        args: {},
+        isError: true,
+      }).status,
+    ).toBe("error");
+  });
+
+  it("normalizes legacy Gemini message parts", () => {
+    const message = normalizeLegacyGeminiMessage(
+      {
+        id: "legacy-message",
+        role: "model",
+        parts: [
+          { text: "Hello" },
+          {
+            functionCall: {
+              name: "lookup",
+              args: { q: "neo" },
+            },
+          },
+          {
+            inlineData: {
+              mimeType: "image/png",
+              data: "abc123",
+            },
+          },
+        ],
+        groundingMetadata: {
+          groundingChunks: [
+            { web: { uri: "https://example.com", title: "Example" } },
+          ],
+          groundingSupports: [{ segment: { text: "Grounded text" } }],
+        },
+      },
+      "GEMINI:gemini-1.5-pro",
+      123,
+    );
+
+    expect(message).toMatchObject({
+      id: "legacy-message",
+      role: "model",
+      model: "GEMINI:gemini-1.5-pro",
+      timestamp: 123,
+      content: expect.stringContaining("Hello"),
+      attachments: [
+        {
+          fileName: "attachment-3",
+          mimeType: "image/png",
+          data: "abc123",
+        },
+      ],
+      searchSources: [
+        {
+          title: "Example",
+          url: "https://example.com",
+          content: "Grounded text",
+        },
+      ],
+    });
+    expect(message?.content).toContain("Function call: lookup");
+  });
+
+  it("migrates legacy Gemini settings and conversations into current storage", async () => {
+    const target = createAsyncStorage();
+    const legacyDb = createAsyncStorage({
+      chatStore: persisted({
+        title: "Active chat",
+        messages: [
+          {
+            id: "m1",
+            role: "user",
+            parts: [{ text: "Hi" }],
+          },
+          {
+            id: "m2",
+            role: "model",
+            parts: [{ text: "Hello" }],
+          },
+        ],
+        summary: { ids: ["m1"], content: "Previous summary" },
+        systemInstruction: "Be concise",
+      }),
+      conversationStore: persisted({
+        currentId: "active",
+        pinned: ["saved"],
+        conversationList: {
+          saved: {
+            title: "Saved chat",
+            messages: [
+              {
+                id: "s1",
+                role: "user",
+                parts: [{ text: "Saved question" }],
+              },
+            ],
+          },
+        },
+      }),
+      modelStore: persisted({
+        models: [
+          {
+            name: "models/gemini-1.5-pro",
+            supportedGenerationMethods: ["generateContent"],
+          },
+        ],
+      }),
+      assistantStore: persisted({
+        assistants: [
+          {
+            identifier: "writer",
+            meta: {
+              avatar: "W",
+              title: "Writer",
+              description: "Writes clearly",
+              tags: ["writing"],
+            },
+            config: { systemRole: "Write clearly." },
+            createdAt: "2024-01-01",
+            homepage: "",
+            author: "user",
+          },
+        ],
+      }),
+    });
+    const local = createLocalStorage({
+      "twg-settings": JSON.stringify(
+        persisted({
+          apiKey: "legacy-key",
+          apiProxy: "https://proxy.example.com",
+          model: "models/gemini-1.5-pro",
+          lang: "zh-CN",
+          temperature: 1.2,
+        }),
+      ),
+    });
+
+    await ensureLegacyGeminiNextChatMigration({
+      targetDb: target.storage,
+      legacyDb: legacyDb.storage,
+      localStorageRef: local.storage,
+      storageKeys: {
+        CORE_SETTINGS: "neo-chat-core-settings",
+        SETTINGS: "neo-chat-settings",
+        CHAT: "neo-chat-storage",
+      },
+    });
+
+    const core = JSON.parse(local.items.get("neo-chat-core-settings") || "{}");
+    expect(core.version).toBe(0);
+    expect(core.state.language).toBe("zh");
+    expect(core.state.providers[0]).toMatchObject({
+      id: "GEMINI",
+      type: "Gemini",
+      apiKey: "legacy-key",
+      baseUrl: "https://proxy.example.com",
+    });
+    expect(core.state.providers[0].models).toContain("gemini-1.5-pro");
+
+    const chat = JSON.parse(target.items.get("neo-chat-storage") as string);
+    expect(chat.version).toBe(0);
+    expect(chat.state.selectedModel).toBe("GEMINI:gemini-1.5-pro");
+    expect(chat.state.chatConfig.temperature).toBe(1.2);
+    expect(chat.state.currentSessionId).toBe("active");
+    expect(chat.state.sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "active",
+          title: "Active chat",
+          systemInstruction: "Be concise",
+          messageCount: 2,
+        }),
+        expect.objectContaining({
+          id: "saved",
+          title: "Saved chat",
+          pinned: true,
+          messageCount: 1,
+        }),
+      ]),
+    );
+
+    expect(target.items.get("session_messages_active")).toMatchObject([
+      { id: "m1", role: "user", content: "Hi" },
+      {
+        id: "m2",
+        role: "model",
+        content: "Hello",
+        model: "GEMINI:gemini-1.5-pro",
+      },
+    ]);
+
+    const settings = JSON.parse(
+      target.items.get("neo-chat-settings") as string,
+    );
+    expect(settings.state.customAgents).toEqual([
+      expect.objectContaining({
+        identifier: "writer",
+        isCustom: true,
+      }),
+    ]);
+    expect(target.items.get("legacy-gemini-next-chat-migration")).toMatchObject(
+      {
+        chatMigrated: true,
+        settingsMigrated: true,
+      },
+    );
+  });
+});

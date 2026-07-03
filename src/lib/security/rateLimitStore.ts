@@ -1,0 +1,251 @@
+import { getDeploymentMode } from "./deployment";
+
+export interface RateLimitResult {
+  count: number;
+  resetAt: number;
+}
+
+export interface RateLimitStore {
+  get?(key: string, now?: number): Promise<RateLimitResult | null>;
+  increment(
+    key: string,
+    windowMs: number,
+    now?: number,
+  ): Promise<RateLimitResult>;
+  reset?(key: string): Promise<void>;
+  clear?(): void;
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+declare global {
+  var __neoChatRateLimitBuckets: Map<string, RateLimitBucket> | undefined;
+}
+
+function getMemoryBuckets(): Map<string, RateLimitBucket> {
+  if (!globalThis.__neoChatRateLimitBuckets) {
+    globalThis.__neoChatRateLimitBuckets = new Map();
+  }
+  return globalThis.__neoChatRateLimitBuckets;
+}
+
+export class MemoryRateLimitStore implements RateLimitStore {
+  async get(key: string, now = Date.now()): Promise<RateLimitResult | null> {
+    const current = getMemoryBuckets().get(key);
+    if (!current) return null;
+    if (current.resetAt <= now) {
+      getMemoryBuckets().delete(key);
+      return null;
+    }
+    return { count: current.count, resetAt: current.resetAt };
+  }
+
+  async increment(
+    key: string,
+    windowMs: number,
+    now = Date.now(),
+  ): Promise<RateLimitResult> {
+    const buckets = getMemoryBuckets();
+    const current = buckets.get(key);
+
+    if (!current || current.resetAt <= now) {
+      const next = { count: 1, resetAt: now + windowMs };
+      buckets.set(key, next);
+      return next;
+    }
+
+    current.count += 1;
+    return { count: current.count, resetAt: current.resetAt };
+  }
+
+  async reset(key: string): Promise<void> {
+    getMemoryBuckets().delete(key);
+  }
+
+  clear(): void {
+    getMemoryBuckets().clear();
+  }
+}
+
+class UpstashRateLimitStore implements RateLimitStore {
+  constructor(
+    private readonly url: string,
+    private readonly token: string,
+  ) {}
+
+  private get endpoint(): string {
+    return `${this.url.replace(/\/+$/, "")}/pipeline`;
+  }
+
+  async get(key: string, now = Date.now()): Promise<RateLimitResult | null> {
+    const response = await fetch(this.endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([
+        ["GET", key],
+        ["PTTL", key],
+      ]),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Rate limit store failed with status ${response.status}`);
+    }
+
+    const data = (await response.json()) as Array<{ result?: unknown }>;
+    const count = Number(data[0]?.result);
+    const ttlMs = Number(data[1]?.result);
+    if (
+      !Number.isFinite(count) ||
+      count < 1 ||
+      !Number.isFinite(ttlMs) ||
+      ttlMs <= 0
+    ) {
+      return null;
+    }
+
+    return { count, resetAt: now + ttlMs };
+  }
+
+  async increment(
+    key: string,
+    windowMs: number,
+    now = Date.now(),
+  ): Promise<RateLimitResult> {
+    const response = await fetch(this.endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([
+        ["INCR", key],
+        ["PEXPIRE", key, String(windowMs), "NX"],
+        ["PTTL", key],
+      ]),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Rate limit store failed with status ${response.status}`);
+    }
+
+    const data = (await response.json()) as Array<{ result?: unknown }>;
+    const count = Number(data[0]?.result);
+    const ttlMs = Number(data[2]?.result);
+
+    if (!Number.isFinite(count) || count < 1) {
+      throw new Error("Rate limit store returned an invalid count");
+    }
+
+    const resetAt =
+      now + (Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : windowMs);
+    return { count, resetAt };
+  }
+
+  async reset(key: string): Promise<void> {
+    await fetch(
+      `${this.url.replace(/\/+$/, "")}/del/${encodeURIComponent(key)}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.token}` },
+        cache: "no-store",
+      },
+    );
+  }
+}
+
+let cachedRateLimitStore: RateLimitStore | null = null;
+const fallbackMemoryStore = new MemoryRateLimitStore();
+const SHARED_RATE_LIMIT_STORE_ERROR =
+  "RATE_LIMIT_STORE=upstash with UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN is required in hosted mode";
+
+function env(name: string): string {
+  if (typeof process === "undefined") return "";
+  return process.env[name]?.trim() || "";
+}
+
+function isSharedStoreName(store: string): boolean {
+  return store === "upstash" || store === "redis" || store === "kv";
+}
+
+function canUseMemoryFallback(): boolean {
+  return getDeploymentMode() === "local";
+}
+
+export function createRateLimitStore(): RateLimitStore {
+  const store = env("RATE_LIMIT_STORE").toLowerCase();
+  const upstashUrl = env("UPSTASH_REDIS_REST_URL");
+  const upstashToken = env("UPSTASH_REDIS_REST_TOKEN");
+
+  if (isSharedStoreName(store) && upstashUrl && upstashToken) {
+    return new UpstashRateLimitStore(upstashUrl, upstashToken);
+  }
+
+  if (isSharedStoreName(store) || getDeploymentMode() === "hosted") {
+    throw new Error(SHARED_RATE_LIMIT_STORE_ERROR);
+  }
+
+  return fallbackMemoryStore;
+}
+
+export function getRateLimitStore(): RateLimitStore {
+  if (!cachedRateLimitStore) cachedRateLimitStore = createRateLimitStore();
+  return cachedRateLimitStore;
+}
+
+export function setRateLimitStoreForTesting(
+  store: RateLimitStore | null,
+): void {
+  cachedRateLimitStore = store;
+}
+
+export async function incrementRateLimitBucket(
+  key: string,
+  windowMs: number,
+  now?: number,
+): Promise<RateLimitResult> {
+  try {
+    return await getRateLimitStore().increment(key, windowMs, now);
+  } catch (error) {
+    if (!canUseMemoryFallback()) throw error;
+    return fallbackMemoryStore.increment(key, windowMs, now);
+  }
+}
+
+export async function getRateLimitBucket(
+  key: string,
+  now?: number,
+): Promise<RateLimitResult | null> {
+  try {
+    const current = await getRateLimitStore().get?.(key, now);
+    if (current) return current;
+  } catch (error) {
+    if (!canUseMemoryFallback()) throw error;
+    // Fall back to memory state below.
+  }
+  if (!canUseMemoryFallback()) return null;
+  return fallbackMemoryStore.get(key, now);
+}
+
+export async function resetRateLimitBucket(key: string): Promise<void> {
+  try {
+    await getRateLimitStore().reset?.(key);
+  } catch (error) {
+    if (!canUseMemoryFallback()) throw error;
+    // Keep request handling available even if the external store is unavailable.
+  }
+  await fallbackMemoryStore.reset(key);
+}
+
+export function clearRateLimitStoreForTesting(): void {
+  fallbackMemoryStore.clear();
+  cachedRateLimitStore?.clear?.();
+  cachedRateLimitStore = null;
+}

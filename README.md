@@ -1,325 +1,338 @@
-<div align="center">
-<h1>Gemini Next Chat</h1>
+# Neo Chat
 
-![GitHub deployments](https://img.shields.io/github/deployments/u14app/gemini-next-chat/Production)
-![GitHub Release](https://img.shields.io/github/v/release/u14app/gemini-next-chat)
-![Docker Image Size (tag)](https://img.shields.io/docker/image-size/xiangfa/talk-with-gemini/latest)
-![Docker Pulls](https://img.shields.io/docker/pulls/xiangfa/talk-with-gemini)
-![GitHub License](https://img.shields.io/github/license/u14app/gemini-next-chat)
+<p align="center">
+  <img src="public/logo.png" width="96" alt="Neo Chat logo" />
+</p>
 
-Deploy your private Gemini application for free with one click, supporting Gemini 1.5 Pro, Gemini 1.5 Flash, Gemini Pro and Gemini Pro Vision models.
+<p align="center">
+  <strong>A local-first AI chat workspace for models, agents, plugins, search, RAG, voice, and artifacts.</strong>
+</p>
 
-**English** · [简体中文](./README.zh-CN.md)
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-[![Vercel](https://img.shields.io/badge/Vercel-111111?style=flat&logo=vercel&logoColor=white)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat&project-name=gemini-next-chat&env=GEMINI_API_KEY&env=ACCESS_PASSWORD&repository-name=gemini-next-chat)
-[![Cloudflare](https://img.shields.io/badge/Cloudflare-F69652?style=flat&logo=cloudflare&logoColor=white)](#deploy-to-cloudflare)
+<p align="center">
+  <a href="https://github.com/u14app/neo-chat/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/u14app/neo-chat/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/u14app/neo-chat/actions/workflows/docker.yml"><img alt="Docker" src="https://github.com/u14app/neo-chat/actions/workflows/docker.yml/badge.svg" /></a>
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black" />
+  <img alt="React" src="https://img.shields.io/badge/React-19-149eca" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6" />
+</p>
 
-[![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=flat&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
-[![Next](https://img.shields.io/badge/Next.js-111111?style=flat&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![shadcn/ui](https://img.shields.io/badge/shadcn/ui-111111?style=flat&logo=shadcnui&logoColor=white)](https://ui.shadcn.com/)
+Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, OpenAPI-style plugin tools, web search, knowledge-base RAG, voice, generated media, Markdown, math, citations, and editable artifacts into one clean workspace.
 
-[![Web][Web-image]][web-url]
-[![MacOS][MacOS-image]][download-url]
-[![Windows][Windows-image]][download-url]
-[![Linux][Linux-image]][download-url]
-
-[Web App][web-url] / [Desktop App][download-url] / [Issues](https://github.com/u14app/gemini-next-chat/issues)
-
-[web-url]: https://gemini.u14.app/
-[download-url]: https://github.com/u14app/gemini-next-chat/releases
-[Web-image]: https://img.shields.io/badge/Web-PWA-orange?logo=microsoftedge
-[Windows-image]: https://img.shields.io/badge/-Windows-blue?logo=windows
-[MacOS-image]: https://img.shields.io/badge/-MacOS-black?logo=apple
-[Linux-image]: https://img.shields.io/badge/-Linux-333?logo=ubuntu
-
-**Share GeminiNextChat Repository**
-
-[![][share-x-shield]][share-x-link]
-[![][share-telegram-shield]][share-telegram-link]
-[![][share-whatsapp-shield]][share-whatsapp-link]
-[![][share-reddit-shield]][share-reddit-link]
-[![][share-weibo-shield]][share-weibo-link]
-[![][share-mastodon-shield]][share-mastodon-link]
-
-[share-mastodon-link]: https://mastodon.social/share?text=Check%20this%20GitHub%20repository%20out%20GeminiNextChat%20-%20An%20open-source%2C%20extensible%20(Function%20Calling)%2C%20high-performance%20gemini%20chatbot%20framework.%20It%20supports%20one-click%20free%20deployment%20of%20your%20private%20Gemini%20web%20application.%20https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat%20%23chatbot%20%23gemini
-[share-mastodon-shield]: https://img.shields.io/badge/-share%20on%20mastodon-black?labelColor=black&logo=mastodon&logoColor=white&style=flat-square
-[share-reddit-link]: https://www.reddit.com/submit?title=Check%20this%20GitHub%20repository%20out%20GeminiNextChat%20-%20An%20open-source%2C%20extensible%20(Function%20Calling)%2C%20high-performance%20gemini%20chatbot%20framework.%20It%20supports%20one-click%20free%20deployment%20of%20your%20private%20Gemini%20web%20application.%20https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat
-[share-reddit-shield]: https://img.shields.io/badge/-share%20on%20reddit-black?labelColor=black&logo=reddit&logoColor=white&style=flat-square
-[share-telegram-link]: https://t.me/share/url"?text=Check%20this%20GitHub%20repository%20out%20GeminiNextChat%20-%20An%20open-source%2C%20extensible%20(Function%20Calling)%2C%20high-performance%20gemini%20chatbot%20framework.%20It%20supports%20one-click%20free%20deployment%20of%20your%20private%20Gemini%20web%20application.%20https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat
-[share-telegram-shield]: https://img.shields.io/badge/-share%20on%20telegram-black?labelColor=black&logo=telegram&logoColor=white&style=flat-square
-[share-weibo-link]: http://service.weibo.com/share/share.php?sharesource=weibo&title=Check%20this%20GitHub%20repository%20out%20GeminiNextChat%20-%20An%20open-source%2C%20extensible%20(Function%20Calling)%2C%20high-performance%20gemini%20chatbot%20framework.%20It%20supports%20one-click%20free%20deployment%20of%20your%20private%20Gemini%20web%20application.%20https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat
-[share-weibo-shield]: https://img.shields.io/badge/-share%20on%20weibo-black?labelColor=black&logo=sinaweibo&logoColor=white&style=flat-square
-[share-whatsapp-link]: https://api.whatsapp.com/send?text=Check%20this%20GitHub%20repository%20out%20GeminiNextChat%20-%20An%20open-source%2C%20extensible%20(Function%20Calling)%2C%20high-performance%20gemini%20chatbot%20framework.%20It%20supports%20one-click%20free%20deployment%20of%20your%20private%20Gemini%20web%20application.%20https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat%20%23chatbot%20%23gemini
-[share-whatsapp-shield]: https://img.shields.io/badge/-share%20on%20whatsapp-black?labelColor=black&logo=whatsapp&logoColor=white&style=flat-square
-[share-x-link]: https://x.com/intent/tweet?hashtags=chatbot%2CchatGPT%2CopenAI&text=Check%20this%20GitHub%20repository%20out%20GeminiNextChat%20-%20An%20open-source%2C%20extensible%20(Function%20Calling)%2C%20high-performance%20gemini%20chatbot%20framework.%20It%20supports%20one-click%20free%20deployment%20of%20your%20private%20Gemini%20web%20application.%20https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat
-[share-x-shield]: https://img.shields.io/badge/-share%20on%20x-black?labelColor=black&logo=x&logoColor=white&style=flat-square
-
-![cover](./public/screenshots/screenshots.png)
-
-Simple interface, supports image recognition and voice conversation
-
-![Gemini](./public/screenshots/pc-screenshot-1.png)
-
-Supports Gemini 1.5 and Gemini 2.0 multimodal models
-
-![Support plugins](./public/screenshots/pc-screenshot-3.jpg)
-
-Support plugins, with built-in Web search, Web reader, Arxiv search, Weather and other practical plugins
-
-![Multimodal Live](./docs/images/multimodal-live.jpg)
-
-Support Multimodal Live API, smooth voice and video experience
-
-![Tray app](./docs/images/trayapp.png)
-
-A cross-platform application client that supports a permanent menu bar, doubling your work efficiency
-
-</div>
-
-> Note: If you encounter problems during the use of the project, you can check the known problems and solutions of [FAQ](#FAQ).
-
-## TOC
-
-- [Features](#features)
-- [Roadmap](#️roadmap)
-- [Get Started](#get-started)
-  - [Updating Code](#updating-code)
-- [Environment Variables](#environment-variables)
-  - [Access Password](#access-password)
-  - [Custom model list](#️custom-model-list)
-- [Development](#development)
-  - [Requirements](#️requirements)
-- [Deployment](#deployment)
-  - [Docker (Recommended)](#docker-recommended)
-  - [Static Deployment](#static-deployment)
-- [FAQ](#faq)
-- [LICENSE](#license)
-- [Star History](#star-history)
+It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, plugin configuration, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, and plugin execution.
 
 ## Features
 
-- **Deploy for free with one-click** on Vercel in under 1 minute
-- Provides a very small (~4MB) cross-platform client (Windows/MacOS/Linux), can stay in the menu bar to improve office efficiency
-- Supports multi-modal models and can understand images, videos, audios and some text documents
-- Talk mode: Let you talk directly to Gemini, support Multimodal Live API
-- Visual recognition allows Gemini to understand the content of the picture
-- Assistant market with hundreds of selected system instruction
-- Support plugins, with built-in Web search, Web reader, Arxiv search, Weather and other practical plugins
-- Conversation list, so you can keep track of important conversations or discuss different topics with Gemini
-- Artifact support, allowing you to modify the conversation content more elegantly
-- Full Markdown support: KaTex formulas, code highlighting, Mermaid charts, etc.
-- Automatically compress contextual chat records to save Tokens while supporting very long conversations
-- Privacy and security, all data is saved locally in the user's browser
-- Support PWA, can run as an application
-- Well-designed UI, responsive design, supports dark mode
-- Extremely fast first screen loading speed, supporting streaming response
-- Static deployment supports deployment on any website service that supports static pages, such as Github Page, Cloudflare, Vercel, etc.
-- Multi-language support: English、简体中文、繁体中文、日本語、한국어、Español、Deutsch、Français、Português、Русский and العربية
+- Multi-provider chat with Gemini, OpenAI, and OpenAI-compatible endpoints.
+- Local-first sessions, branches, pinned chats, workspaces, workspace files, and assistant instructions.
+- Assistant presets from the LobeHub agent registry plus local custom assistants.
+- OpenAPI-based plugin tools with per-plugin authentication and server-side execution.
+- Built-in tools for web reading, weather, Unsplash search, Agnes image generation, and Agnes video generation.
+- Web search through Gemini native Google Search or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
+- Knowledge-base RAG with OPFS file storage, LlamaParse document parsing, and optional vector indexing.
+- Voice input and output through browser APIs, ElevenLabs, or compatible configured providers.
+- Rich message rendering for Markdown, GFM tables, math, code highlighting, citations, reasoning, tool calls, images, audio, and artifacts.
+- Local BYOK encryption for user-entered provider, plugin, search, RAG, and voice secrets.
+- Docker and Cloudflare Workers deployment paths.
 
-## Roadmap
+## Screenshots
 
-- [x] Reconstruct the topic square and introduce Prompt list
-- [x] Use tauri to package desktop applications
-- [x] Implementation based on functionCall plug-in
-- [x] Support conversation list
-- [x] Support conversation export features
-- [x] Enable Multimodal Live API
-- [ ] Support networked Deep Research mode
-- [ ] Support local knowledge base
+![Neo Chat Desktop](public/desktop.png)
 
-## Get Started
+![Neo Chat Mobile](public/mobile.png)
 
-1. Get [Gemini API Key](https://aistudio.google.com/app/apikey)
-2. One-click deployment of the project, you can choose to deploy to Vercel
+## Quick Start
 
-   [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fu14app%2Fgemini-next-chat&project-name=gemini-next-chat&env=GEMINI_API_KEY&env=ACCESS_PASSWORD&repository-name=gemini-next-chat)
+### Requirements
 
-3. Start using
+- Node.js 22
+- pnpm 10.30.3
 
-### Deploy to Cloudflare
+### Run Locally
 
-Currently the project supports deployment to Cloudflare, but you need to follow [How to deploy to Cloudflare Page](./docs/How-to-deploy-to-Cloudflare-Page.md) to do it.
-
-### Updating Code
-
-If you want to update instantly, you can check out the [GitHub documentation](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/syncing-a-fork) to learn how to synchronize a forked project with upstream code.
-
-You can star or watch this project or follow author to get release notifications in time.
-
-## Environment Variables
-
-#### `GEMINI_API_KEY` (optional)
-
-Your Gemini api key. This is required if you need to `enable` the server api. **This variable does not affect the value of the Gemini key on the frontend pages.**
-Supports multiple keys, each key is separated by `,`, i.e. `key1,key2,key3`
-
-#### `GEMINI_API_BASE_URL` (optional)
-
-> Default: `https://generativelanguage.googleapis.com`
-
-> Examples: `http://your-gemini-proxy.com`
-
-Override the Gemini api request base url. **In order to avoid server-side proxy url leakage, the value in the front-end page will not be overwritten and affected.**
-
-#### `NEXT_PUBLIC_GEMINI_MODEL_LIST` (optional)
-
-Custom model list, default: all.
-
-#### `NEXT_PUBLIC_UPLOAD_LIMIT` (optional)
-
-File upload size limit. There is no file size limit by default.
-
-#### `ACCESS_PASSWORD` (optional)
-
-Access password.
-
-#### `HEAD_SCRIPTS` (optional)
-
-Injected script code can be used for statistics or error tracking.
-
-#### `EXPORT_BASE_PATH` (optional)
-
-Only used to set the page base path in [static deployment](#static-deployment) mode.
-
-### Access Password
-
-This project provides limited access control. Please add an environment variable named `ACCESS_PASSWORD` on the vercel environment variables page.
-
-After adding or modifying this environment variable, please redeploy the project for the changes to take effect.
-
-### Custom model list
-
-This project supports custom model lists. Please add an environment variable named `NEXT_PUBLIC_GEMINI_MODEL_LIST` in the `.env` file or environment variables page.
-
-The default model list is represented by `all`, and multiple models are separated by `,`.
-
-If you need to add a new model, please directly write the model name `all,new-model-name`, or use the `+` symbol plus the model name to add, that is, `all,+new-model-name`.
-
-If you want to remove a model from the model list, use the `-` symbol followed by the model name to indicate removal, i.e. `all,-existing-model-name`. If you want to remove the default model list, you can use `-all`.
-
-If you want to set a default model, you can use the `@` symbol plus the model name to indicate the default model, that is, `all,@default-model-name`.
-
-## Development
-
-If you have not installed pnpm
-
-```shell
-npm install -g pnpm
-```
-
-```shell
-# 1. install nodejs and yarn first
-# 2. config local variables, please change `.env.example` to `.env` or `.env.local`
-# 3. run
+```bash
 pnpm install
 pnpm dev
 ```
 
-### Requirements
+Open `http://localhost:3000`, then configure at least one model provider in Settings.
 
-NodeJS >= 18, Docker >= 20
+For deployment-wide defaults, copy the environment template:
+
+```bash
+cp .env.example .env.local
+```
+
+Most settings can be managed in the browser. Server environment variables are useful when you want a shared default provider, hosted deployment safety, access password protection, or managed defaults for search, RAG, document parsing, and voice.
 
 ## Deployment
 
-### Docker (Recommended)
+### Docker Compose
 
-> The Docker version needs to be 20 or above, otherwise it will prompt that the image cannot be found.
-
-> ⚠️ Note: Most of the time, the docker version will lag behind the latest version by 1 to 2 days, so the "update exists" prompt will continue to appear after deployment, which is normal.
-
-```shell
-docker pull xiangfa/talk-with-gemini:latest
-
-docker run -d --name talk-with-gemini -p 5481:3000 xiangfa/talk-with-gemini
+```bash
+docker compose up --build
 ```
 
-You can also specify additional environment variables:
+The compose file publishes Neo Chat on `http://localhost:3000` and uses local/self-hosted safety defaults. For production Docker deployments, set stable BYOK values instead of relying on the compose-only ephemeral BYOK default.
 
-```shell
-docker run -d --name talk-with-gemini \
-   -p 5481:3000 \
-   -e GEMINI_API_KEY=AIzaSy... \
-   -e ACCESS_PASSWORD=your-password \
-   xiangfa/talk-with-gemini
+### Docker Image
+
+```bash
+docker build -t neo-chat:local .
+docker run --rm -p 3000:3000 -e BYOK_ALLOW_EPHEMERAL_KEY=true neo-chat:local
 ```
 
-If you need to specify other environment variables, please add `-e key=value` to the above command to specify it.
+The Docker workflow builds pull requests and publishes `main` / `v*` tags to GitHub Container Registry:
 
-Deploy using `docker-compose.yml`:
-
-```shell
-version: '3.9'
-services:
-   talk-with-gemini:
-      image: xiangfa/talk-with-gemini
-      container_name: talk-with-gemini
-      environment:
-         - GEMINI_API_KEY=AIzaSy...
-         - ACCESS_PASSWORD=your-password
-      ports:
-         - 5481:3000
+```text
+ghcr.io/amery2010/neo-chat
 ```
 
-### Static Deployment
+### Cloudflare Workers
 
-You can also build a static page version directly, and then upload all files in the `out` directory to any website service that supports static pages, such as Github Page, Cloudflare, Vercel, etc..
-
-```shell
-pnpm build:export
+```bash
+pnpm build:worker
+pnpm preview:worker
+pnpm deploy:worker
 ```
 
-If you deploy the project in a subdirectory and encounter resource loading failures when accessing, please add `EXPORT_BASE_PATH=/path/project` in the `.env` file or variable setting page.
+Workers should run in hosted mode and use public HTTPS upstreams. Production Workers should set secrets with Wrangler:
 
-## Acknowledgments
+```bash
+wrangler secret put BYOK_PRIVATE_KEY_PEM
+wrangler secret put BYOK_KEY_ID
+wrangler secret put UPSTASH_REDIS_REST_URL
+wrangler secret put UPSTASH_REDIS_REST_TOKEN
+```
 
-### Technology Stack
+See [Deployment Hardening](docs/deployment-hardening.md) for production configuration guidance.
 
-- [Next.js](https://nextjs.org/)
-- [Shadcn UI](https://ui.shadcn.com/)
-- [Tailwindcss](https://tailwindcss.com/)
-- [Zustand](https://zustand-demo.pmnd.rs/)
+## Configuration
 
-### Inspiration
+Neo Chat is local-first by default:
 
-- [Lobe Chat](https://github.com/lobehub/lobe-chat)
-- [Next Web](https://github.com/ChatGPTNextWeb/NextChat)
-- [Open Canvas](https://github.com/langchain-ai/open-canvas)
+- Core settings, provider records, selected models, and provider API keys are stored in browser `localStorage`.
+- Chat metadata, messages, app settings, installed plugins, assistants, and knowledge metadata are stored in IndexedDB through `localforage`.
+- Uploaded chat, workspace, and knowledge files are stored in browser OPFS.
+- User-entered secrets are encrypted in the browser as BYOK envelopes before being sent to API routes.
+
+Important server-side settings:
+
+```bash
+# Access gate
+ACCESS_PASSWORD="your-access-password"
+
+# Stable BYOK server key for production
+BYOK_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+BYOK_KEY_ID="prod-2026-07"
+BYOK_ALLOW_EPHEMERAL_KEY="false"
+
+# Deployment safety
+DEPLOYMENT_MODE="local" # or hosted
+ALLOW_LOCAL_NETWORK_PROXY=""
+
+# Shared short-lived state for hosted or multi-instance deployments
+RATE_LIMIT_STORE="upstash"
+DOCUMENT_PARSE_JOB_STORE="upstash"
+PLUGIN_REGISTRY_STORE="upstash"
+UPSTASH_REDIS_REST_URL="https://..."
+UPSTASH_REDIS_REST_TOKEN="..."
+```
+
+Default model provider:
+
+```bash
+DEFAULT_PROVIDER_TYPE="Gemini"
+DEFAULT_PROVIDER_NAME="Google Gemini"
+DEFAULT_PROVIDER_BASE_URL=""
+DEFAULT_PROVIDER_API_KEY="provider-key"
+DEFAULT_PROVIDER_MODELS="model-a,model-b"
+```
+
+`DEFAULT_PROVIDER_MODELS` supports multiple formats:
+
+```bash
+# Comma-separated model IDs
+DEFAULT_PROVIDER_MODELS="gpt-5.5,gpt-5.4-mini"
+
+# JSON string array
+DEFAULT_PROVIDER_MODELS='["gpt-5.5","gpt-5.4-mini"]'
+
+# JSON object array with display names and capability metadata
+DEFAULT_PROVIDER_MODELS='[{"id": "gpt-5.5","name": "GPT-5.5","capabilities": {"vision": true,"audio": false,"attachment": true,"reasoning": true,"tool_call": true}},"gpt-5.4-mini"]'
+```
+
+Default task models:
+
+```bash
+DEFAULT_MODEL_TITLE_GENERATION="model-a"
+DEFAULT_MODEL_RELATED_QUESTIONS="model-a"
+DEFAULT_MODEL_CONTEXT_COMPRESSION="model-a"
+DEFAULT_MODEL_PROMPT_OPTIMIZATION="model-a"
+DEFAULT_MODEL_RAG_QUERY="model-a"
+```
+
+Search, RAG, document parsing, and voice defaults:
+
+```bash
+DEFAULT_SEARCH_PROVIDER="firecrawl"
+# Firecrawl search works without an API key; set one for higher rate limits.
+DEFAULT_SEARCH_API_KEY=""
+DEFAULT_SEARCH_BASE_URL="https://search.example"
+
+DEFAULT_RAG_BASE_URL="https://rag.example"
+DEFAULT_RAG_TOKEN="rag-token"
+DEFAULT_RAG_TOP_K="10"
+DEFAULT_RAG_CHUNK_SIZE="512"
+DEFAULT_RAG_NAMESPACE="default"
+DEFAULT_LLAMA_PARSE_API_KEY="llama-parse-key"
+
+DEFAULT_VOICE_PROVIDER="elevenlabs"
+DEFAULT_ELEVENLABS_API_KEY="elevenlabs-key"
+DEFAULT_ELEVENLABS_STT_MODEL="scribe_v2"
+DEFAULT_ELEVENLABS_TTS_VOICE_ID="bIHbv24MWmeRgasZH58o"
+```
+
+Public site URL:
+
+```bash
+NEXT_PUBLIC_SITE_URL="https://your-domain.com"
+```
+
+For the full template, see [.env.example](.env.example).
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser["Browser app\nReact + Zustand"] --> LocalStorage["localStorage\nproviders + settings"]
+  Browser --> IndexedDB["IndexedDB\nsessions + plugins + knowledge"]
+  Browser --> OPFS["OPFS\nuploads + workspace files"]
+  Browser --> ApiRoutes["Next.js API routes"]
+  ApiRoutes --> Providers["Model providers\nGemini / OpenAI / compatible"]
+  ApiRoutes --> Search["Search providers"]
+  ApiRoutes --> Rag["RAG + document services"]
+  ApiRoutes --> Plugins["Plugin APIs"]
+  ApiRoutes --> Voice["Voice providers"]
+  Browser -. encrypted BYOK envelopes .-> ApiRoutes
+```
+
+The app keeps durable user data in browser storage whenever possible. API routes provide:
+
+- provider request normalization and streaming;
+- BYOK decryption on the server side;
+- URL safety gates for proxied upstreams;
+- plugin execution through registered plugin IDs and function names;
+- hosted-mode checks for shared stores and local-network restrictions.
+
+## Plugins, Search, RAG, and Voice
+
+Plugins are installed from manifests or built-in definitions. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
+
+Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with LlamaParse, and can index chunks into an external vector service.
+
+Voice workflows support browser speech APIs and configured external providers. ElevenLabs defaults are available through environment variables, and the UI can store user-specific secrets locally.
+
+## Security Model
+
+Neo Chat is self-hosting friendly, not a turnkey public SaaS security boundary.
+
+- `DEPLOYMENT_MODE=local` allows local and private-network proxy targets for private deployments.
+- `DEPLOYMENT_MODE=hosted` blocks localhost, private-network, and plain-HTTP proxy targets unless explicitly overridden.
+- BYOK envelopes prevent plain user-entered secrets from being sent in request bodies.
+- API schemas reject unknown high-risk fields and oversized payloads.
+- Plugin execution remains server-proxied and validated, but runtime tool calls no longer require a user confirmation modal.
+- `ACCESS_PASSWORD` is a deployment gate, not an account system.
+
+Before exposing Neo Chat as a public multi-user service, add account authentication, tenant isolation, server-side secret storage, quotas, audit logs, abuse controls, and provider spend limits.
+
+See [Reliability and Safety Model](docs/reliability-and-safety.md) for runtime behavior and recovery notes.
+
+## Development
+
+Quality checks:
+
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm audit --audit-level low
+```
+
+Useful scripts:
+
+```bash
+pnpm dev              # Start Next.js dev server
+pnpm build            # Production build
+pnpm start            # Start production server
+pnpm format           # Format the repository with Prettier
+pnpm format:check     # Check repository formatting
+pnpm build:worker     # Build for Cloudflare Workers
+pnpm preview:worker   # Preview Worker build
+pnpm deploy:worker    # Deploy Worker build
+pnpm byok:generate    # Generate copyable BYOK key values
+```
+
+Project layout:
+
+```text
+src/app/              Next.js routes and API routes
+src/components/       Chat UI, settings, plugin market, knowledge base
+src/lib/              Server/client domain helpers and safety gates
+src/services/         Provider, search, voice, RAG, and plugin service clients
+src/store/            Zustand stores and persistence migrations
+src/__tests__/        Vitest coverage for utilities, routes, and workflows
+docs/                 Deployment and reliability notes
+```
+
+Project documentation:
+
+- [Environment Variables](docs/environment-variables.md)
+- [Plugin Development](docs/plugin-development.md)
+- [Privacy and Local Data](docs/privacy-and-local-data.md)
+- [Deployment Hardening](docs/deployment-hardening.md)
+- [Reliability and Safety Model](docs/reliability-and-safety.md)
+- [Roadmap](ROADMAP.md)
+- [Changelog](CHANGELOG.md)
 
 ## FAQ
 
-#### Solution for “User location is not supported for the API use”
+### Does Neo Chat store my data on a server?
 
-1. Use Cloudflare AI Gateway to forward APIs. Currently, Cloudflare AI Gateway already supports Google Vertex AI related APIs. For how to use it, please refer to [How to Use Cloudflare AI Gateway](./docs/Use-Cloudflare-AI-Gateway.md). This solution is fast and stable, and is **recommended**.
+By default, durable chat and configuration data live in browser storage. API routes proxy external services, and production deployments should still treat server logs, upstream services, and configured stores according to their own privacy requirements.
 
-2. Use Cloudflare Worker for API proxy forwarding. For detailed settings, please refer to [How to Use Cloudflare Worker Proxy API](./docs/How-to-deploy-the-Cloudflare-Worker-api-proxy.md). Note that this solution may not work properly in some cases.
+### Can I use OpenAI-compatible providers?
 
-#### Why can't I access the website in China after deploying it with one click using Vercel
+Yes. Add an OpenAI-compatible provider in Settings or configure deployment defaults with `DEFAULT_PROVIDER_TYPE="OpenAI Compatible"` and a compatible `/v1` base URL.
 
-The domain name generated after deploying Vercel was blocked by the Chinese network a few years ago, but the server's IP address was not blocked. You can customize the domain name and access it normally in China. Since Vercel does not have a server in China, it is normal to have some network fluctuations sometimes. For how to set the domain name, you can refer to the solution article [Vercel binds a custom domain name](https://docs.tangly1024.com/article/vercel-domain) that I found online.
+### Why do I need a stable BYOK private key in production?
 
-#### Why can't I use Multimodal Live
+Browser secrets are encrypted to the server public key. If the server private key changes, existing local envelopes cannot be decrypted until users re-enter their secrets.
 
-Currently, the Multimodal Live API is only supported by the Gemini 2.0 Flash model, so you need to use the Gemini 2.0 Flash model to use it. Since the Gemini Multimodal Live API is not accessible in China, you may need to deploy a proxy forwarding API using Cloudflare Worker. For more information, refer to [Proxying the Multimodal Live API with Cloudflare Worker](./docs/Proxying-the-Multimodal-Live-API-with-Cloudflare-Worker.md).
-_Currently, Multimodal Live API does not support Chinese voice output._
+### Can I deploy this as a public SaaS?
+
+Not as-is. Hosted mode tightens URL policy and shared-state requirements, but public SaaS still needs accounts, tenancy, quotas, auditing, and server-side secret management.
+
+### Why did a tool stop after many calls?
+
+Neo Chat keeps tool calls high but bounded. The model can run multi-step tool workflows, but recursive tool loops stop after the configured tool-round limit.
+
+### How do I retrieve previous versions?
+
+Previous versions of the project were developed solely based on the Gemini ecosystem. If you need previous versions, you can obtain them from the `gemini-next-chat` branch, **which has its code archived**.
 
 ## Contributing
 
-Contributions to this project are welcome! If you would like to contribute, please follow these steps:
+Contributions are welcome. Keep changes focused, preserve local-first behavior, and run the quality checks before opening a pull request. For security-sensitive changes, include tests for both local and hosted deployment modes.
 
-1. Fork the repository on GitHub.
-2. Clone your fork to your local machine.
-3. Create a new branch for your changes.
-4. Make your changes and commit them to your branch.
-5. Push your changes to your fork on GitHub.
-6. Open a pull request from your branch to the main repository.
+Read [Contributing](CONTRIBUTING.md), [Security Policy](SECURITY.md), and the
+[Code of Conduct](CODE_OF_CONDUCT.md) before opening larger changes.
 
-Please ensure that your code follows the project's coding style and that all tests pass before submitting a pull request. If you find any bugs or have suggestions for improvements, feel free to open an issue on GitHub.
+## License
 
-## LICENSE
-
-This project is licensed under the [MIT](https://www.apache.org/licenses/LICENSE-2.0) License. See the LICENSE file for the full license text.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=u14app/gemini-next-chat&type=Date)](https://star-history.com/#u14app/gemini-next-chat&Date)
+Neo Chat is released under the [MIT License](LICENSE).
