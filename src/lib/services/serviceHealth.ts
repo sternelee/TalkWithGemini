@@ -140,7 +140,9 @@ function voiceHealth(): ServiceHealthItem {
   const hasDefaultCapability =
     defaultProvider === "mimo"
       ? Boolean(getDefaultMimoSttModel() || getDefaultMimoTtsModel())
-      : Boolean(getDefaultElevenLabsSttModel() || getDefaultElevenLabsTtsModel());
+      : Boolean(
+          getDefaultElevenLabsSttModel() || getDefaultElevenLabsTtsModel(),
+        );
 
   if (hasDefaultCapability) {
     return item("voice", "available", "VOICE_CONFIGURED");

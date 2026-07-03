@@ -121,7 +121,7 @@ const DeploymentHealth: React.FC = () => {
   const hasVoice =
     Boolean(
       serverConfig?.voice.defaultSttAvailable ||
-        serverConfig?.voice.defaultTtsAvailable,
+      serverConfig?.voice.defaultTtsAvailable,
     ) ||
     voice.sttProvider !== "browser" ||
     voice.ttsProvider !== "browser";

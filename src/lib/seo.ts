@@ -19,8 +19,7 @@ type SeoContent = {
 };
 
 type SeoScreenshotSrc =
-  | typeof DESKTOP_SCREENSHOT_SRC
-  | typeof MOBILE_SCREENSHOT_SRC;
+  typeof DESKTOP_SCREENSHOT_SRC | typeof MOBILE_SCREENSHOT_SRC;
 
 type SeoScreenshot = {
   src: SeoScreenshotSrc;

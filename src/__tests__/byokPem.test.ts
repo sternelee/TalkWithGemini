@@ -1,8 +1,4 @@
-import {
-  createHash,
-  createPublicKey,
-  generateKeyPairSync,
-} from "node:crypto";
+import { createHash, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { bytesToBase64Url } from "../lib/byok/encoding";
 import { getSpkiKeyId, parsePkcs8RsaPrivateKeyPem } from "../lib/byok/pem";

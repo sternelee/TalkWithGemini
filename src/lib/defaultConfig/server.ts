@@ -356,7 +356,10 @@ export function getDefaultElevenLabsTtsVoiceId(): VoiceSettings["ttsVoiceId"] {
 }
 
 export function getDefaultMimoSttModel(): string {
-  const model = envWithDefault("DEFAULT_MIMO_STT_MODEL", DEFAULT_MIMO_STT_MODEL);
+  const model = envWithDefault(
+    "DEFAULT_MIMO_STT_MODEL",
+    DEFAULT_MIMO_STT_MODEL,
+  );
   if (!model) return "";
   return model === DEFAULT_MIMO_STT_MODEL
     ? DEFAULT_MIMO_STT_MODEL
@@ -364,7 +367,10 @@ export function getDefaultMimoSttModel(): string {
 }
 
 export function getDefaultMimoTtsModel(): string {
-  const model = envWithDefault("DEFAULT_MIMO_TTS_MODEL", DEFAULT_MIMO_TTS_MODEL);
+  const model = envWithDefault(
+    "DEFAULT_MIMO_TTS_MODEL",
+    DEFAULT_MIMO_TTS_MODEL,
+  );
   if (!model) return "";
   return model === DEFAULT_MIMO_TTS_MODEL
     ? DEFAULT_MIMO_TTS_MODEL
