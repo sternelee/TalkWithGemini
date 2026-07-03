@@ -193,6 +193,7 @@ DEFAULT_LLAMA_PARSE_API_KEY="llama-parse-key"
 DEFAULT_VOICE_PROVIDER="elevenlabs"
 DEFAULT_ELEVENLABS_API_KEY="elevenlabs-key"
 DEFAULT_ELEVENLABS_STT_MODEL="scribe_v2"
+DEFAULT_ELEVENLABS_TTS_MODEL="eleven_flash_v2_5"
 DEFAULT_ELEVENLABS_TTS_VOICE_ID="bIHbv24MWmeRgasZH58o"
 ```
 
@@ -234,7 +235,7 @@ Plugins are installed from manifests or built-in definitions. Enabled plugin fun
 
 Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with LlamaParse, and can index chunks into an external vector service.
 
-Voice workflows support browser speech APIs and configured external providers. ElevenLabs defaults are available through environment variables, and the UI can store user-specific secrets locally.
+Voice workflows support browser speech APIs and configured external providers. Set `DEFAULT_VOICE_PROVIDER` to `elevenlabs` or `mimo` to enable a server default; leaving it empty keeps browser-native speech as the default. Empty default model values disable the matching STT or TTS capability, and the UI can store user-specific secrets locally.
 
 ## Security Model
 

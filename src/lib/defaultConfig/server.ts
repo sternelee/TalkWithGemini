@@ -26,6 +26,11 @@ import {
 import { isProviderType } from "../providers/providerTypes";
 import { normalizeModelMetadata } from "../providers/metadata";
 import { getDeploymentMode } from "../security/deployment";
+import {
+  DEFAULT_ELEVENLABS_TTS_MODEL,
+  isElevenLabsSTTModel,
+  isElevenLabsTTSModel,
+} from "../utils/voiceModels";
 
 const DEFAULT_PROVIDER_NAME = "Default";
 const DEFAULT_ELEVENLABS_STT_MODEL = "scribe_v2";
@@ -61,6 +66,11 @@ const SEARCH_PROVIDERS = new Set<ConfigurableSearchProvider>([
 
 function env(name: string): string {
   return process.env[name]?.trim() || "";
+}
+
+function envWithDefault(name: string, defaultValue: string): string {
+  const value = process.env[name];
+  return value === undefined ? defaultValue : value.trim();
 }
 
 function dedupeModels(values: string[]): string[] {
@@ -319,6 +329,24 @@ export function getDefaultMimoApiKey(): string {
   return env("DEFAULT_MIMO_API_KEY");
 }
 
+export function getDefaultElevenLabsSttModel(): string {
+  const model = envWithDefault(
+    "DEFAULT_ELEVENLABS_STT_MODEL",
+    DEFAULT_ELEVENLABS_STT_MODEL,
+  );
+  if (!model) return "";
+  return isElevenLabsSTTModel(model) ? model : DEFAULT_ELEVENLABS_STT_MODEL;
+}
+
+export function getDefaultElevenLabsTtsModel(): string {
+  const model = envWithDefault(
+    "DEFAULT_ELEVENLABS_TTS_MODEL",
+    DEFAULT_ELEVENLABS_TTS_MODEL,
+  );
+  if (!model) return "";
+  return isElevenLabsTTSModel(model) ? model : DEFAULT_ELEVENLABS_TTS_MODEL;
+}
+
 export function getDefaultElevenLabsTtsVoiceId(): VoiceSettings["ttsVoiceId"] {
   const voiceId = env("DEFAULT_ELEVENLABS_TTS_VOICE_ID");
   return voiceId === "SAz9YHcvj6GT2YYXdXww" ||
@@ -328,13 +356,17 @@ export function getDefaultElevenLabsTtsVoiceId(): VoiceSettings["ttsVoiceId"] {
 }
 
 export function getDefaultMimoSttModel(): string {
-  return env("DEFAULT_MIMO_STT_MODEL") === DEFAULT_MIMO_STT_MODEL
+  const model = envWithDefault("DEFAULT_MIMO_STT_MODEL", DEFAULT_MIMO_STT_MODEL);
+  if (!model) return "";
+  return model === DEFAULT_MIMO_STT_MODEL
     ? DEFAULT_MIMO_STT_MODEL
     : DEFAULT_MIMO_STT_MODEL;
 }
 
 export function getDefaultMimoTtsModel(): string {
-  return env("DEFAULT_MIMO_TTS_MODEL") === DEFAULT_MIMO_TTS_MODEL
+  const model = envWithDefault("DEFAULT_MIMO_TTS_MODEL", DEFAULT_MIMO_TTS_MODEL);
+  if (!model) return "";
+  return model === DEFAULT_MIMO_TTS_MODEL
     ? DEFAULT_MIMO_TTS_MODEL
     : DEFAULT_MIMO_TTS_MODEL;
 }
@@ -356,8 +388,6 @@ export function getDefaultVoiceProvider():
   if (configured === "elevenlabs") {
     return elevenLabsAvailable ? "elevenlabs" : undefined;
   }
-  if (elevenLabsAvailable) return "elevenlabs";
-  if (mimoAvailable) return "mimo";
   return undefined;
 }
 
@@ -421,6 +451,26 @@ export function getPublicServerConfig(): PublicServerConfig {
   const defaultElevenLabsApiKey = getDefaultElevenLabsApiKey();
   const defaultMimoApiKey = getDefaultMimoApiKey();
   const defaultVoiceProvider = getDefaultVoiceProvider();
+  const defaultVoiceSttModel =
+    defaultVoiceProvider === "mimo"
+      ? getDefaultMimoSttModel()
+      : defaultVoiceProvider === "elevenlabs"
+        ? getDefaultElevenLabsSttModel()
+        : "";
+  const defaultVoiceTtsModel =
+    defaultVoiceProvider === "mimo"
+      ? getDefaultMimoTtsModel()
+      : defaultVoiceProvider === "elevenlabs"
+        ? getDefaultElevenLabsTtsModel()
+        : "";
+  const defaultVoiceSttAvailable = Boolean(
+    defaultVoiceProvider && defaultVoiceSttModel,
+  );
+  const defaultVoiceTtsAvailable = Boolean(
+    defaultVoiceProvider && defaultVoiceTtsModel,
+  );
+  const mimoSttModel = getDefaultMimoSttModel();
+  const mimoTtsModel = getDefaultMimoTtsModel();
   const system = getDefaultSystemSettings();
   const deploymentMode = getDeploymentMode();
 
@@ -455,25 +505,32 @@ export function getPublicServerConfig(): PublicServerConfig {
         : {}),
       elevenLabsAvailable: Boolean(defaultElevenLabsApiKey),
       mimoAvailable: Boolean(defaultMimoApiKey),
-      ...(defaultVoiceProvider
+      defaultSttAvailable: defaultVoiceSttAvailable,
+      defaultTtsAvailable: defaultVoiceTtsAvailable,
+      ...(defaultVoiceSttAvailable
         ? {
-            sttModel:
-              defaultVoiceProvider === "mimo"
-                ? getDefaultMimoSttModel()
-                : env("DEFAULT_ELEVENLABS_STT_MODEL") ||
-                  DEFAULT_ELEVENLABS_STT_MODEL,
+            sttModel: defaultVoiceSttModel,
           }
         : {}),
-      ...(defaultElevenLabsApiKey
+      ...(defaultVoiceTtsAvailable
+        ? {
+            ttsModel: defaultVoiceTtsModel,
+          }
+        : {}),
+      ...(defaultVoiceTtsAvailable && defaultVoiceProvider === "elevenlabs"
         ? {
             ttsVoiceId: getDefaultElevenLabsTtsVoiceId(),
           }
         : {}),
       ...(defaultMimoApiKey
         ? {
-            mimoSttModel: getDefaultMimoSttModel(),
-            mimoTtsModel: getDefaultMimoTtsModel(),
-            mimoTtsVoiceId: getDefaultMimoTtsVoiceId(),
+            ...(mimoSttModel ? { mimoSttModel } : {}),
+            ...(mimoTtsModel
+              ? {
+                  mimoTtsModel,
+                  mimoTtsVoiceId: getDefaultMimoTtsVoiceId(),
+                }
+              : {}),
           }
         : {}),
     },

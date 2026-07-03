@@ -119,7 +119,10 @@ const DeploymentHealth: React.FC = () => {
     Boolean(rag.llamaParseApiKey?.trim()) ||
     Boolean(rag.llamaParseApiKeySecret);
   const hasVoice =
-    Boolean(serverConfig?.voice.defaultProvider) ||
+    Boolean(
+      serverConfig?.voice.defaultSttAvailable ||
+        serverConfig?.voice.defaultTtsAvailable,
+    ) ||
     voice.sttProvider !== "browser" ||
     voice.ttsProvider !== "browser";
   const runtimeServices = runtimeHealth?.services;

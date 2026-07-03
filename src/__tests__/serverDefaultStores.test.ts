@@ -54,6 +54,8 @@ const serverConfig: PublicServerConfig = {
   voice: {
     elevenLabsAvailable: false,
     mimoAvailable: false,
+    defaultSttAvailable: false,
+    defaultTtsAvailable: false,
   },
 };
 

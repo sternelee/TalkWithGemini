@@ -193,6 +193,7 @@ DEFAULT_LLAMA_PARSE_API_KEY="llama-parse-key"
 DEFAULT_VOICE_PROVIDER="elevenlabs"
 DEFAULT_ELEVENLABS_API_KEY="elevenlabs-key"
 DEFAULT_ELEVENLABS_STT_MODEL="scribe_v2"
+DEFAULT_ELEVENLABS_TTS_MODEL="eleven_flash_v2_5"
 DEFAULT_ELEVENLABS_TTS_VOICE_ID="bIHbv24MWmeRgasZH58o"
 ```
 
@@ -234,7 +235,7 @@ flowchart LR
 
 搜索可以使用 Gemini 模型的原生 Google Search，也可以对其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
 
-语音流程支持浏览器语音 API 和外部供应商。ElevenLabs 默认值可通过环境变量配置，用户级密钥也可以由 UI 本地保存。
+语音流程支持浏览器语音 API 和外部供应商。将 `DEFAULT_VOICE_PROVIDER` 设为 `elevenlabs` 或 `mimo` 可启用服务端默认语音供应商；留空则默认使用浏览器原生语音。默认模型值为空会禁用对应的 STT 或 TTS 能力，用户级密钥也可以由 UI 本地保存。
 
 ## 安全模型
 

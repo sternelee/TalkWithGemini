@@ -78,6 +78,27 @@ describe("url policy and provider runtime helpers", () => {
     ).toThrow(/Private network|Localhost/i);
   });
 
+  it("allows configured voice provider hosts only", () => {
+    expect(
+      validateOutboundUrl(
+        "https://api.elevenlabs.io/v1/text-to-speech/voice-id",
+        getSafeUrlPolicy("voice"),
+      ).hostname,
+    ).toBe("api.elevenlabs.io");
+    expect(
+      validateOutboundUrl(
+        "https://api.xiaomimimo.com/v1/chat/completions",
+        getSafeUrlPolicy("voice"),
+      ).hostname,
+    ).toBe("api.xiaomimimo.com");
+    expect(() =>
+      validateOutboundUrl(
+        "https://example.com/v1/chat/completions",
+        getSafeUrlPolicy("voice"),
+      ),
+    ).toThrow(/not trusted for voice/i);
+  });
+
   it("allows explicitly self-hosted provider URLs", () => {
     const result = validateOutboundUrl(
       "http://localhost:11434/v1",

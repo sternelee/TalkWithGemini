@@ -37,7 +37,10 @@ export interface PublicServerConfig {
     defaultProvider?: ServerDefaultVoiceProvider;
     elevenLabsAvailable: boolean;
     mimoAvailable: boolean;
+    defaultSttAvailable: boolean;
+    defaultTtsAvailable: boolean;
     sttModel?: string;
+    ttsModel?: string;
     ttsVoiceId?: VoiceSettings["ttsVoiceId"];
     mimoSttModel?: string;
     mimoTtsModel?: string;

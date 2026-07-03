@@ -25,6 +25,7 @@ describe("service health status", () => {
     vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
     vi.stubEnv("DEFAULT_VOICE_PROVIDER", "elevenlabs");
     vi.stubEnv("DEFAULT_ELEVENLABS_API_KEY", "voice-secret");
+    vi.stubEnv("DEFAULT_ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5");
 
     const { getServiceHealthStatus } =
       await import("../lib/services/serviceHealth");
@@ -52,6 +53,20 @@ describe("service health status", () => {
     ]) {
       expect(serialized).not.toContain(secret);
     }
+  });
+
+  it("does not mark voice configured when the default voice provider is unset", async () => {
+    vi.stubEnv("DEFAULT_ELEVENLABS_API_KEY", "voice-secret");
+    vi.stubEnv("DEFAULT_ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5");
+
+    const { getServiceHealthStatus } =
+      await import("../lib/services/serviceHealth");
+    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
+
+    expect(health.services.voice).toMatchObject({
+      status: "unconfigured",
+      code: "VOICE_UNCONFIGURED",
+    });
   });
 
   it("marks hosted missing shared stores as policy blocked", async () => {

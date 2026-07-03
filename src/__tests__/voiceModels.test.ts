@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  ELEVENLABS_TTS_MODELS,
   getAvailableProviderModel,
   isElevenLabsSTTModel,
+  isElevenLabsTTSModel,
   isProviderModelAvailable,
 } from "../lib/utils/voiceModels";
 import type { ModelProvider } from "../types";
@@ -49,5 +51,18 @@ describe("voice model utilities", () => {
     expect(isElevenLabsSTTModel("scribe_v2")).toBe(true);
     expect(isElevenLabsSTTModel("scribe_v1")).toBe(true);
     expect(isElevenLabsSTTModel("VOICE:scribe_v2")).toBe(false);
+  });
+
+  it("recognizes supported ElevenLabs TTS model ids", () => {
+    expect(ELEVENLABS_TTS_MODELS).toEqual([
+      "eleven_flash_v2_5",
+      "eleven_multilingual_v2",
+      "eleven_flash_v2",
+      "eleven_v3",
+    ]);
+    expect(isElevenLabsTTSModel("eleven_flash_v2_5")).toBe(true);
+    expect(isElevenLabsTTSModel("eleven_multilingual_v2")).toBe(true);
+    expect(isElevenLabsTTSModel("scribe_v2")).toBe(false);
+    expect(isElevenLabsTTSModel("VOICE:eleven_flash_v2_5")).toBe(false);
   });
 });

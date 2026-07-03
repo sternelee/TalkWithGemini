@@ -17,6 +17,7 @@ import {
 import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
 import {
   getDefaultElevenLabsApiKey,
+  getDefaultElevenLabsSttModel,
   getDefaultMimoApiKey,
   getDefaultMimoSttModel,
   getDefaultVoiceProvider,
@@ -27,6 +28,7 @@ import { bytesToBase64 } from "../../../../lib/utils/binary";
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 const MIMO_CHAT_COMPLETIONS_URL =
   "https://api.xiaomimimo.com/v1/chat/completions";
+const MIMO_STT_MODEL = "mimo-v2.5-asr";
 
 type MimoTranscriptionResponse = {
   choices?: Array<{
@@ -89,7 +91,7 @@ async function transcribeWithMimo(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: modelId === "mimo-v2.5-asr" ? modelId : getDefaultMimoSttModel(),
+        model: modelId === MIMO_STT_MODEL ? modelId : MIMO_STT_MODEL,
         messages: [
           {
             role: "user",
@@ -162,20 +164,33 @@ export async function POST(request: NextRequest) {
     const validAudioBlob = audioBlob as Blob;
 
     const defaultVoiceProvider = getDefaultVoiceProvider();
+    if (provider === "default" && !defaultVoiceProvider) {
+      return NextResponse.json(
+        { error: "Default speech recognition is not configured" },
+        { status: 400 },
+      );
+    }
 
     if (
       provider === "mimo" ||
       (provider === "default" && defaultVoiceProvider === "mimo")
     ) {
+      const defaultModel =
+        provider === "default" ? getDefaultMimoSttModel() : "";
       const apiKey =
         provider === "default"
           ? getDefaultMimoApiKey()
           : apiKeySecret
             ? await decryptSecretEnvelope(apiKeySecret, BYOK_CONTEXTS.mimo)
             : "";
-      if (!apiKey) {
+      if (!apiKey || (provider === "default" && !defaultModel)) {
         return NextResponse.json(
-          { error: "Mimo API Key is missing" },
+          {
+            error:
+              provider === "default"
+                ? "Default speech recognition is not configured"
+                : "Mimo API Key is missing",
+          },
           { status: 400 },
         );
       }
@@ -183,12 +198,14 @@ export async function POST(request: NextRequest) {
       return transcribeWithMimo(
         validAudioBlob,
         apiKey,
-        provider === "default" ? getDefaultMimoSttModel() : modelId,
+        provider === "default" ? defaultModel : modelId,
         language,
       );
     }
 
     if (provider === "default" || provider === "elevenlabs") {
+      const defaultModel =
+        provider === "default" ? getDefaultElevenLabsSttModel() : "";
       const apiKey =
         provider === "default"
           ? getDefaultElevenLabsApiKey()
@@ -198,16 +215,24 @@ export async function POST(request: NextRequest) {
                 BYOK_CONTEXTS.elevenLabs,
               )
             : "";
-      if (!apiKey) {
+      if (!apiKey || (provider === "default" && !defaultModel)) {
         return NextResponse.json(
-          { error: "ElevenLabs API Key is missing" },
+          {
+            error:
+              provider === "default"
+                ? "Default speech recognition is not configured"
+                : "ElevenLabs API Key is missing",
+          },
           { status: 400 },
         );
       }
 
       const elevenFormData = new FormData();
       elevenFormData.append("file", validAudioBlob);
-      elevenFormData.append("model_id", modelId || "scribe_v2");
+      elevenFormData.append(
+        "model_id",
+        provider === "default" ? defaultModel : modelId || "scribe_v2",
+      );
 
       const { response, data } = await safeFetchJson<any>(
         `${ELEVENLABS_API_URL}/speech-to-text`,

@@ -5,8 +5,10 @@ import {
   DisposableAudioElement,
 } from "@/lib/utils/disposableAudio";
 import {
+  DEFAULT_ELEVENLABS_TTS_MODEL,
   getAvailableProviderModel,
   isElevenLabsSTTModel,
+  isElevenLabsTTSModel,
 } from "@/lib/utils/voiceModels";
 import {
   getResponseErrorMessage,
@@ -294,6 +296,9 @@ export const synthesizeSpeech = async (
           provider: "elevenlabs",
           apiKeySecret: await encryptSecret(apiKey, BYOK_CONTEXTS.elevenLabs),
           voiceId: settings.ttsVoiceId,
+          modelId: isElevenLabsTTSModel(settings.ttsModel)
+            ? settings.ttsModel
+            : DEFAULT_ELEVENLABS_TTS_MODEL,
         }),
       });
     });

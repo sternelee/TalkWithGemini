@@ -34,6 +34,9 @@ export interface VoiceSettings {
   mimoApiKeySecret?: LocalEncryptedSecretEnvelope;
   serverMimoAvailable?: boolean;
   serverDefaultVoiceProvider?: ServerDefaultVoiceProvider;
+  serverDefaultSttAvailable?: boolean;
+  serverDefaultTtsAvailable?: boolean;
+  serverElevenLabsTtsModel?: string;
   serverMimoSttModel?: string;
   serverMimoTtsModel?: string;
   serverMimoTtsVoiceId?: MimoVoiceID;

@@ -16,6 +16,7 @@ import {
 import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
 import {
   getDefaultElevenLabsApiKey,
+  getDefaultElevenLabsTtsModel,
   getDefaultElevenLabsTtsVoiceId,
   getDefaultMimoApiKey,
   getDefaultMimoTtsModel,
@@ -28,10 +29,15 @@ import {
   bytesToArrayBuffer,
   createPcmWavBytes,
 } from "../../../../lib/utils/binary";
+import {
+  DEFAULT_ELEVENLABS_TTS_MODEL,
+  isElevenLabsTTSModel,
+} from "../../../../lib/utils/voiceModels";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 const MIMO_CHAT_COMPLETIONS_URL =
   "https://api.xiaomimimo.com/v1/chat/completions";
+const MIMO_TTS_MODEL = "mimo-v2.5-tts";
 
 type MimoSynthesisResponse = {
   choices?: Array<{
@@ -58,7 +64,7 @@ async function synthesizeWithMimo(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: modelId === "mimo-v2.5-tts" ? modelId : getDefaultMimoTtsModel(),
+        model: modelId === MIMO_TTS_MODEL ? modelId : MIMO_TTS_MODEL,
         messages: [
           {
             role: "assistant",
@@ -112,20 +118,33 @@ export async function POST(request: NextRequest) {
     }
 
     const defaultVoiceProvider = getDefaultVoiceProvider();
+    if (provider === "default" && !defaultVoiceProvider) {
+      return NextResponse.json(
+        { error: "Default speech synthesis is not configured" },
+        { status: 400 },
+      );
+    }
 
     if (
       provider === "mimo" ||
       (provider === "default" && defaultVoiceProvider === "mimo")
     ) {
+      const defaultModel =
+        provider === "default" ? getDefaultMimoTtsModel() : "";
       const apiKey =
         provider === "default"
           ? getDefaultMimoApiKey()
           : apiKeySecret
             ? await decryptSecretEnvelope(apiKeySecret, BYOK_CONTEXTS.mimo)
             : "";
-      if (!apiKey) {
+      if (!apiKey || (provider === "default" && !defaultModel)) {
         return NextResponse.json(
-          { error: "Mimo API Key is missing" },
+          {
+            error:
+              provider === "default"
+                ? "Default speech synthesis is not configured"
+                : "Mimo API Key is missing",
+          },
           { status: 400 },
         );
       }
@@ -133,12 +152,14 @@ export async function POST(request: NextRequest) {
       return synthesizeWithMimo(
         text,
         apiKey,
-        provider === "default" ? getDefaultMimoTtsModel() : modelId,
+        provider === "default" ? defaultModel : modelId,
         provider === "default" ? getDefaultMimoTtsVoiceId() : voiceId,
       );
     }
 
     if (provider === "default" || provider === "elevenlabs") {
+      const defaultModel =
+        provider === "default" ? getDefaultElevenLabsTtsModel() : "";
       const apiKey =
         provider === "default"
           ? getDefaultElevenLabsApiKey()
@@ -148,9 +169,14 @@ export async function POST(request: NextRequest) {
                 BYOK_CONTEXTS.elevenLabs,
               )
             : "";
-      if (!apiKey) {
+      if (!apiKey || (provider === "default" && !defaultModel)) {
         return NextResponse.json(
-          { error: "ElevenLabs API Key is missing" },
+          {
+            error:
+              provider === "default"
+                ? "Default speech synthesis is not configured"
+                : "ElevenLabs API Key is missing",
+          },
           { status: 400 },
         );
       }
@@ -167,10 +193,16 @@ export async function POST(request: NextRequest) {
       }
 
       const url = `${ELEVENLABS_API_URL}/text-to-speech/${encodeURIComponent(effectiveVoiceId)}?output_format=mp3_44100_128`;
+      const effectiveModelId =
+        provider === "default"
+          ? defaultModel
+          : isElevenLabsTTSModel(modelId)
+            ? modelId
+            : DEFAULT_ELEVENLABS_TTS_MODEL;
 
       const payload = {
         text: text,
-        model_id: "eleven_multilingual_v2",
+        model_id: effectiveModelId,
       };
 
       const requestInit = {

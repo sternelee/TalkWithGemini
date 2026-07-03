@@ -94,14 +94,17 @@ pnpm byok:generate
 
 | Variable                          | Purpose                                     |
 | --------------------------------- | ------------------------------------------- |
-| `DEFAULT_VOICE_PROVIDER`          | Default external voice provider.            |
+| `DEFAULT_VOICE_PROVIDER`          | Default external voice provider. Empty means no default voice provider. |
 | `DEFAULT_ELEVENLABS_API_KEY`      | Deployment-level ElevenLabs API key.        |
 | `DEFAULT_ELEVENLABS_STT_MODEL`    | Default ElevenLabs speech-to-text model.    |
+| `DEFAULT_ELEVENLABS_TTS_MODEL`    | Default ElevenLabs text-to-speech model.    |
 | `DEFAULT_ELEVENLABS_TTS_VOICE_ID` | Default ElevenLabs text-to-speech voice ID. |
 | `DEFAULT_MIMO_API_KEY`            | Deployment-level Mimo API key.              |
 | `DEFAULT_MIMO_STT_MODEL`          | Default Mimo speech-to-text model.          |
 | `DEFAULT_MIMO_TTS_MODEL`          | Default Mimo text-to-speech model.          |
 | `DEFAULT_MIMO_TTS_VOICE_ID`       | Default Mimo text-to-speech voice ID.       |
+
+When `DEFAULT_VOICE_PROVIDER` is set to `elevenlabs` or `mimo`, an empty default model disables that single STT or TTS capability. The browser UI falls back to native browser speech for disabled default capabilities.
 
 ## Default System Behavior
 

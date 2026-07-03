@@ -94,6 +94,7 @@ const ENV_KEYS = [
   "DEFAULT_LLAMA_PARSE_API_KEY",
   "DEFAULT_ELEVENLABS_API_KEY",
   "DEFAULT_ELEVENLABS_STT_MODEL",
+  "DEFAULT_ELEVENLABS_TTS_MODEL",
   "DEFAULT_ELEVENLABS_TTS_VOICE_ID",
   "DEFAULT_VOICE_PROVIDER",
   "DEFAULT_MIMO_API_KEY",
@@ -201,9 +202,14 @@ describe("server default configuration", () => {
     });
     expect(config.voice).toMatchObject({
       elevenLabsAvailable: true,
-      sttModel: "scribe_v1",
-      ttsVoiceId: "SAz9YHcvj6GT2YYXdXww",
+      mimoAvailable: false,
+      defaultSttAvailable: false,
+      defaultTtsAvailable: false,
     });
+    expect(config.voice.defaultProvider).toBeUndefined();
+    expect(config.voice.sttModel).toBeUndefined();
+    expect(config.voice.ttsModel).toBeUndefined();
+    expect(config.voice.ttsVoiceId).toBeUndefined();
     expect(config.system).toMatchObject({
       systemPrompt: "Use the hosted defaults.",
       enableAutoTitle: false,
@@ -222,6 +228,32 @@ describe("server default configuration", () => {
     ]) {
       expect(serialized).not.toContain(secret);
     }
+  });
+
+  it("does not publish a default voice provider unless it is explicitly configured", async () => {
+    setEnv({
+      DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
+      DEFAULT_ELEVENLABS_STT_MODEL: "scribe_v2",
+      DEFAULT_ELEVENLABS_TTS_MODEL: "eleven_flash_v2_5",
+      DEFAULT_ELEVENLABS_TTS_VOICE_ID: "SAz9YHcvj6GT2YYXdXww",
+      DEFAULT_MIMO_API_KEY: "mimo-secret",
+      DEFAULT_MIMO_STT_MODEL: "mimo-v2.5-asr",
+      DEFAULT_MIMO_TTS_MODEL: "mimo-v2.5-tts",
+    });
+
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+    const config = getPublicServerConfig();
+
+    expect(config.voice).toMatchObject({
+      elevenLabsAvailable: true,
+      mimoAvailable: true,
+      defaultSttAvailable: false,
+      defaultTtsAvailable: false,
+    });
+    expect(config.voice.defaultProvider).toBeUndefined();
+    expect(config.voice.sttModel).toBeUndefined();
+    expect(config.voice.ttsModel).toBeUndefined();
   });
 
   it("publishes deployment health without exposing deployment secrets", async () => {
@@ -516,7 +548,9 @@ describe("server default configuration", () => {
 
   it("uses the server ElevenLabs key for default speech transcription", async () => {
     setEnv({
+      DEFAULT_VOICE_PROVIDER: "elevenlabs",
       DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
+      DEFAULT_ELEVENLABS_STT_MODEL: "scribe_v2",
     });
     mocks.safeFetchJson.mockResolvedValue({
       response: new Response(null, { status: 200 }),
@@ -555,6 +589,7 @@ describe("server default configuration", () => {
 
   it("uses the server ElevenLabs key and default voice for speech synthesis", async () => {
     setEnv({
+      DEFAULT_VOICE_PROVIDER: "elevenlabs",
       DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
       DEFAULT_ELEVENLABS_TTS_VOICE_ID: "SAz9YHcvj6GT2YYXdXww",
     });
@@ -584,7 +619,65 @@ describe("server default configuration", () => {
       }),
       expect.any(Object),
     );
+    const requestInit = mocks.safeFetchArrayBuffer.mock.calls[0][1];
+    expect(JSON.parse(requestInit.body)).toMatchObject({
+      model_id: "eleven_flash_v2_5",
+    });
     expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+  });
+
+  it("disables default ElevenLabs TTS when its default model is empty", async () => {
+    setEnv({
+      DEFAULT_VOICE_PROVIDER: "elevenlabs",
+      DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
+      DEFAULT_ELEVENLABS_STT_MODEL: "scribe_v2",
+      DEFAULT_ELEVENLABS_TTS_MODEL: "",
+      DEFAULT_ELEVENLABS_TTS_VOICE_ID: "SAz9YHcvj6GT2YYXdXww",
+    });
+
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+    const config = getPublicServerConfig();
+
+    expect(config.voice).toMatchObject({
+      defaultProvider: "elevenlabs",
+      elevenLabsAvailable: true,
+      defaultSttAvailable: true,
+      defaultTtsAvailable: false,
+      sttModel: "scribe_v2",
+    });
+    expect(config.voice.ttsModel).toBeUndefined();
+    expect(config.voice.ttsVoiceId).toBeUndefined();
+  });
+
+  it("rejects default ElevenLabs synthesis when its default model is empty", async () => {
+    setEnv({
+      DEFAULT_VOICE_PROVIDER: "elevenlabs",
+      DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
+      DEFAULT_ELEVENLABS_TTS_MODEL: "",
+      DEFAULT_ELEVENLABS_TTS_VOICE_ID: "SAz9YHcvj6GT2YYXdXww",
+    });
+    mocks.safeFetchArrayBuffer.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      arrayBuffer: new Uint8Array([1, 2, 3]),
+    });
+
+    const { POST } = await import("../app/api/voice/synthesize/route");
+    const response = await POST(
+      new Request("https://neo.test/api/voice/synthesize", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: "default",
+          text: "hello",
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Default speech synthesis is not configured",
+    });
+    expect(mocks.safeFetchArrayBuffer).not.toHaveBeenCalled();
   });
 
   it("publishes Mimo as the server default voice provider", async () => {
@@ -604,11 +697,38 @@ describe("server default configuration", () => {
     expect(config.voice).toMatchObject({
       defaultProvider: "mimo",
       mimoAvailable: true,
+      defaultSttAvailable: true,
+      defaultTtsAvailable: true,
       mimoSttModel: "mimo-v2.5-asr",
       mimoTtsModel: "mimo-v2.5-tts",
       mimoTtsVoiceId: "Chloe",
     });
     expect(serialized).not.toContain("mimo-secret");
+  });
+
+  it("publishes Mimo default TTS without STT when the Mimo STT model is empty", async () => {
+    setEnv({
+      DEFAULT_VOICE_PROVIDER: "mimo",
+      DEFAULT_MIMO_API_KEY: "mimo-secret",
+      DEFAULT_MIMO_STT_MODEL: "",
+      DEFAULT_MIMO_TTS_MODEL: "mimo-v2.5-tts",
+      DEFAULT_MIMO_TTS_VOICE_ID: "Chloe",
+    });
+
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+    const config = getPublicServerConfig();
+
+    expect(config.voice).toMatchObject({
+      defaultProvider: "mimo",
+      mimoAvailable: true,
+      defaultSttAvailable: false,
+      defaultTtsAvailable: true,
+      mimoTtsModel: "mimo-v2.5-tts",
+      mimoTtsVoiceId: "Chloe",
+    });
+    expect(config.voice.sttModel).toBeUndefined();
+    expect(config.voice.mimoSttModel).toBeUndefined();
   });
 
   it("uses the server Mimo key for default speech transcription", async () => {

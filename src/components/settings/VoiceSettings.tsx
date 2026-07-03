@@ -14,8 +14,11 @@ import {
   VoiceSettings as VoiceSettingsConfig,
 } from "@/types";
 import {
+  DEFAULT_ELEVENLABS_TTS_MODEL,
   ELEVENLABS_STT_MODELS,
+  ELEVENLABS_TTS_MODELS,
   isElevenLabsSTTModel,
+  isElevenLabsTTSModel,
 } from "@/lib/utils/voiceModels";
 import {
   encryptLocalSecret,
@@ -75,7 +78,14 @@ const VoiceSettings = () => {
   useEffect(() => {
     const updates: Partial<VoiceSettingsConfig> = {};
 
-    if (voice.sttProvider === "model") {
+    if (
+      voice.sttProvider === "default" &&
+      serverConfig &&
+      !serverConfig.voice.defaultSttAvailable
+    ) {
+      updates.sttProvider = "browser";
+      updates.sttModel = "";
+    } else if (voice.sttProvider === "model") {
       const fallbackModel = audioInputModels[0]?.id;
       const selectedModelAvailable = audioInputModels.some(
         (model) => model.id === voice.sttModel,
@@ -111,6 +121,17 @@ const VoiceSettings = () => {
           updates.ttsProvider = "browser";
         }
       }
+    } else if (
+      voice.ttsProvider === "default" &&
+      serverConfig &&
+      !serverConfig.voice.defaultTtsAvailable
+    ) {
+      updates.ttsProvider = "browser";
+    } else if (
+      voice.ttsProvider === "elevenlabs" &&
+      !isElevenLabsTTSModel(voice.ttsModel)
+    ) {
+      updates.ttsModel = DEFAULT_ELEVENLABS_TTS_MODEL;
     }
 
     if (Object.keys(updates).length > 0) {
@@ -119,6 +140,7 @@ const VoiceSettings = () => {
   }, [
     audioInputModels,
     audioOutputModels,
+    serverConfig,
     updateVoiceSettings,
     voice.sttModel,
     voice.sttProvider,
@@ -127,7 +149,7 @@ const VoiceSettings = () => {
   ]);
 
   const sttProviderOptions = [
-    ...(serverConfig?.voice.defaultProvider
+    ...(serverConfig?.voice.defaultSttAvailable
       ? [{ value: "default", label: t("providerDefault") }]
       : []),
     { value: "browser", label: t("providerBrowser") },
@@ -139,7 +161,7 @@ const VoiceSettings = () => {
   ];
 
   const ttsProviderOptions = [
-    ...(serverConfig?.voice.defaultProvider
+    ...(serverConfig?.voice.defaultTtsAvailable
       ? [{ value: "default", label: t("providerDefault") }]
       : []),
     { value: "browser", label: t("providerBrowser") },
@@ -177,6 +199,10 @@ const VoiceSettings = () => {
     value: modelId,
     label: modelId === "scribe_v2" ? t("scribeV2") : t("scribeV1"),
   }));
+  const elevenLabsTTSModels = ELEVENLABS_TTS_MODELS.map((modelId) => ({
+    value: modelId,
+    label: modelId,
+  }));
 
   const currentSTTModels =
     voice.sttProvider === "elevenlabs"
@@ -185,10 +211,13 @@ const VoiceSettings = () => {
         ? [{ value: MIMO_STT_MODEL, label: MIMO_STT_MODEL }]
         : audioInputModels.map((m) => ({ value: m.id, label: m.name }));
 
-  const currentTTSModels = audioOutputModels.map((m) => ({
-    value: m.id,
-    label: m.name,
-  }));
+  const currentTTSModels =
+    voice.ttsProvider === "elevenlabs"
+      ? elevenLabsTTSModels
+      : audioOutputModels.map((m) => ({
+          value: m.id,
+          label: m.name,
+        }));
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -333,11 +362,7 @@ const VoiceSettings = () => {
                 };
 
                 if (newVal === "default") {
-                  updates.sttModel =
-                    serverConfig?.voice.sttModel ||
-                    (serverConfig?.voice.defaultProvider === "mimo"
-                      ? MIMO_STT_MODEL
-                      : "scribe_v2");
+                  updates.sttModel = serverConfig?.voice.sttModel || "";
                 } else if (newVal === "model" && audioInputModels.length > 0) {
                   if (
                     !voice.sttModel ||
@@ -421,8 +446,13 @@ const VoiceSettings = () => {
                   if (serverConfig?.voice.defaultProvider === "mimo") {
                     updates.mimoTtsVoiceId =
                       serverConfig.voice.mimoTtsVoiceId || "mimo_default";
-                  } else if (serverConfig?.voice.ttsVoiceId) {
-                    updates.ttsVoiceId = serverConfig.voice.ttsVoiceId;
+                  } else {
+                    if (serverConfig?.voice.ttsVoiceId) {
+                      updates.ttsVoiceId = serverConfig.voice.ttsVoiceId;
+                    }
+                    if (serverConfig?.voice.ttsModel) {
+                      updates.ttsModel = serverConfig.voice.ttsModel;
+                    }
                   }
                 } else if (newVal === "model" && audioOutputModels.length > 0) {
                   if (
@@ -434,6 +464,10 @@ const VoiceSettings = () => {
                 } else if (newVal === "mimo") {
                   updates.mimoTtsVoiceId =
                     voice.mimoTtsVoiceId || "mimo_default";
+                } else if (newVal === "elevenlabs") {
+                  if (!isElevenLabsTTSModel(voice.ttsModel)) {
+                    updates.ttsModel = DEFAULT_ELEVENLABS_TTS_MODEL;
+                  }
                 }
                 updateVoiceSettings(updates);
               }}
@@ -487,14 +521,21 @@ const VoiceSettings = () => {
             </div>
           )}
 
-          {voice.ttsProvider === "model" && (
+          {(voice.ttsProvider === "model" ||
+            voice.ttsProvider === "elevenlabs") && (
             <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-medium text-gray-500 dark:text-muted-foreground">
                 {t("selectModel")}
               </label>
               <CustomSelect
                 ariaLabel={t("ttsModelAria")}
-                value={voice.ttsModel || ""}
+                value={
+                  voice.ttsProvider === "elevenlabs"
+                    ? isElevenLabsTTSModel(voice.ttsModel)
+                      ? voice.ttsModel
+                      : DEFAULT_ELEVENLABS_TTS_MODEL
+                    : voice.ttsModel || ""
+                }
                 onChange={(val) => updateVoiceSettings({ ttsModel: val })}
                 options={currentTTSModels}
               />

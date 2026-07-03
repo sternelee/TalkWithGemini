@@ -6,6 +6,13 @@ import type {
   ServiceHealthState,
   ServiceHealthStatus,
 } from "@/types";
+import {
+  getDefaultElevenLabsSttModel,
+  getDefaultElevenLabsTtsModel,
+  getDefaultMimoSttModel,
+  getDefaultMimoTtsModel,
+  getDefaultVoiceProvider,
+} from "../defaultConfig/server";
 import { getDeploymentMode } from "../security/deployment";
 
 type StoreEnvName =
@@ -117,9 +124,28 @@ function ragHealth(): ServiceHealthItem {
 }
 
 function voiceHealth(): ServiceHealthItem {
-  if (env("DEFAULT_ELEVENLABS_API_KEY") || env("DEFAULT_MIMO_API_KEY")) {
+  const configuredProvider = env("DEFAULT_VOICE_PROVIDER").toLowerCase();
+  if (!configuredProvider) {
+    return item("voice", "unconfigured", "VOICE_UNCONFIGURED");
+  }
+  if (configuredProvider !== "elevenlabs" && configuredProvider !== "mimo") {
+    return item("voice", "unconfigured", "VOICE_UNCONFIGURED");
+  }
+
+  const defaultProvider = getDefaultVoiceProvider();
+  if (!defaultProvider) {
+    return item("voice", "missing_key", "VOICE_API_KEY_MISSING");
+  }
+
+  const hasDefaultCapability =
+    defaultProvider === "mimo"
+      ? Boolean(getDefaultMimoSttModel() || getDefaultMimoTtsModel())
+      : Boolean(getDefaultElevenLabsSttModel() || getDefaultElevenLabsTtsModel());
+
+  if (hasDefaultCapability) {
     return item("voice", "available", "VOICE_CONFIGURED");
   }
+
   return item("voice", "unconfigured", "VOICE_UNCONFIGURED");
 }
 

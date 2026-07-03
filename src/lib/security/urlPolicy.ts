@@ -189,7 +189,7 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
       return {
         context,
         allowedProtocols: ["https:"],
-        allowedHosts: ["api.elevenlabs.io"],
+        allowedHosts: ["api.elevenlabs.io", "api.xiaomimimo.com"],
         profile,
       };
     case "agent":
