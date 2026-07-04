@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   safeFetchJson: vi.fn(),
+  safeFetchText: vi.fn(),
+  safeFetchArrayBuffer: vi.fn(),
   decryptSecretEnvelope: vi.fn(),
   decryptOptionalSecret: vi.fn(),
   resolveProviderRuntimeConfig: vi.fn(),
@@ -11,6 +13,8 @@ vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/security/safeFetch", () => ({
   safeFetchJson: mocks.safeFetchJson,
+  safeFetchText: mocks.safeFetchText,
+  safeFetchArrayBuffer: mocks.safeFetchArrayBuffer,
 }));
 
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
@@ -80,10 +84,17 @@ const apiKeySecret = {
   context: "search:tavily",
 } as const;
 
+const mineruTokenSecret = {
+  ...apiKeySecret,
+  context: "docs:mineru",
+};
+
 describe("BYOK route integration", () => {
   beforeEach(() => {
     vi.resetModules();
     mocks.safeFetchJson.mockReset();
+    mocks.safeFetchText.mockReset();
+    mocks.safeFetchArrayBuffer.mockReset();
     mocks.decryptSecretEnvelope.mockReset();
     mocks.decryptOptionalSecret.mockReset();
     mocks.resolveProviderRuntimeConfig.mockReset();
@@ -193,6 +204,7 @@ describe("BYOK route integration", () => {
       JSON.stringify({ ...apiKeySecret, context: "docs:llama-parse" }),
     );
     formData.set("apiKey", "llama-plaintext");
+    formData.set("provider", "llamaParse");
 
     const response = await POST(
       new Request("https://neo.test/api/doc-parse", {
@@ -206,6 +218,32 @@ describe("BYOK route integration", () => {
     expect(mocks.safeFetchJson).not.toHaveBeenCalled();
     expect(JSON.stringify(await response.json())).not.toContain(
       "llama-plaintext",
+    );
+  });
+
+  it("rejects plaintext Mineru document parse tokens in multipart requests", async () => {
+    const { POST } = await import("../app/api/doc-parse/route");
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "doc.pdf", { type: "application/pdf" }),
+    );
+    formData.set("provider", "mineru");
+    formData.set("apiKeySecret", JSON.stringify(mineruTokenSecret));
+    formData.set("apiToken", "mineru-plaintext");
+
+    const response = await POST(
+      new Request("https://neo.test/api/doc-parse", {
+        method: "POST",
+        body: formData,
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.decryptSecretEnvelope).not.toHaveBeenCalled();
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
+    expect(JSON.stringify(await response.json())).not.toContain(
+      "mineru-plaintext",
     );
   });
 

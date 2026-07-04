@@ -426,7 +426,9 @@ export const RAGUpsertSchema = z
 export const DocumentParseSchema = z
   .object({
     file: z.instanceof(File),
+    provider: z.enum(["mineru", "llamaParse"]).default("mineru"),
     apiKey: z.unknown().optional(),
+    apiToken: z.unknown().optional(),
     apiKeySecret: EncryptedSecretEnvelopeSchema.optional(),
     useDefault: z.boolean().optional(),
   })
@@ -438,7 +440,17 @@ export const DocumentParseSchema = z
       ["apiKey"],
       "Document parse API key",
     );
-    if (!request.useDefault && !request.apiKeySecret) {
+    rejectPlainSecretField(
+      request.apiToken,
+      ctx,
+      ["apiToken"],
+      "Document parse API token",
+    );
+    if (
+      !request.useDefault &&
+      request.provider === "llamaParse" &&
+      !request.apiKeySecret
+    ) {
       ctx.addIssue({
         code: "custom",
         path: ["apiKeySecret"],
@@ -446,7 +458,9 @@ export const DocumentParseSchema = z
       });
     }
   })
-  .transform((request) => omitPlainSecretField(request, "apiKey"));
+  .transform((request) =>
+    omitPlainSecretField(omitPlainSecretField(request, "apiKey"), "apiToken"),
+  );
 
 export const ImageGenerateRequestSchema = z
   .object({

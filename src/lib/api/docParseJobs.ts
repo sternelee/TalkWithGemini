@@ -1,25 +1,40 @@
 import "server-only";
 
+import { strFromU8, unzipSync } from "fflate";
 import { v7 as uuidv7 } from "uuid";
+import type { DocumentParseProvider } from "@/types";
 import type { EncryptedSecretEnvelope } from "@/lib/byok/shared";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptSecretEnvelope } from "@/lib/byok/server";
-import { getDefaultLlamaParseApiKey } from "@/lib/defaultConfig/server";
-import { safeFetchJson } from "@/lib/security/safeFetch";
+import { getDefaultDocumentParseToken } from "@/lib/defaultConfig/server";
+import {
+  safeFetchArrayBuffer,
+  safeFetchJson,
+  safeFetchText,
+} from "@/lib/security/safeFetch";
 import { getSafeUrlPolicy } from "@/lib/security/urlPolicy";
 import { getDeploymentMode } from "../security/deployment";
 
 const LLAMA_PARSE_URL = "https://api.cloud.llamaindex.ai/api/v2/parse";
+const MINERU_AGENT_URL = "https://mineru.net/api/v1/agent";
+const MINERU_PRECISE_URL = "https://mineru.net/api/v4";
 const JOB_TTL_MS = 10 * 60 * 1000;
 
 export type DocumentParseJobStatus = "pending" | "completed" | "failed";
 
 export interface DocumentParseJob {
   id: string;
+  provider: DocumentParseProvider;
+  mode?: "llama-parse" | "mineru-agent" | "mineru-precise";
   upstreamJobId: string;
   credential:
+    | { kind: "none" }
     | { kind: "default" }
-    | { kind: "encrypted"; apiKeySecret: EncryptedSecretEnvelope };
+    | {
+        kind: "encrypted";
+        provider?: DocumentParseProvider;
+        apiKeySecret: EncryptedSecretEnvelope;
+      };
   createdAt: number;
 }
 
@@ -182,13 +197,25 @@ export function setDocumentParseJobStoreForTesting(
   configuredJobStore = store;
 }
 
-async function resolveJobApiKey(job: DocumentParseJob): Promise<string> {
+function getCredentialContext(provider: DocumentParseProvider): string {
+  return provider === "mineru"
+    ? BYOK_CONTEXTS.mineru
+    : BYOK_CONTEXTS.llamaParse;
+}
+
+function getJobProvider(job: DocumentParseJob): DocumentParseProvider {
+  return job.provider || "llamaParse";
+}
+
+async function resolveJobToken(job: DocumentParseJob): Promise<string> {
+  const provider = getJobProvider(job);
+  if (job.credential.kind === "none") return "";
   if (job.credential.kind === "default") {
-    return getDefaultLlamaParseApiKey();
+    return getDefaultDocumentParseToken(provider);
   }
   return decryptSecretEnvelope(
     job.credential.apiKeySecret,
-    BYOK_CONTEXTS.llamaParse,
+    getCredentialContext(job.credential.provider || provider),
   );
 }
 
@@ -202,19 +229,64 @@ async function storeDocumentParseJob(job: DocumentParseJob): Promise<void> {
 }
 
 export interface CreateDocumentParseJobOptions {
-  apiKey: string;
+  provider: DocumentParseProvider;
+  apiKey?: string;
   credential:
+    | { kind: "none" }
     | { kind: "default" }
-    | { kind: "encrypted"; apiKeySecret: EncryptedSecretEnvelope };
+    | {
+        kind: "encrypted";
+        provider?: DocumentParseProvider;
+        apiKeySecret: EncryptedSecretEnvelope;
+      };
 }
 
-export async function createDocumentParseJob(
+function createUpstreamError(message: string, status?: number): Error {
+  const error = new Error(message);
+  if (status !== undefined) {
+    (error as Error & { statusCode?: number }).statusCode = status;
+  }
+  return error;
+}
+
+function getMineruMessage(data: any, fallback: string): string {
+  return typeof data?.msg === "string" && data.msg.trim()
+    ? data.msg.trim()
+    : fallback;
+}
+
+function assertMineruCodeOk(data: any, fallback: string) {
+  if (data?.code === 0) return;
+  throw new Error(getMineruMessage(data, fallback));
+}
+
+async function uploadSignedDocumentFile(file: File, url: string) {
+  const { response } = await safeFetchText(
+    url,
+    {
+      method: "PUT",
+      body: file,
+    },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 60_000,
+      maxResponseBytes: 1024 * 1024,
+    },
+  );
+
+  if (!response.ok) {
+    throw createUpstreamError(
+      `Mineru signed upload failed with status ${response.status}`,
+      response.status,
+    );
+  }
+}
+
+async function createLlamaParseJob(
   file: File,
   options: CreateDocumentParseJobOptions,
 ): Promise<DocumentParseJob> {
-  await getDocumentParseJobStore().expire?.();
-
-  const apiKey = options.apiKey.trim();
+  const apiKey = options.apiKey?.trim() || "";
   if (!apiKey) {
     throw new Error("Document parse API key is required");
   }
@@ -262,23 +334,154 @@ export async function createDocumentParseJob(
   );
 
   if (!response.ok) {
-    const error = new Error(
+    throw createUpstreamError(
       `LlamaParse upload failed with status ${response.status}`,
+      response.status,
     );
-    (error as Error & { statusCode?: number }).statusCode = response.status;
-    throw error;
   }
 
   if (typeof data?.id !== "string" || !data.id.trim()) {
     throw new Error("LlamaParse upload did not return a job id");
   }
 
-  const job = {
+  return {
     id: uuidv7(),
+    provider: "llamaParse",
+    mode: "llama-parse",
     upstreamJobId: data.id,
     credential: options.credential,
     createdAt: Date.now(),
   };
+}
+
+async function createMineruAgentJob(
+  file: File,
+  options: CreateDocumentParseJobOptions,
+): Promise<DocumentParseJob> {
+  const { response, data } = await safeFetchJson<any>(
+    `${MINERU_AGENT_URL}/parse/file`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        file_name: file.name,
+        language: "ch",
+        enable_table: true,
+        is_ocr: false,
+        enable_formula: true,
+      }),
+    },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 30_000,
+      maxResponseBytes: 1024 * 1024,
+    },
+  );
+
+  if (!response.ok) {
+    throw createUpstreamError(
+      `Mineru task creation failed with status ${response.status}`,
+      response.status,
+    );
+  }
+  assertMineruCodeOk(data, "Mineru task creation failed");
+
+  const taskId = data?.data?.task_id;
+  const fileUrl = data?.data?.file_url;
+  if (typeof taskId !== "string" || !taskId.trim()) {
+    throw new Error("Mineru task creation did not return a task id");
+  }
+  if (typeof fileUrl !== "string" || !fileUrl.trim()) {
+    throw new Error("Mineru task creation did not return an upload URL");
+  }
+
+  await uploadSignedDocumentFile(file, fileUrl);
+
+  return {
+    id: uuidv7(),
+    provider: "mineru",
+    mode: "mineru-agent",
+    upstreamJobId: taskId,
+    credential: options.credential,
+    createdAt: Date.now(),
+  };
+}
+
+async function createMineruPreciseJob(
+  file: File,
+  options: CreateDocumentParseJobOptions,
+): Promise<DocumentParseJob> {
+  const apiKey = options.apiKey?.trim() || "";
+  if (!apiKey) {
+    throw new Error("Document parse API token is required");
+  }
+
+  const { response, data } = await safeFetchJson<any>(
+    `${MINERU_PRECISE_URL}/file-urls/batch`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        files: [{ name: file.name }],
+        model_version: "vlm",
+      }),
+    },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 30_000,
+      maxResponseBytes: 1024 * 1024,
+    },
+  );
+
+  if (!response.ok) {
+    throw createUpstreamError(
+      `Mineru upload URL creation failed with status ${response.status}`,
+      response.status,
+    );
+  }
+  assertMineruCodeOk(data, "Mineru upload URL creation failed");
+
+  const batchId = data?.data?.batch_id;
+  const fileUrl = Array.isArray(data?.data?.file_urls)
+    ? data.data.file_urls[0]
+    : undefined;
+  if (typeof batchId !== "string" || !batchId.trim()) {
+    throw new Error("Mineru upload URL creation did not return a batch id");
+  }
+  if (typeof fileUrl !== "string" || !fileUrl.trim()) {
+    throw new Error("Mineru upload URL creation did not return an upload URL");
+  }
+
+  await uploadSignedDocumentFile(file, fileUrl);
+
+  return {
+    id: uuidv7(),
+    provider: "mineru",
+    mode: "mineru-precise",
+    upstreamJobId: batchId,
+    credential: options.credential,
+    createdAt: Date.now(),
+  };
+}
+
+export async function createDocumentParseJob(
+  file: File,
+  options: CreateDocumentParseJobOptions,
+): Promise<DocumentParseJob> {
+  await getDocumentParseJobStore().expire?.();
+
+  const job =
+    options.provider === "llamaParse"
+      ? await createLlamaParseJob(file, options)
+      : options.apiKey?.trim()
+        ? await createMineruPreciseJob(file, options)
+        : await createMineruAgentJob(file, options);
+
   await storeDocumentParseJob(job);
   return job;
 }
@@ -312,7 +515,12 @@ export async function pollDocumentParseJob(
   | { status: "completed"; markdown: string }
   | { status: "failed"; error: string }
 > {
-  const apiKey = await resolveJobApiKey(job);
+  const provider = getJobProvider(job);
+  if (provider === "mineru") {
+    return pollMineruDocumentParseJob(job);
+  }
+
+  const apiKey = await resolveJobToken(job);
   if (!apiKey) {
     await deleteDocumentParseJob(job.id);
     return {
@@ -360,6 +568,177 @@ export async function pollDocumentParseJob(
   }
 
   return { status: "pending" };
+}
+
+async function pollMineruDocumentParseJob(
+  job: DocumentParseJob,
+): ReturnType<typeof pollDocumentParseJob> {
+  return job.mode === "mineru-precise"
+    ? pollMineruPreciseJob(job)
+    : pollMineruAgentJob(job);
+}
+
+async function pollMineruAgentJob(
+  job: DocumentParseJob,
+): ReturnType<typeof pollDocumentParseJob> {
+  const { response, data } = await safeFetchJson<any>(
+    `${MINERU_AGENT_URL}/parse/${encodeURIComponent(job.upstreamJobId)}`,
+    {
+      method: "GET",
+    },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 30_000,
+      maxResponseBytes: 1024 * 1024,
+    },
+  );
+
+  if (!response.ok) {
+    return {
+      status: "failed",
+      error: `Mineru status check failed with status ${response.status}`,
+    };
+  }
+  assertMineruCodeOk(data, "Mineru status check failed");
+
+  const state = data?.data?.state;
+  if (state === "done") {
+    const markdownUrl = data?.data?.markdown_url;
+    if (typeof markdownUrl !== "string" || !markdownUrl.trim()) {
+      await deleteDocumentParseJob(job.id);
+      return { status: "failed", error: "Mineru did not return Markdown URL" };
+    }
+
+    const markdown = await downloadMarkdown(markdownUrl);
+    await deleteDocumentParseJob(job.id);
+    return { status: "completed", markdown };
+  }
+
+  if (state === "failed") {
+    await deleteDocumentParseJob(job.id);
+    return {
+      status: "failed",
+      error: data?.data?.err_msg || "Mineru job failed",
+    };
+  }
+
+  return { status: "pending" };
+}
+
+async function pollMineruPreciseJob(
+  job: DocumentParseJob,
+): ReturnType<typeof pollDocumentParseJob> {
+  const apiKey = await resolveJobToken(job);
+  if (!apiKey) {
+    await deleteDocumentParseJob(job.id);
+    return {
+      status: "failed",
+      error: "Document parse API token is no longer available",
+    };
+  }
+
+  const { response, data } = await safeFetchJson<any>(
+    `${MINERU_PRECISE_URL}/extract-results/batch/${encodeURIComponent(
+      job.upstreamJobId,
+    )}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 30_000,
+      maxResponseBytes: 1024 * 1024,
+    },
+  );
+
+  if (!response.ok) {
+    return {
+      status: "failed",
+      error: `Mineru status check failed with status ${response.status}`,
+    };
+  }
+  assertMineruCodeOk(data, "Mineru status check failed");
+
+  const result = Array.isArray(data?.data?.extract_result)
+    ? data.data.extract_result[0]
+    : undefined;
+  const state = result?.state;
+  if (state === "done") {
+    const zipUrl = result?.full_zip_url;
+    if (typeof zipUrl !== "string" || !zipUrl.trim()) {
+      await deleteDocumentParseJob(job.id);
+      return {
+        status: "failed",
+        error: "Mineru did not return result ZIP URL",
+      };
+    }
+
+    const markdown = await downloadMineruZipMarkdown(zipUrl);
+    await deleteDocumentParseJob(job.id);
+    return { status: "completed", markdown };
+  }
+
+  if (state === "failed") {
+    await deleteDocumentParseJob(job.id);
+    return {
+      status: "failed",
+      error: result?.err_msg || "Mineru job failed",
+    };
+  }
+
+  return { status: "pending" };
+}
+
+async function downloadMarkdown(url: string): Promise<string> {
+  const { response, text } = await safeFetchText(
+    url,
+    { method: "GET" },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 30_000,
+      maxResponseBytes: 20 * 1024 * 1024,
+    },
+  );
+  if (!response.ok) {
+    throw createUpstreamError(
+      `Mineru Markdown download failed with status ${response.status}`,
+      response.status,
+    );
+  }
+  return text;
+}
+
+export function extractMarkdownFromMineruZip(arrayBuffer: ArrayBuffer): string {
+  const files = unzipSync(new Uint8Array(arrayBuffer));
+  const entry = Object.entries(files).find(
+    ([name]) => name === "full.md" || name.endsWith("/full.md"),
+  );
+  if (!entry) {
+    throw new Error("Mineru result ZIP did not contain full.md");
+  }
+  return strFromU8(entry[1]);
+}
+
+async function downloadMineruZipMarkdown(url: string): Promise<string> {
+  const { response, arrayBuffer } = await safeFetchArrayBuffer(
+    url,
+    { method: "GET" },
+    {
+      policy: getSafeUrlPolicy("docs"),
+      timeoutMs: 30_000,
+      maxResponseBytes: 50 * 1024 * 1024,
+    },
+  );
+  if (!response.ok) {
+    throw createUpstreamError(
+      `Mineru result ZIP download failed with status ${response.status}`,
+      response.status,
+    );
+  }
+  return extractMarkdownFromMineruZip(arrayBuffer);
 }
 
 export function clearDocumentParseJobs(): void {

@@ -10,6 +10,7 @@ import { normalizeProviderModelId } from "../providers/models";
 import { normalizeSystemSettings } from "../settings/appConfig";
 import type {
   DefaultModels,
+  DocumentParseProvider,
   MimoVoiceID,
   ModelMetadata,
   ProviderType,
@@ -31,6 +32,7 @@ import {
   isElevenLabsSTTModel,
   isElevenLabsTTSModel,
 } from "../utils/voiceModels";
+import { normalizeDocumentParseProvider } from "../settings/searchRag";
 
 const DEFAULT_PROVIDER_NAME = "Default";
 const DEFAULT_ELEVENLABS_STT_MODEL = "scribe_v2";
@@ -321,6 +323,31 @@ export function getDefaultLlamaParseApiKey(): string {
   );
 }
 
+export function getDefaultDocumentParseProvider(): DocumentParseProvider {
+  return normalizeDocumentParseProvider(env("DEFAULT_DOCUMENT_PARSE_PROVIDER"));
+}
+
+export function getDefaultMineruApiToken(): string {
+  return env("DEFAULT_MINERU_API_TOKEN").slice(
+    0,
+    RAG_LIMITS.maxMineruApiTokenChars,
+  );
+}
+
+export function getDefaultDocumentParseToken(
+  provider: DocumentParseProvider,
+): string {
+  return provider === "mineru"
+    ? getDefaultMineruApiToken()
+    : getDefaultLlamaParseApiKey();
+}
+
+export function isDefaultDocumentProcessingAvailable(
+  provider = getDefaultDocumentParseProvider(),
+): boolean {
+  return provider === "mineru" || Boolean(getDefaultLlamaParseApiKey());
+}
+
 export function getDefaultElevenLabsApiKey(): string {
   return env("DEFAULT_ELEVENLABS_API_KEY");
 }
@@ -454,6 +481,10 @@ export function getPublicServerConfig(): PublicServerConfig {
   const defaultProvider = getDefaultProviderRuntimeConfig();
   const defaultProviderModels = getDefaultProviderModels();
   const rag = getDefaultRagRuntimeConfig();
+  const documentProcessingProvider = getDefaultDocumentParseProvider();
+  const documentProcessingAvailable = isDefaultDocumentProcessingAvailable(
+    documentProcessingProvider,
+  );
   const defaultElevenLabsApiKey = getDefaultElevenLabsApiKey();
   const defaultMimoApiKey = getDefaultMimoApiKey();
   const defaultVoiceProvider = getDefaultVoiceProvider();
@@ -500,7 +531,8 @@ export function getPublicServerConfig(): PublicServerConfig {
     },
     rag: {
       vectorStoreAvailable: Boolean(rag),
-      documentProcessingAvailable: Boolean(getDefaultLlamaParseApiKey()),
+      documentProcessingAvailable,
+      ...(documentProcessingAvailable ? { documentProcessingProvider } : {}),
       ...(rag?.topK !== undefined ? { topK: rag.topK } : {}),
       ...(rag?.chunkSize !== undefined ? { chunkSize: rag.chunkSize } : {}),
       ...(rag?.namespace ? { namespace: rag.namespace } : {}),

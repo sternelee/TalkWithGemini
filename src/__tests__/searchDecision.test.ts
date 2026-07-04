@@ -19,16 +19,28 @@ describe("search decision helpers", () => {
   });
 
   it("builds numbered search context that instructs the model to cite sources", async () => {
-    const context = buildSearchContextForPrompt([
-      {
-        title: "Neo Chat",
-        url: "https://example.com/neo-chat",
-        content: "Neo Chat search context",
-      },
-    ]);
+    const context = buildSearchContextForPrompt({
+      sources: [
+        {
+          title: "Neo Chat",
+          url: "https://example.com/neo-chat",
+          content: "Neo Chat search context",
+        },
+      ],
+      images: [
+        {
+          url: "https://example.com/neo-chat.png",
+          description: "Neo Chat product screenshot",
+        },
+      ],
+    });
 
     expect(context).toContain("[1]");
     expect(context).toContain("https://example.com/neo-chat");
     expect(context).toContain("Use citations like [1]");
+    expect(context).toContain("Use Markdown images");
+    expect(context).toContain("![");
+    expect(context).toContain("https://example.com/neo-chat.png");
+    expect(context).toContain("Neo Chat product screenshot");
   });
 });

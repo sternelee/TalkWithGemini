@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const safeFetchJsonMock = vi.hoisted(() => vi.fn());
+const safeFetchTextMock = vi.hoisted(() => vi.fn());
+const safeFetchArrayBufferMock = vi.hoisted(() => vi.fn());
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
@@ -25,13 +27,98 @@ vi.mock("@/lib/utils/safeServerLog", () => ({
 }));
 vi.mock("@/lib/security/safeFetch", () => ({
   safeFetchJson: safeFetchJsonMock,
+  safeFetchText: safeFetchTextMock,
+  safeFetchArrayBuffer: safeFetchArrayBufferMock,
 }));
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let index = 0; index < 8; index += 1) {
+      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function createStoredZip(fileName: string, text: string): ArrayBuffer {
+  const encoder = new TextEncoder();
+  const nameBytes = encoder.encode(fileName);
+  const dataBytes = encoder.encode(text);
+  const checksum = crc32(dataBytes);
+  const localHeaderSize = 30 + nameBytes.byteLength;
+  const centralOffset = localHeaderSize + dataBytes.byteLength;
+  const centralSize = 46 + nameBytes.byteLength;
+  const totalSize = centralOffset + centralSize + 22;
+  const bytes = new Uint8Array(totalSize);
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+  const writeUint16 = (value: number) => {
+    view.setUint16(offset, value, true);
+    offset += 2;
+  };
+  const writeUint32 = (value: number) => {
+    view.setUint32(offset, value, true);
+    offset += 4;
+  };
+  const writeBytes = (value: Uint8Array) => {
+    bytes.set(value, offset);
+    offset += value.byteLength;
+  };
+
+  writeUint32(0x04034b50);
+  writeUint16(20);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint32(checksum);
+  writeUint32(dataBytes.byteLength);
+  writeUint32(dataBytes.byteLength);
+  writeUint16(nameBytes.byteLength);
+  writeUint16(0);
+  writeBytes(nameBytes);
+  writeBytes(dataBytes);
+
+  writeUint32(0x02014b50);
+  writeUint16(20);
+  writeUint16(20);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint32(checksum);
+  writeUint32(dataBytes.byteLength);
+  writeUint32(dataBytes.byteLength);
+  writeUint16(nameBytes.byteLength);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint32(0);
+  writeUint32(0);
+  writeBytes(nameBytes);
+
+  writeUint32(0x06054b50);
+  writeUint16(0);
+  writeUint16(0);
+  writeUint16(1);
+  writeUint16(1);
+  writeUint32(centralSize);
+  writeUint32(centralOffset);
+  writeUint16(0);
+
+  return bytes.buffer;
+}
 
 describe("document parse jobs", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     safeFetchJsonMock.mockReset();
+    safeFetchTextMock.mockReset();
+    safeFetchArrayBufferMock.mockReset();
     const { clearDocumentParseJobs } = await import("../lib/api/docParseJobs");
     clearDocumentParseJobs();
   });
@@ -57,6 +144,7 @@ describe("document parse jobs", () => {
       new File(["hello"], "doc.txt", { type: "text/plain" }),
     );
     formData.set("useDefault", "true");
+    formData.set("provider", "llamaParse");
 
     const { POST } = await import("../app/api/doc-parse/route");
     const startResponse = await POST(
@@ -103,6 +191,7 @@ describe("document parse jobs", () => {
       createDocumentParseJob(
         new File(["hello"], "doc.txt", { type: "text/plain" }),
         {
+          provider: "llamaParse",
           apiKey: "llama-secret",
           credential: { kind: "default" },
         },
@@ -132,6 +221,7 @@ describe("document parse jobs", () => {
       createDocumentParseJob(
         new File(["hello"], "doc.txt", { type: "text/plain" }),
         {
+          provider: "llamaParse",
           apiKey: "llama-secret",
           credential: { kind: "default" },
         },
@@ -152,6 +242,7 @@ describe("document parse jobs", () => {
       new File(["hello"], "doc.txt", { type: "text/plain" }),
     );
     formData.set("useDefault", "true");
+    formData.set("provider", "llamaParse");
 
     const { POST } = await import("../app/api/doc-parse/route");
     const startResponse = await POST(
@@ -179,5 +270,198 @@ describe("document parse jobs", () => {
       { params: Promise.resolve({ id: started.jobId }) },
     );
     expect(getResponse.status).toBe(404);
+  });
+
+  it("parses files through Mineru agent mode without a token", async () => {
+    safeFetchJsonMock
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 200 }),
+        data: {
+          code: 0,
+          data: {
+            task_id: "mineru-agent-task",
+            file_url: "https://oss-mineru.openxlab.org.cn/upload.pdf",
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 200 }),
+        data: {
+          code: 0,
+          data: {
+            state: "done",
+            markdown_url:
+              "https://cdn-mineru.openxlab.org.cn/mineru-agent-task/full.md",
+          },
+        },
+      });
+    safeFetchTextMock
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 200 }),
+        text: "",
+        url: "https://oss-mineru.openxlab.org.cn/upload.pdf",
+      })
+      .mockResolvedValueOnce({
+        response: new Response("agent markdown", { status: 200 }),
+        text: "agent markdown",
+        url: "https://cdn-mineru.openxlab.org.cn/mineru-agent-task/full.md",
+      });
+
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "doc.pdf", { type: "application/pdf" }),
+    );
+    formData.set("useDefault", "true");
+    formData.set("provider", "mineru");
+
+    const { POST } = await import("../app/api/doc-parse/route");
+    const startResponse = await POST(
+      new Request("https://neo.test/api/doc-parse", {
+        method: "POST",
+        body: formData,
+      }) as any,
+    );
+    const started = await startResponse.json();
+
+    expect(startResponse.status).toBe(202);
+    expect(safeFetchJsonMock).toHaveBeenCalledWith(
+      "https://mineru.net/api/v1/agent/parse/file",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.not.objectContaining({
+          Authorization: expect.any(String),
+        }),
+      }),
+      expect.any(Object),
+    );
+
+    const { getDocumentParseJob } = await import("../lib/api/docParseJobs");
+    await expect(getDocumentParseJob(started.jobId)).resolves.toMatchObject({
+      provider: "mineru",
+      upstreamJobId: "mineru-agent-task",
+      credential: { kind: "default" },
+    });
+
+    const { GET } = await import("../app/api/doc-parse/jobs/[id]/route");
+    const statusResponse = await GET(
+      new Request(
+        `https://neo.test/api/doc-parse/jobs/${started.jobId}`,
+      ) as any,
+      { params: Promise.resolve({ id: started.jobId }) },
+    );
+
+    expect(statusResponse.status).toBe(200);
+    expect(await statusResponse.json()).toEqual({
+      status: "completed",
+      markdown: "agent markdown",
+    });
+  });
+
+  it("parses files through Mineru precise mode when a default token is configured", async () => {
+    vi.stubEnv("DEFAULT_MINERU_API_TOKEN", "mineru-secret");
+    safeFetchJsonMock
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 200 }),
+        data: {
+          code: 0,
+          data: {
+            batch_id: "mineru-batch",
+            file_urls: ["https://mineru.oss-cn-shanghai.aliyuncs.com/doc.pdf"],
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 200 }),
+        data: {
+          code: 0,
+          data: {
+            extract_result: [
+              {
+                state: "done",
+                full_zip_url:
+                  "https://cdn-mineru.openxlab.org.cn/mineru-batch/result.zip",
+              },
+            ],
+          },
+        },
+      });
+    safeFetchTextMock.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      text: "",
+      url: "https://mineru.oss-cn-shanghai.aliyuncs.com/doc.pdf",
+    });
+    safeFetchArrayBufferMock.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      arrayBuffer: createStoredZip("full.md", "precise markdown"),
+      url: "https://cdn-mineru.openxlab.org.cn/mineru-batch/result.zip",
+    });
+
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "doc.pdf", { type: "application/pdf" }),
+    );
+    formData.set("useDefault", "true");
+    formData.set("provider", "mineru");
+
+    const { POST } = await import("../app/api/doc-parse/route");
+    const startResponse = await POST(
+      new Request("https://neo.test/api/doc-parse", {
+        method: "POST",
+        body: formData,
+      }) as any,
+    );
+    const started = await startResponse.json();
+
+    expect(startResponse.status).toBe(202);
+    expect(safeFetchJsonMock).toHaveBeenCalledWith(
+      "https://mineru.net/api/v4/file-urls/batch",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer mineru-secret",
+        }),
+        body: expect.stringContaining('"model_version":"vlm"'),
+      }),
+      expect.any(Object),
+    );
+
+    const { GET } = await import("../app/api/doc-parse/jobs/[id]/route");
+    const statusResponse = await GET(
+      new Request(
+        `https://neo.test/api/doc-parse/jobs/${started.jobId}`,
+      ) as any,
+      { params: Promise.resolve({ id: started.jobId }) },
+    );
+
+    expect(statusResponse.status).toBe(200);
+    expect(await statusResponse.json()).toEqual({
+      status: "completed",
+      markdown: "precise markdown",
+    });
+  });
+
+  it("rejects oversized Mineru no-token uploads before calling Mineru", async () => {
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    formData.set("useDefault", "true");
+    formData.set("provider", "mineru");
+
+    const { POST } = await import("../app/api/doc-parse/route");
+    const response = await POST(
+      new Request("https://neo.test/api/doc-parse", {
+        method: "POST",
+        body: formData,
+      }) as any,
+    );
+
+    expect(response.status).toBe(413);
+    expect(safeFetchJsonMock).not.toHaveBeenCalled();
+    expect(safeFetchTextMock).not.toHaveBeenCalled();
   });
 });

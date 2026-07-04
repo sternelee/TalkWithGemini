@@ -6,6 +6,8 @@ import type { LocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import type { SearchProviderID, SearchServiceConfig } from "../search/types";
 import type { VoiceSettings } from "../voice/types";
 
+export type DocumentParseProvider = "mineru" | "llamaParse";
+
 export interface RAGConfig {
   enabled: boolean;
   url: string;
@@ -13,6 +15,9 @@ export interface RAGConfig {
   tokenSecret?: LocalEncryptedSecretEnvelope;
   topK: number;
   chunkSize: number;
+  documentParseProvider: DocumentParseProvider;
+  mineruApiToken: string;
+  mineruApiTokenSecret?: LocalEncryptedSecretEnvelope;
   llamaParseApiKey: string;
   llamaParseApiKeySecret?: LocalEncryptedSecretEnvelope;
   namespace?: string;

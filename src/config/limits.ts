@@ -16,6 +16,7 @@ export const VOICE_LIMITS = {
 
 export const DOCUMENT_LIMITS = {
   maxParseFileBytes: 50 * 1024 * 1024,
+  maxMineruAgentParseFileBytes: 10 * 1024 * 1024,
 } as const;
 
 export const KNOWLEDGE_LIMITS = {
@@ -45,6 +46,7 @@ export const RAG_LIMITS = {
   maxBaseUrlChars: 2_048,
   maxTokenChars: 16_384,
   maxLlamaParseApiKeyChars: 16_384,
+  maxMineruApiTokenChars: 16_384,
   maxNamespaceChars: 200,
 } as const;
 

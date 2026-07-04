@@ -70,6 +70,8 @@ const ragConfig: RAGConfig = {
   token: "secret",
   topK: 10,
   chunkSize: 512,
+  documentParseProvider: "mineru",
+  mineruApiToken: "",
   llamaParseApiKey: "",
 };
 

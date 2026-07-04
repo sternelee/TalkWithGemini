@@ -46,6 +46,7 @@ export type {
 export type {
   AppSettings,
   DefaultModels,
+  DocumentParseProvider,
   RAGConfig,
   SystemSettings,
 } from "./lib/settings/types";

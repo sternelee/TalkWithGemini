@@ -8,7 +8,7 @@ import { DocumentParseSchema } from "@/lib/api/schemas";
 import { getUploadBlobValidationError } from "@/lib/api/uploads";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptSecretEnvelope } from "@/lib/byok/server";
-import { getDefaultLlamaParseApiKey } from "@/lib/defaultConfig/server";
+import { getDefaultDocumentParseToken } from "@/lib/defaultConfig/server";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 import { createDocumentParseJob } from "../../../lib/api/docParseJobs";
 
@@ -22,31 +22,43 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const apiKeySecretValue = formData.get("apiKeySecret");
-    const { file, apiKeySecret, useDefault } = DocumentParseSchema.parse({
-      file: formData.get("file"),
-      apiKeySecret:
-        typeof apiKeySecretValue === "string"
-          ? JSON.parse(apiKeySecretValue)
-          : undefined,
-      apiKey: formData.get("apiKey") || undefined,
-      useDefault: formData.get("useDefault") === "true",
-    });
+    const { file, provider, apiKeySecret, useDefault } =
+      DocumentParseSchema.parse({
+        file: formData.get("file"),
+        provider: formData.get("provider") || undefined,
+        apiKeySecret:
+          typeof apiKeySecretValue === "string"
+            ? JSON.parse(apiKeySecretValue)
+            : undefined,
+        apiKey: formData.get("apiKey") || undefined,
+        apiToken: formData.get("apiToken") || undefined,
+        useDefault: formData.get("useDefault") === "true",
+      });
     const apiKey = useDefault
-      ? getDefaultLlamaParseApiKey()
+      ? getDefaultDocumentParseToken(provider)
       : apiKeySecret
-        ? await decryptSecretEnvelope(apiKeySecret, BYOK_CONTEXTS.llamaParse)
+        ? await decryptSecretEnvelope(
+            apiKeySecret,
+            provider === "mineru"
+              ? BYOK_CONTEXTS.mineru
+              : BYOK_CONTEXTS.llamaParse,
+          )
         : "";
 
-    if (!apiKey) {
+    if (provider === "llamaParse" && !apiKey) {
       return NextResponse.json(
         { error: "Document parse API key is required" },
         { status: 400 },
       );
     }
 
+    const maxBytes =
+      provider === "mineru" && !apiKey
+        ? DOCUMENT_LIMITS.maxMineruAgentParseFileBytes
+        : DOCUMENT_LIMITS.maxParseFileBytes;
     const fileError = getUploadBlobValidationError(file, {
       label: "Document file",
-      maxBytes: DOCUMENT_LIMITS.maxParseFileBytes,
+      maxBytes,
     });
     if (fileError) {
       return NextResponse.json(
@@ -59,8 +71,14 @@ export async function POST(request: NextRequest) {
 
     const credential = useDefault
       ? ({ kind: "default" } as const)
-      : ({ kind: "encrypted", apiKeySecret: apiKeySecret! } as const);
-    const job = await createDocumentParseJob(file, { apiKey, credential });
+      : apiKeySecret
+        ? ({ kind: "encrypted", provider, apiKeySecret } as const)
+        : ({ kind: "none" } as const);
+    const job = await createDocumentParseJob(file, {
+      provider,
+      apiKey,
+      credential,
+    });
     return NextResponse.json(
       { jobId: job.id, status: "pending" },
       { status: 202 },

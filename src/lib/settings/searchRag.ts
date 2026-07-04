@@ -1,5 +1,6 @@
 import { RAG_LIMITS, SEARCH_CONFIG_LIMITS } from "../../config/limits";
 import type {
+  DocumentParseProvider,
   ProviderType,
   RAGConfig,
   SearchProviderID,
@@ -31,6 +32,7 @@ const DEFAULT_RAG_TOP_K = 10;
 const DEFAULT_RAG_CHUNK_SIZE = 512;
 const DEFAULT_SEARXNG_BASE_URL = "http://localhost:8080";
 const DEFAULT_SEARCH_PROVIDER: SearchProviderID = "firecrawl";
+const DEFAULT_DOCUMENT_PARSE_PROVIDER: DocumentParseProvider = "mineru";
 
 export type SearchCompatibilityMode =
   "gemini-google" | "external" | "unavailable";
@@ -72,6 +74,18 @@ export const isSearchProviderID = (
 
 export const normalizeSearchProvider = (provider: unknown): SearchProviderID =>
   isSearchProviderID(provider) ? provider : DEFAULT_SEARCH_PROVIDER;
+
+export const isDocumentParseProvider = (
+  provider: unknown,
+): provider is DocumentParseProvider =>
+  provider === "mineru" || provider === "llamaParse";
+
+export const normalizeDocumentParseProvider = (
+  provider: unknown,
+): DocumentParseProvider =>
+  isDocumentParseProvider(provider)
+    ? provider
+    : DEFAULT_DOCUMENT_PARSE_PROVIDER;
 
 export const getSearchProviderLabel = (provider: SearchProviderID): string => {
   switch (provider) {
@@ -295,6 +309,16 @@ export const normalizeRAGConfig = (config: unknown): RAGConfig => {
       RAG_LIMITS.maxChunkSize,
       DEFAULT_RAG_CHUNK_SIZE,
     ),
+    documentParseProvider: normalizeDocumentParseProvider(
+      rawConfig.documentParseProvider,
+    ),
+    mineruApiToken: trimToLimit(
+      rawConfig.mineruApiToken,
+      RAG_LIMITS.maxMineruApiTokenChars,
+    ),
+    ...(isLocalEncryptedSecretEnvelope(rawConfig.mineruApiTokenSecret)
+      ? { mineruApiTokenSecret: rawConfig.mineruApiTokenSecret }
+      : {}),
     llamaParseApiKey: trimToLimit(
       rawConfig.llamaParseApiKey,
       RAG_LIMITS.maxLlamaParseApiKeyChars,

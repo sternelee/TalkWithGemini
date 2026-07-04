@@ -20,6 +20,7 @@ export const BYOK_CONTEXTS = {
   provider: (providerType: string) => `provider:${providerType}`,
   search: (provider: string) => `search:${provider}`,
   ragToken: "rag:token",
+  mineru: "docs:mineru",
   llamaParse: "docs:llama-parse",
   elevenLabs: "voice:elevenlabs",
   mimo: "voice:mimo",

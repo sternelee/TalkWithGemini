@@ -109,14 +109,16 @@ pnpm byok:generate
 
 ## RAG And Document Processing
 
-| Variable                      | Purpose                                                   |
-| ----------------------------- | --------------------------------------------------------- |
-| `DEFAULT_RAG_BASE_URL`        | Default vector/RAG service base URL.                      |
-| `DEFAULT_RAG_TOKEN`           | Default vector/RAG service token.                         |
-| `DEFAULT_RAG_TOP_K`           | Default retrieval count for RAG queries.                  |
-| `DEFAULT_RAG_CHUNK_SIZE`      | Default chunk size for knowledge indexing.                |
-| `DEFAULT_RAG_NAMESPACE`       | Default namespace for vector records.                     |
-| `DEFAULT_LLAMA_PARSE_API_KEY` | Deployment-level LlamaParse API key for document parsing. |
+| Variable                          | Purpose                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `DEFAULT_RAG_BASE_URL`            | Default vector/RAG service base URL.                                                                   |
+| `DEFAULT_RAG_TOKEN`               | Default vector/RAG service token.                                                                      |
+| `DEFAULT_RAG_TOP_K`               | Default retrieval count for RAG queries.                                                               |
+| `DEFAULT_RAG_CHUNK_SIZE`          | Default chunk size for knowledge indexing.                                                             |
+| `DEFAULT_RAG_NAMESPACE`           | Default namespace for vector records.                                                                  |
+| `DEFAULT_DOCUMENT_PARSE_PROVIDER` | Default document parser: `mineru` or `llamaParse`.                                                     |
+| `DEFAULT_MINERU_API_TOKEN`        | Optional deployment-level Mineru token for precise parsing. Empty uses Mineru's no-token Agent parser. |
+| `DEFAULT_LLAMA_PARSE_API_KEY`     | Deployment-level LlamaParse API key for document parsing.                                              |
 
 ## Voice Defaults
 

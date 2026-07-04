@@ -7,11 +7,13 @@ import type {
   ServiceHealthStatus,
 } from "@/types";
 import {
+  getDefaultDocumentParseProvider,
   getDefaultElevenLabsSttModel,
   getDefaultElevenLabsTtsModel,
   getDefaultMimoSttModel,
   getDefaultMimoTtsModel,
   getDefaultVoiceProvider,
+  isDefaultDocumentProcessingAvailable,
 } from "../defaultConfig/server";
 import { getDeploymentMode } from "../security/deployment";
 
@@ -115,7 +117,9 @@ function ragHealth(): ServiceHealthItem {
   const vectorStoreReady = Boolean(
     env("DEFAULT_RAG_BASE_URL") && env("DEFAULT_RAG_TOKEN"),
   );
-  const parserReady = Boolean(env("DEFAULT_LLAMA_PARSE_API_KEY"));
+  const parserReady = isDefaultDocumentProcessingAvailable(
+    getDefaultDocumentParseProvider(),
+  );
 
   if (vectorStoreReady || parserReady) {
     return item("rag", "available", "RAG_CONFIGURED");

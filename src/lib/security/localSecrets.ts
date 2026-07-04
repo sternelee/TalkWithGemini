@@ -20,6 +20,7 @@ export const LOCAL_SECRET_CONTEXTS = {
     `local:provider:${providerId}:api-key`,
   searchApiKey: (provider: string) => `local:search:${provider}:api-key`,
   ragToken: "local:rag:token",
+  mineruApiToken: "local:docs:mineru:api-token",
   llamaParseApiKey: "local:docs:llama-parse:api-key",
   elevenLabsApiKey: "local:voice:elevenlabs:api-key",
   mimoApiKey: "local:voice:mimo:api-key",

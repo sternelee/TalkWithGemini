@@ -1,4 +1,5 @@
 import type {
+  DocumentParseProvider,
   ModelProvider,
   RAGConfig,
   SearchServiceConfig,
@@ -101,6 +102,46 @@ export function hasLlamaParseApiKey(
   );
 }
 
+export function hasMineruApiToken(
+  rag: Pick<RAGConfig, "mineruApiToken" | "mineruApiTokenSecret">,
+): boolean {
+  return Boolean(
+    trimSecret(rag.mineruApiToken) || hasLocalSecret(rag.mineruApiTokenSecret),
+  );
+}
+
+export function hasDocumentParseCredential(
+  rag: Pick<
+    RAGConfig,
+    | "documentParseProvider"
+    | "mineruApiToken"
+    | "mineruApiTokenSecret"
+    | "llamaParseApiKey"
+    | "llamaParseApiKeySecret"
+    | "useDefaultDocumentProcessing"
+    | "serverDocumentProcessingAvailable"
+  >,
+): boolean {
+  return Boolean(
+    hasMineruApiToken(rag) ||
+    trimSecret(rag.llamaParseApiKey) ||
+    hasLocalSecret(rag.llamaParseApiKeySecret) ||
+    (rag.useDefaultDocumentProcessing && rag.serverDocumentProcessingAvailable),
+  );
+}
+
+export async function resolveMineruApiToken(
+  rag: Pick<RAGConfig, "mineruApiToken" | "mineruApiTokenSecret">,
+): Promise<string | undefined> {
+  const plain = trimSecret(rag.mineruApiToken);
+  if (plain) return plain;
+
+  return decryptLocalSecret(
+    rag.mineruApiTokenSecret,
+    LOCAL_SECRET_CONTEXTS.mineruApiToken,
+  );
+}
+
 export async function resolveLlamaParseApiKey(
   rag: Pick<RAGConfig, "llamaParseApiKey" | "llamaParseApiKeySecret">,
 ): Promise<string | undefined> {
@@ -111,6 +152,21 @@ export async function resolveLlamaParseApiKey(
     rag.llamaParseApiKeySecret,
     LOCAL_SECRET_CONTEXTS.llamaParseApiKey,
   );
+}
+
+export async function resolveDocumentParseToken(
+  provider: DocumentParseProvider,
+  rag: Pick<
+    RAGConfig,
+    | "mineruApiToken"
+    | "mineruApiTokenSecret"
+    | "llamaParseApiKey"
+    | "llamaParseApiKeySecret"
+  >,
+): Promise<string | undefined> {
+  return provider === "mineru"
+    ? resolveMineruApiToken(rag)
+    : resolveLlamaParseApiKey(rag);
 }
 
 export function hasElevenLabsApiKey(

@@ -32,7 +32,7 @@ It is designed for people who want the power of modern AI workspaces without giv
 - OpenAPI-based plugin tools with per-plugin authentication and server-side execution.
 - Built-in tools for web reading, weather, Unsplash search, Agnes image generation, and Agnes video generation.
 - Web search through Gemini native Google Search or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
-- Knowledge-base RAG with OPFS file storage, LlamaParse document parsing, and optional vector indexing.
+- Knowledge-base RAG with OPFS file storage, Mineru/LlamaParse document parsing, and optional vector indexing.
 - Voice input and output through browser APIs, ElevenLabs, or compatible configured providers.
 - Rich message rendering for Markdown, GFM tables, math, code highlighting, citations, reasoning, tool calls, images, audio, and artifacts.
 - Local BYOK encryption for user-entered provider, plugin, search, RAG, and voice secrets.
@@ -229,6 +229,8 @@ DEFAULT_RAG_TOKEN="rag-token"
 DEFAULT_RAG_TOP_K="10"
 DEFAULT_RAG_CHUNK_SIZE="512"
 DEFAULT_RAG_NAMESPACE="default"
+DEFAULT_DOCUMENT_PARSE_PROVIDER="mineru"
+DEFAULT_MINERU_API_TOKEN=""
 DEFAULT_LLAMA_PARSE_API_KEY="llama-parse-key"
 
 DEFAULT_VOICE_PROVIDER="elevenlabs"
@@ -274,7 +276,7 @@ The app keeps durable user data in browser storage whenever possible. API routes
 
 Plugins are installed from manifests or built-in definitions. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
 
-Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with LlamaParse, and can index chunks into an external vector service.
+Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service.
 
 Voice workflows support browser speech APIs and configured external providers. Set `DEFAULT_VOICE_PROVIDER` to `elevenlabs` or `mimo` to enable a server default; leaving it empty keeps browser-native speech as the default. Empty default model values disable the matching STT or TTS capability, and the UI can store user-specific secrets locally.
 

@@ -35,6 +35,7 @@ vi.mock("@/services/api/ragService", () => ({
 }));
 
 vi.mock("@/services/api/docParseService", () => ({
+  parseDocumentFile: vi.fn(() => Promise.resolve("parsed text")),
   parseDocumentWithLlama: vi.fn(() => Promise.resolve("parsed text")),
 }));
 

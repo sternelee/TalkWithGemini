@@ -32,7 +32,7 @@ Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.j
 - 支持 OpenAPI 风格插件工具、插件鉴权和服务端执行。
 - 内置网页阅读、天气、Unsplash 搜索、Agnes 图片生成、Agnes 视频生成工具。
 - 支持 Gemini 原生 Google Search，以及 Tavily、Firecrawl、Exa、Bocha、SearXNG 等外部搜索。
-- 知识库 RAG 支持 OPFS 文件存储、LlamaParse 文档解析和可选向量索引。
+- 知识库 RAG 支持 OPFS 文件存储、Mineru/LlamaParse 文档解析和可选向量索引。
 - 支持浏览器语音 API、ElevenLabs 或兼容配置的语音输入输出。
 - 支持 Markdown、GFM 表格、数学公式、代码高亮、引用、推理、工具调用、图片、音频和产物渲染。
 - 用户输入的模型、插件、搜索、RAG、语音密钥会以本地 BYOK envelope 加密。
@@ -224,6 +224,8 @@ DEFAULT_RAG_TOKEN="rag-token"
 DEFAULT_RAG_TOP_K="10"
 DEFAULT_RAG_CHUNK_SIZE="512"
 DEFAULT_RAG_NAMESPACE="default"
+DEFAULT_DOCUMENT_PARSE_PROVIDER="mineru"
+DEFAULT_MINERU_API_TOKEN=""
 DEFAULT_LLAMA_PARSE_API_KEY="llama-parse-key"
 
 DEFAULT_VOICE_PROVIDER="elevenlabs"
@@ -269,7 +271,7 @@ flowchart LR
 
 插件可以来自 manifest 或内置定义。启用的插件函数会以 tool 形式暴露给兼容模型，再由服务端插件路由执行。工具调用编排使用较高但有边界的循环上限，既允许多步任务，也避免递归工具调用失控。
 
-搜索可以使用 Gemini 模型的原生 Google Search，也可以对其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
+搜索可以使用 Gemini 模型的原生 Google Search，也可以对其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 Mineru 或 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
 
 语音流程支持浏览器语音 API 和外部供应商。将 `DEFAULT_VOICE_PROVIDER` 设为 `elevenlabs` 或 `mimo` 可启用服务端默认语音供应商；留空则默认使用浏览器原生语音。默认模型值为空会禁用对应的 STT 或 TTS 能力，用户级密钥也可以由 UI 本地保存。
 

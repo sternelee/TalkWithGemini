@@ -49,7 +49,8 @@ const serverConfig: PublicServerConfig = {
   },
   rag: {
     vectorStoreAvailable: false,
-    documentProcessingAvailable: false,
+    documentProcessingAvailable: true,
+    documentProcessingProvider: "mineru",
   },
   voice: {
     elevenLabsAvailable: false,

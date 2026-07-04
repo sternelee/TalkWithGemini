@@ -1,9 +1,14 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { v7 as uuidv7 } from "uuid";
-import { Collection, KnowledgeFile, KnowledgeFileStatus } from "@/types";
+import {
+  Collection,
+  KnowledgeFile,
+  KnowledgeFileStatus,
+  RAGConfig,
+} from "@/types";
 import { useSettingsStore } from "./settingsStore";
-import { parseDocumentWithLlama } from "@/services/api/docParseService";
+import { parseDocumentFile } from "@/services/api/docParseService";
 import { deleteFromRAG, upsertToRAG } from "@/services/api/ragService";
 import { selectKnowledgeFilesForUpload } from "@/lib/utils/knowledgeFiles";
 import {
@@ -36,7 +41,7 @@ import { withResolvedObjectUrl } from "@/lib/utils/objectUrlLifecycle";
 import { logDevError, logDevWarn } from "../../lib/utils/devLogger";
 import {
   hasRagVectorStore,
-  resolveLlamaParseApiKey,
+  resolveDocumentParseToken,
 } from "../../lib/security/localSecretResolvers";
 
 interface KnowledgeState {
@@ -101,6 +106,28 @@ function isTextMimeType(mimeType: string) {
   if (mimeType.endsWith("+xml") || mimeType.endsWith("+json")) return true;
 
   return textMimeTypes.includes(mimeType);
+}
+
+async function parseKnowledgeDocument(file: File, rag: RAGConfig) {
+  const provider = rag.documentParseProvider || "mineru";
+  const useDefaultDocumentProcessing = Boolean(
+    rag.useDefaultDocumentProcessing && rag.serverDocumentProcessingAvailable,
+  );
+  const apiKey = useDefaultDocumentProcessing
+    ? undefined
+    : await resolveDocumentParseToken(provider, rag);
+
+  if (provider === "llamaParse" && !useDefaultDocumentProcessing && !apiKey) {
+    throw new Error(
+      "Configure a document parser API key to process non-text files.",
+    );
+  }
+
+  return parseDocumentFile(file, {
+    provider,
+    apiKey,
+    useDefault: useDefaultDocumentProcessing,
+  });
 }
 
 async function cleanupKnowledgeFileResources(
@@ -317,27 +344,8 @@ export const useKnowledgeStore = create<KnowledgeState>()(
               if (isText) {
                 textContent = await file.text();
               } else {
-                // Use LlamaParse
-                const useDefaultDocumentProcessing = Boolean(
-                  rag.useDefaultDocumentProcessing &&
-                  rag.serverDocumentProcessingAvailable,
-                );
-                const llamaParseApiKey = useDefaultDocumentProcessing
-                  ? undefined
-                  : await resolveLlamaParseApiKey(rag);
-                if (useDefaultDocumentProcessing || llamaParseApiKey) {
-                  updateFileStatus(kFile.id, "parsing");
-
-                  textContent = await parseDocumentWithLlama(
-                    file,
-                    llamaParseApiKey,
-                    useDefaultDocumentProcessing,
-                  );
-                } else {
-                  throw new Error(
-                    "Configure a LlamaParse API key to process non-text files.",
-                  );
-                }
+                updateFileStatus(kFile.id, "parsing");
+                textContent = await parseKnowledgeDocument(file, rag);
               }
 
               if (!textContent.trim())
@@ -407,39 +415,21 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                   `knowledge-base/${collectionId}`,
                 );
               } else {
-                // Use LlamaParse
-                const useDefaultDocumentProcessing = Boolean(
-                  rag.useDefaultDocumentProcessing &&
-                  rag.serverDocumentProcessingAvailable,
+                updateFileStatus(kFile.id, "parsing");
+
+                const textContent = await parseKnowledgeDocument(file, rag);
+                if (!textContent.trim())
+                  throw new Error("No text content extracted.");
+
+                // STEP: Save Text to OPFS (New Requirement)
+                // Create a plain text file with the same name as the original
+                const textFile = new File([textContent], file.name, {
+                  type: "text/plain",
+                });
+                opfsPath = await saveToOPFS(
+                  textFile,
+                  `knowledge-base/${collectionId}`,
                 );
-                const llamaParseApiKey = useDefaultDocumentProcessing
-                  ? undefined
-                  : await resolveLlamaParseApiKey(rag);
-                if (useDefaultDocumentProcessing || llamaParseApiKey) {
-                  updateFileStatus(kFile.id, "parsing");
-
-                  const textContent = await parseDocumentWithLlama(
-                    file,
-                    llamaParseApiKey,
-                    useDefaultDocumentProcessing,
-                  );
-                  if (!textContent.trim())
-                    throw new Error("No text content extracted.");
-
-                  // STEP: Save Text to OPFS (New Requirement)
-                  // Create a plain text file with the same name as the original
-                  const textFile = new File([textContent], file.name, {
-                    type: "text/plain",
-                  });
-                  opfsPath = await saveToOPFS(
-                    textFile,
-                    `knowledge-base/${collectionId}`,
-                  );
-                } else {
-                  throw new Error(
-                    "Only text files are supported without a LlamaParse API key.",
-                  );
-                }
               }
 
               // STEP: Saved (Final)

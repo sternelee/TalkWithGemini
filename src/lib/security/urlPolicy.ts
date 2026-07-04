@@ -182,7 +182,13 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
       return {
         context,
         allowedProtocols: ["https:"],
-        allowedHosts: ["api.cloud.llamaindex.ai"],
+        allowedHosts: [
+          "api.cloud.llamaindex.ai",
+          "mineru.net",
+          "oss-mineru.openxlab.org.cn",
+          "mineru.oss-cn-shanghai.aliyuncs.com",
+          "cdn-mineru.openxlab.org.cn",
+        ],
         profile,
       };
     case "voice":

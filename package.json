@@ -24,6 +24,7 @@
   "dependencies": {
     "@google/genai": "^1.52.0",
     "@radix-ui/react-dropdown-menu": "^2.1.19",
+    "fflate": "^0.8.3",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.27",
     "localforage": "^1.10.0",

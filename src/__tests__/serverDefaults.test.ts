@@ -91,6 +91,8 @@ const ENV_KEYS = [
   "DEFAULT_RAG_TOP_K",
   "DEFAULT_RAG_CHUNK_SIZE",
   "DEFAULT_RAG_NAMESPACE",
+  "DEFAULT_DOCUMENT_PARSE_PROVIDER",
+  "DEFAULT_MINERU_API_TOKEN",
   "DEFAULT_LLAMA_PARSE_API_KEY",
   "DEFAULT_ELEVENLABS_API_KEY",
   "DEFAULT_ELEVENLABS_STT_MODEL",
@@ -170,6 +172,8 @@ describe("server default configuration", () => {
       DEFAULT_RAG_TOP_K: "7",
       DEFAULT_RAG_CHUNK_SIZE: "768",
       DEFAULT_RAG_NAMESPACE: "tenant-a",
+      DEFAULT_DOCUMENT_PARSE_PROVIDER: "mineru",
+      DEFAULT_MINERU_API_TOKEN: "mineru-secret",
       DEFAULT_LLAMA_PARSE_API_KEY: "llama-secret",
       DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
       DEFAULT_ELEVENLABS_STT_MODEL: "scribe_v1",
@@ -196,6 +200,7 @@ describe("server default configuration", () => {
     expect(config.rag).toMatchObject({
       vectorStoreAvailable: true,
       documentProcessingAvailable: true,
+      documentProcessingProvider: "mineru",
       topK: 7,
       chunkSize: 768,
       namespace: "tenant-a",
@@ -220,6 +225,7 @@ describe("server default configuration", () => {
       "provider-secret",
       "search-secret",
       "rag-secret",
+      "mineru-secret",
       "llama-secret",
       "eleven-secret",
       "llm.internal",
@@ -511,6 +517,7 @@ describe("server default configuration", () => {
 
   it("uses the server LlamaParse key when document parsing requests opt into defaults", async () => {
     setEnv({
+      DEFAULT_DOCUMENT_PARSE_PROVIDER: "llamaParse",
       DEFAULT_LLAMA_PARSE_API_KEY: "llama-secret",
     });
     mocks.safeFetchJson.mockResolvedValue({
@@ -524,6 +531,7 @@ describe("server default configuration", () => {
       new File(["hello"], "doc.txt", { type: "text/plain" }),
     );
     formData.set("useDefault", "true");
+    formData.set("provider", "llamaParse");
 
     const { POST } = await import("../app/api/doc-parse/route");
     const response = await POST(
@@ -544,6 +552,16 @@ describe("server default configuration", () => {
       expect.any(Object),
     );
     expect(JSON.stringify(await response.json())).not.toContain("llama-secret");
+  });
+
+  it("publishes Mineru as the default parser without requiring a token", async () => {
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+
+    expect(getPublicServerConfig().rag).toMatchObject({
+      documentProcessingAvailable: true,
+      documentProcessingProvider: "mineru",
+    });
   });
 
   it("uses the server ElevenLabs key for default speech transcription", async () => {

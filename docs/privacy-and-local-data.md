@@ -51,7 +51,7 @@ Depending on configuration, user content may be sent to:
 
 - Model providers such as Gemini, OpenAI, or OpenAI-compatible endpoints.
 - Search providers such as Tavily, Firecrawl, Exa, Bocha, or SearXNG.
-- RAG/vector services and LlamaParse.
+- RAG/vector services and document parsers such as Mineru or LlamaParse.
 - Voice providers such as ElevenLabs or Mimo.
 - Plugin APIs enabled by the user.
 

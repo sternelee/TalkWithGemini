@@ -62,6 +62,7 @@ describe("local secret settings migration", () => {
       token: "rag-secret",
       topK: 10,
       chunkSize: 512,
+      mineruApiToken: "mineru-secret",
       llamaParseApiKey: "llama-secret",
     });
     const voice = await migrateVoiceLocalSecrets({
@@ -92,6 +93,7 @@ describe("local secret settings migration", () => {
 
     expect(JSON.stringify(migrated)).not.toContain("search-secret");
     expect(JSON.stringify(migrated)).not.toContain("rag-secret");
+    expect(JSON.stringify(migrated)).not.toContain("mineru-secret");
     expect(JSON.stringify(migrated)).not.toContain("llama-secret");
     expect(JSON.stringify(migrated)).not.toContain("voice-secret");
     expect(JSON.stringify(migrated)).not.toContain("mimo-secret");
@@ -106,6 +108,12 @@ describe("local secret settings migration", () => {
     await expect(
       decryptLocalSecret(rag.tokenSecret, LOCAL_SECRET_CONTEXTS.ragToken),
     ).resolves.toBe("rag-secret");
+    await expect(
+      decryptLocalSecret(
+        rag.mineruApiTokenSecret,
+        LOCAL_SECRET_CONTEXTS.mineruApiToken,
+      ),
+    ).resolves.toBe("mineru-secret");
     await expect(
       decryptLocalSecret(
         rag.llamaParseApiKeySecret,

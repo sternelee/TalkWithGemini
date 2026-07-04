@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { SecretInput, SimpleSwitch } from "./SettingsUI";
+import { SecretInput, SegmentedControl, SimpleSwitch } from "./SettingsUI";
 import { RAG_LIMITS } from "@/config/limits";
 import {
   encryptLocalSecret,
@@ -20,6 +20,7 @@ import {
 } from "@/lib/security/localSecrets";
 
 const LLAMA_PARSE_KEY_URL = "https://cloud.llamaindex.ai/";
+const MINERU_KEY_URL = "https://mineru.net/apiManage";
 const UPSTASH_VECTOR_KEY_URL = "https://console.upstash.com/vector";
 
 const RAGSettings = () => {
@@ -80,6 +81,23 @@ const RAGSettings = () => {
             <span>{t("documentProcessing")}</span>
           </div>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-700 dark:text-foreground/85">
+                {t("documentParser")}
+              </div>
+              <SegmentedControl
+                ariaLabel={t("documentParser")}
+                value={rag.documentParseProvider}
+                onChange={(documentParseProvider) =>
+                  updateRAGConfig({ documentParseProvider })
+                }
+                options={[
+                  { value: "mineru", label: "Mineru" },
+                  { value: "llamaParse", label: "LlamaParse" },
+                ]}
+              />
+            </div>
+
             {rag.serverDocumentProcessingAvailable && (
               <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/40 dark:bg-blue-900/10">
                 <div>
@@ -104,56 +122,107 @@ const RAGSettings = () => {
               </div>
             )}
 
-            {!useDefaultDocumentProcessing && (
-              <div className="space-y-2">
-                <label
-                  htmlFor="rag-llamaparse-api-key"
-                  className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex items-center justify-between gap-2"
-                >
-                  <span className="flex items-center gap-2">
-                    <KeyRound size={16} aria-hidden="true" />{" "}
-                    {t("llamaParseApiKey")}
-                  </span>
-                  <a
-                    href={LLAMA_PARSE_KEY_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+            {!useDefaultDocumentProcessing &&
+              rag.documentParseProvider === "mineru" && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="rag-mineru-api-token"
+                    className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex items-center justify-between gap-2"
                   >
-                    {t("getKey")} <ExternalLink size={10} aria-hidden="true" />
-                  </a>
-                </label>
-                <div className="relative">
+                    <span className="flex items-center gap-2">
+                      <KeyRound size={16} aria-hidden="true" />{" "}
+                      {t("mineruApiToken")}
+                    </span>
+                    <a
+                      href={MINERU_KEY_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                    >
+                      {t("getKey")}{" "}
+                      <ExternalLink size={10} aria-hidden="true" />
+                    </a>
+                  </label>
                   <SecretInput
-                    id="rag-llamaparse-api-key"
-                    name="llamaParseApiKey"
-                    maxLength={RAG_LIMITS.maxLlamaParseApiKeyChars}
-                    placeholder={t("llamaParseKeyPlaceholder")}
+                    id="rag-mineru-api-token"
+                    name="mineruApiToken"
+                    maxLength={RAG_LIMITS.maxMineruApiTokenChars}
+                    placeholder={t("mineruTokenPlaceholder")}
                     hasSecret={Boolean(
-                      rag.llamaParseApiKey || rag.llamaParseApiKeySecret,
+                      rag.mineruApiToken || rag.mineruApiTokenSecret,
                     )}
                     onSave={async (value) =>
                       updateRAGConfig({
-                        llamaParseApiKey: "",
-                        llamaParseApiKeySecret: await encryptLocalSecret(
+                        mineruApiToken: "",
+                        mineruApiTokenSecret: await encryptLocalSecret(
                           value,
-                          LOCAL_SECRET_CONTEXTS.llamaParseApiKey,
+                          LOCAL_SECRET_CONTEXTS.mineruApiToken,
                         ),
                       })
                     }
                     onClear={() =>
                       updateRAGConfig({
-                        llamaParseApiKey: "",
-                        llamaParseApiKeySecret: undefined,
+                        mineruApiToken: "",
+                        mineruApiTokenSecret: undefined,
                       })
                     }
                   />
+                  <p className="text-[10px] text-gray-500">{t("mineruHelp")}</p>
                 </div>
-                <p className="text-[10px] text-gray-500">
-                  {t("llamaParseHelp")}
-                </p>
-              </div>
-            )}
+              )}
+
+            {!useDefaultDocumentProcessing &&
+              rag.documentParseProvider === "llamaParse" && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor="rag-llamaparse-api-key"
+                    className="text-sm font-medium text-gray-700 dark:text-foreground/85 flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-2">
+                      <KeyRound size={16} aria-hidden="true" />{" "}
+                      {t("llamaParseApiKey")}
+                    </span>
+                    <a
+                      href={LLAMA_PARSE_KEY_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                    >
+                      {t("getKey")}{" "}
+                      <ExternalLink size={10} aria-hidden="true" />
+                    </a>
+                  </label>
+                  <div className="relative">
+                    <SecretInput
+                      id="rag-llamaparse-api-key"
+                      name="llamaParseApiKey"
+                      maxLength={RAG_LIMITS.maxLlamaParseApiKeyChars}
+                      placeholder={t("llamaParseKeyPlaceholder")}
+                      hasSecret={Boolean(
+                        rag.llamaParseApiKey || rag.llamaParseApiKeySecret,
+                      )}
+                      onSave={async (value) =>
+                        updateRAGConfig({
+                          llamaParseApiKey: "",
+                          llamaParseApiKeySecret: await encryptLocalSecret(
+                            value,
+                            LOCAL_SECRET_CONTEXTS.llamaParseApiKey,
+                          ),
+                        })
+                      }
+                      onClear={() =>
+                        updateRAGConfig({
+                          llamaParseApiKey: "",
+                          llamaParseApiKeySecret: undefined,
+                        })
+                      }
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    {t("llamaParseHelp")}
+                  </p>
+                </div>
+              )}
 
             {/* Document Chunking */}
             <div className="space-y-2">

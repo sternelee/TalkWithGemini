@@ -116,6 +116,8 @@ const DeploymentHealth: React.FC = () => {
     Boolean(serverConfig?.rag.documentProcessingAvailable) ||
     Boolean(rag.url?.trim()) ||
     Boolean(rag.tokenSecret) ||
+    Boolean(rag.mineruApiToken?.trim()) ||
+    Boolean(rag.mineruApiTokenSecret) ||
     Boolean(rag.llamaParseApiKey?.trim()) ||
     Boolean(rag.llamaParseApiKeySecret);
   const hasVoice =

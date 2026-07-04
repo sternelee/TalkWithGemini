@@ -5,6 +5,7 @@ import {
 import { encryptSecret, fetchWithByokRetry } from "../../lib/byok/client";
 import { BYOK_CONTEXTS } from "../../lib/byok/shared";
 import { logDevError } from "../../lib/utils/devLogger";
+import type { DocumentParseProvider } from "../../types";
 
 type DocumentParseStartResponse =
   { markdown?: string } | { jobId?: string; status?: "pending" };
@@ -53,12 +54,24 @@ async function pollDocumentParseJob(jobId: string): Promise<string> {
   throw new Error("Document parsing timed out. Please try again later.");
 }
 
-export async function parseDocumentWithLlama(
+function getDocumentParseSecretContext(
+  provider: DocumentParseProvider,
+): string {
+  return provider === "mineru"
+    ? BYOK_CONTEXTS.mineru
+    : BYOK_CONTEXTS.llamaParse;
+}
+
+export async function parseDocumentFile(
   file: File,
-  apiKey?: string,
-  useDefault = false,
+  options: {
+    provider: DocumentParseProvider;
+    apiKey?: string;
+    useDefault?: boolean;
+  },
 ): Promise<string> {
-  if (!apiKey && !useDefault) {
+  const { provider, apiKey, useDefault = false } = options;
+  if (provider === "llamaParse" && !apiKey && !useDefault) {
     throw new Error("LlamaParse API Key is required");
   }
 
@@ -66,12 +79,18 @@ export async function parseDocumentWithLlama(
     const response = await fetchWithByokRetry(async () => {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("provider", provider);
       if (useDefault) {
         formData.append("useDefault", "true");
-      } else {
+      } else if (apiKey) {
         formData.append(
           "apiKeySecret",
-          JSON.stringify(await encryptSecret(apiKey, BYOK_CONTEXTS.llamaParse)),
+          JSON.stringify(
+            await encryptSecret(
+              apiKey,
+              getDocumentParseSecretContext(provider),
+            ),
+          ),
         );
       }
 
@@ -98,7 +117,19 @@ export async function parseDocumentWithLlama(
 
     throw new Error("Document parsing did not return a job id");
   } catch (error) {
-    logDevError("LlamaParse Error:", error);
+    logDevError("Document parse error:", error);
     throw error;
   }
+}
+
+export async function parseDocumentWithLlama(
+  file: File,
+  apiKey?: string,
+  useDefault = false,
+): Promise<string> {
+  return parseDocumentFile(file, {
+    provider: "llamaParse",
+    apiKey,
+    useDefault,
+  });
 }

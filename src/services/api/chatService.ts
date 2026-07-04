@@ -455,10 +455,14 @@ export const streamChatResponse = async (
         });
         onSearchStatus(false, searchResults);
 
-        if (searchResults.sources.length > 0) {
-          const searchContext = buildSearchContextForPrompt(
-            searchResults.sources,
-          );
+        if (
+          searchResults.sources.length > 0 ||
+          searchResults.images.length > 0
+        ) {
+          const searchContext = buildSearchContextForPrompt({
+            sources: searchResults.sources,
+            images: searchResults.images,
+          });
           const metadata = resolveModelMetadata(modelName);
           const budget = allocateContextBudget({
             modelInputTokenLimit: metadata?.limit?.context,

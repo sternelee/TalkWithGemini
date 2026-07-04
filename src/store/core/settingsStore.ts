@@ -64,8 +64,8 @@ import {
   type AppExportPayload,
 } from "../../lib/data/appExport";
 import {
+  hasDocumentParseCredential,
   hasRagToken,
-  hasLlamaParseApiKey,
   hasPluginAuthValue,
 } from "../../lib/security/localSecretResolvers";
 import {
@@ -234,7 +234,7 @@ export const useSettingsStore = create<SettingsState>()(
           const shouldUseDefaultDocumentProcessing =
             config.rag.documentProcessingAvailable &&
             state.rag.useDefaultDocumentProcessing === undefined &&
-            !hasLlamaParseApiKey(state.rag);
+            !hasDocumentParseCredential(state.rag);
 
           const hasServerVoiceConfig =
             state.voice.serverDefaultVoiceProvider !== undefined ||
@@ -304,7 +304,12 @@ export const useSettingsStore = create<SettingsState>()(
                   }
                 : {}),
               ...(shouldUseDefaultDocumentProcessing
-                ? { useDefaultDocumentProcessing: true }
+                ? {
+                    documentParseProvider:
+                      config.rag.documentProcessingProvider ||
+                      state.rag.documentParseProvider,
+                    useDefaultDocumentProcessing: true,
+                  }
                 : {}),
             }),
             voice: {
@@ -486,6 +491,8 @@ export const useSettingsStore = create<SettingsState>()(
         token: "",
         topK: 10,
         chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
         llamaParseApiKey: "",
       },
       updateRAGConfig: (config) =>

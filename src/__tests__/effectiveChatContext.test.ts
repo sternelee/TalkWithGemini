@@ -46,6 +46,8 @@ describe("effective chat context", () => {
         token: "",
         topK: 10,
         chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
         llamaParseApiKey: "",
       },
       installedPlugins: [

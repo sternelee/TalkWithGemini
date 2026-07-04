@@ -78,6 +78,11 @@ export async function migrateRAGLocalSecrets(rag: unknown): Promise<RAGConfig> {
     normalized.tokenSecret,
     LOCAL_SECRET_CONTEXTS.ragToken,
   );
+  const mineruApiTokenSecret = await migrateLocalSecretField(
+    normalized.mineruApiToken,
+    normalized.mineruApiTokenSecret,
+    LOCAL_SECRET_CONTEXTS.mineruApiToken,
+  );
   const llamaParseApiKeySecret = await migrateLocalSecretField(
     normalized.llamaParseApiKey,
     normalized.llamaParseApiKeySecret,
@@ -87,8 +92,10 @@ export async function migrateRAGLocalSecrets(rag: unknown): Promise<RAGConfig> {
   return {
     ...normalized,
     token: "",
+    mineruApiToken: "",
     llamaParseApiKey: "",
     ...(tokenSecret ? { tokenSecret } : {}),
+    ...(mineruApiTokenSecret ? { mineruApiTokenSecret } : {}),
     ...(llamaParseApiKeySecret ? { llamaParseApiKeySecret } : {}),
   };
 }
@@ -180,6 +187,7 @@ export function stripRAGPlainSecrets(rag: RAGConfig): RAGConfig {
   return {
     ...rag,
     token: "",
+    mineruApiToken: "",
     llamaParseApiKey: "",
   };
 }

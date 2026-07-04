@@ -22,6 +22,8 @@ describe("service health status", () => {
     vi.stubEnv("DEFAULT_SEARCH_API_KEY", "search-secret");
     vi.stubEnv("DEFAULT_RAG_BASE_URL", "https://rag.internal");
     vi.stubEnv("DEFAULT_RAG_TOKEN", "rag-secret");
+    vi.stubEnv("DEFAULT_DOCUMENT_PARSE_PROVIDER", "mineru");
+    vi.stubEnv("DEFAULT_MINERU_API_TOKEN", "mineru-secret");
     vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
     vi.stubEnv("DEFAULT_VOICE_PROVIDER", "elevenlabs");
     vi.stubEnv("DEFAULT_ELEVENLABS_API_KEY", "voice-secret");
@@ -48,6 +50,7 @@ describe("service health status", () => {
       "provider-secret",
       "search-secret",
       "rag-secret",
+      "mineru-secret",
       "llama-secret",
       "voice-secret",
     ]) {
@@ -66,6 +69,17 @@ describe("service health status", () => {
     expect(health.services.voice).toMatchObject({
       status: "unconfigured",
       code: "VOICE_UNCONFIGURED",
+    });
+  });
+
+  it("marks Mineru no-token document parsing as available by default", async () => {
+    const { getServiceHealthStatus } =
+      await import("../lib/services/serviceHealth");
+    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
+
+    expect(health.services.rag).toMatchObject({
+      status: "available",
+      code: "RAG_CONFIGURED",
     });
   });
 

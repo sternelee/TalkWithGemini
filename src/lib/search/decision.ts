@@ -1,4 +1,4 @@
-import type { Message, Source } from "../../types";
+import type { ImageSource, Message, Source } from "../../types";
 
 export interface SearchDecision {
   shouldSearch: boolean;
@@ -60,8 +60,12 @@ Return ONLY valid JSON with this shape:
 `;
 }
 
-export function buildSearchContextForPrompt(sources: Source[]): string {
-  if (sources.length === 0) return "";
+export function buildSearchContextForPrompt(
+  input: Source[] | { sources?: Source[]; images?: ImageSource[] },
+): string {
+  const sources = Array.isArray(input) ? input : input.sources || [];
+  const images = Array.isArray(input) ? [] : input.images || [];
+  if (sources.length === 0 && images.length === 0) return "";
 
   const sourceContext = sources
     .map(
@@ -69,11 +73,22 @@ export function buildSearchContextForPrompt(sources: Source[]): string {
         `[${index + 1}]\nTitle: ${source.title}\nURL: ${source.url}\nContent:\n${source.content}`,
     )
     .join("\n\n");
+  const imageContext = images
+    .map((image, index) => {
+      const description = image.description || `Search image ${index + 1}`;
+      return `[image ${index + 1}]\nDescription: ${description}\nURL: ${image.url}\nMarkdown: ![${description}](${image.url})`;
+    })
+    .join("\n\n");
 
   return [
     "--- Web Search Context ---",
     "Use the following web search results as context. Use citations like [1] or [2] when you rely on a source.",
+    "Use Markdown images when an image result is directly useful for the answer, using the provided image URL and description.",
     sourceContext,
+    imageContext ? "--- Web Search Images ---" : "",
+    imageContext,
     "--- End Web Search Context ---",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

@@ -63,7 +63,9 @@ describe("search and RAG settings normalization", () => {
     expect(rag.token).toHaveLength(RAG_LIMITS.maxTokenChars);
     expect(rag.topK).toBe(RAG_LIMITS.maxTopK);
     expect(rag.chunkSize).toBe(RAG_LIMITS.minChunkSize);
+    expect(rag.documentParseProvider).toBe("mineru");
     expect(rag.llamaParseApiKey).toBe("llama-key");
+    expect(rag.mineruApiToken).toBe("");
     expect(rag.namespace).toHaveLength(RAG_LIMITS.maxNamespaceChars);
   });
 
@@ -78,6 +80,17 @@ describe("search and RAG settings normalization", () => {
     expect(rag.enabled).toBe(true);
     expect(rag.topK).toBe(10);
     expect(rag.chunkSize).toBe(512);
+    expect(rag.documentParseProvider).toBe("mineru");
     expect(rag.namespace).toBeUndefined();
+  });
+
+  it("normalizes document parser provider and Mineru token", () => {
+    const rag = normalizeRAGConfig({
+      documentParseProvider: "llamaParse",
+      mineruApiToken: " mineru-token ",
+    });
+
+    expect(rag.documentParseProvider).toBe("llamaParse");
+    expect(rag.mineruApiToken).toBe("mineru-token");
   });
 });
