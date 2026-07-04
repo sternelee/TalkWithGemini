@@ -41,6 +41,7 @@ const serverConfig: PublicServerConfig = {
     defaultModels: {
       titleGeneration: "gemini-default",
       relatedQuestions: "gemini-default",
+      memory: "gemini-default",
     },
     modelMetadata: {},
   },
@@ -105,6 +106,7 @@ describe("server default store injection", () => {
         contextCompression: "GEMINI:gemini-flash-latest",
         promptOptimization: "",
         ragQuery: "CUSTOM:custom-model",
+        memory: "GEMINI:gemini-flash-latest",
       },
     }));
 
@@ -120,6 +122,7 @@ describe("server default store injection", () => {
       contextCompression: "",
       promptOptimization: "",
       ragQuery: "",
+      memory: "SERVER_DEFAULT:gemini-default",
     });
   });
 
@@ -322,6 +325,7 @@ describe("server default store injection", () => {
           contextCompression: "",
           promptOptimization: "",
           ragQuery: "",
+          memory: "",
         },
       },
       3,
@@ -333,6 +337,7 @@ describe("server default store injection", () => {
     expect(migrated.defaultModels).toMatchObject({
       titleGeneration: "",
       relatedQuestions: "GEMINI_CUSTOM:gemini-flash-latest",
+      memory: "",
     });
   });
 });

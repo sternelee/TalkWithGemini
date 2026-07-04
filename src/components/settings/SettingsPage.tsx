@@ -9,6 +9,7 @@ import {
   Cpu,
   FolderSearch,
   ShieldCheck,
+  Brain,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -19,6 +20,7 @@ import VoiceSettings from "./VoiceSettings";
 import SystemSettings from "./SystemSettings";
 import DefaultModelSettings from "./DefaultModelSettings";
 import DeploymentHealth from "./DeploymentHealth";
+import MemorySettings from "./MemorySettings";
 import type { SettingsTabId } from "@/lib/chat/panelUrlState";
 
 const SETTINGS_TABS: Array<{
@@ -31,6 +33,7 @@ const SETTINGS_TABS: Array<{
   { id: "search", labelKey: "tabSearch", Icon: Globe },
   { id: "rag", labelKey: "tabRag", Icon: FolderSearch },
   { id: "voice", labelKey: "tabVoice", Icon: Mic },
+  { id: "memory", labelKey: "tabMemory", Icon: Brain },
   { id: "health", labelKey: "tabHealth", Icon: ShieldCheck },
   { id: "system", labelKey: "tabSystem", Icon: Settings },
 ];
@@ -47,6 +50,8 @@ const renderTabContent = (activeTab: SettingsTabId) => {
       return <RAGSettings />;
     case "voice":
       return <VoiceSettings />;
+    case "memory":
+      return <MemorySettings />;
     case "health":
       return <DeploymentHealth />;
     case "system":

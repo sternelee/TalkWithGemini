@@ -15,6 +15,7 @@ describe("app export helpers", () => {
       settings: { activePlugins: ["weather"] },
       chat: { sessions: [{ id: "s1", title: "Chat" }] },
       knowledge: { collections: [] },
+      memory: { memories: [{ id: "mem-1" }] },
     });
 
     expect(payload).toEqual({
@@ -26,6 +27,7 @@ describe("app export helpers", () => {
         settings: { activePlugins: ["weather"] },
         chat: { sessions: [{ id: "s1", title: "Chat" }] },
         knowledge: { collections: [] },
+        memory: { memories: [{ id: "mem-1" }] },
       },
     });
   });

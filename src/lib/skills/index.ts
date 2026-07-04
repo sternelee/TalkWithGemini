@@ -722,6 +722,7 @@ export function createSkillInvocations(
   return appliedSkills.map(({ skill, mode }) => ({
     id: skill.id,
     title: skill.title,
+    description: skill.description,
     category: skill.category,
     mode,
   }));

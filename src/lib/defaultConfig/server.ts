@@ -227,6 +227,7 @@ function getDefaultModelEnv(): Partial<DefaultModels> {
     contextCompression: env("DEFAULT_MODEL_CONTEXT_COMPRESSION"),
     promptOptimization: env("DEFAULT_MODEL_PROMPT_OPTIMIZATION"),
     ragQuery: env("DEFAULT_MODEL_RAG_QUERY"),
+    memory: env("DEFAULT_MODEL_MEMORY"),
   };
 }
 

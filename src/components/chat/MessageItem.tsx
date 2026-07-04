@@ -6,9 +6,7 @@ import type { Attachment, Message } from "@/types";
 import MarkdownRenderer from "../content/MarkdownRenderer";
 import Tooltip from "../ui/Tooltip";
 import Artifact from "../content/Artifact";
-import ReasoningBlock from "../content/ReasoningBlock";
-import SourceBlock from "../content/SourceBlock";
-import ToolCallBlock from "../content/ToolCallBlock";
+import MessageOutputRenderer from "../content/MessageOutputRenderer";
 import MessageAttachmentView from "./MessageAttachmentView";
 import RAGBlock from "../knowledge/RAGBlock";
 import AddToKnowledgeModal from "../knowledge/AddToKnowledgeModal";
@@ -69,6 +67,7 @@ import {
 } from "@/lib/utils/timedStatus";
 import { logDevError } from "@/lib/utils/devLogger";
 import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
+import { getMessageDisplayTokenCount } from "@/lib/utils/messageTokens";
 import {
   decodeAttachmentText,
   isTextDocumentMimeType,
@@ -105,20 +104,6 @@ const logMessageItemError = logDevError;
 
 const actionButtonFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
-
-// Helper for accurate token/word counting
-const getTokenCount = (text: string) => {
-  if (!text) return 0;
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-    const segmenter = new Intl.Segmenter("en-US", { granularity: "word" });
-    let count = 0;
-    for (const segment of segmenter.segment(text)) {
-      if (segment.isWordLike) count += 1;
-    }
-    if (count > 0) return count;
-  }
-  return Math.ceil(text.length / 4);
-};
 
 const markdownFileNamePattern = /\.(?:md|markdown)$/i;
 
@@ -721,39 +706,21 @@ const MessageItem: React.FC<MessageItemProps> = ({
     !message.searchSources &&
     (!message.toolCalls || message.toolCalls.length === 0);
 
-  // Accurate token count with API usage priority
   const tokenCount = useMemo(() => {
-    if (message.role === "user") {
-      // For user messages, show prompt tokens if available
-      if (message.usageMetadata) {
-        return message.usageMetadata.promptTokenCount ?? 0;
-      }
-      if (message.usage) {
-        return message.usage.prompt_tokens ?? 0;
-      }
-      // Fallback to estimation
-      return getTokenCount(message.content);
-    } else {
-      // For model messages, show completion tokens
-      if (message.usageMetadata) {
-        // Gemini style: usageMetadata.totalTokenCount - usageMetadata.promptTokenCount = candidatesTokenCount (output)
-        return (
-          message.usageMetadata.candidatesTokenCount ??
-          message.usageMetadata.totalTokenCount -
-            message.usageMetadata.promptTokenCount
-        );
-      }
-      if (message.usage) {
-        // OpenAI style
-        return message.usage.completion_tokens;
-      }
-      // Fallback
-      return getTokenCount(message.content);
-    }
-  }, [message.role, message.content, message.usageMetadata, message.usage]);
+    return getMessageDisplayTokenCount(message);
+  }, [message]);
 
   // Optimized Loading State: Show bubbles if active (typing/waiting) AND no content is displayed yet.
-  const isLoading = (isTyping || isWaitingForResponse) && !displayedContent;
+  const hasOutputEvents = Boolean(
+    message.outputBlocks?.length ||
+      message.reasoning ||
+      message.isSearching ||
+      message.searchSources?.length ||
+      message.searchImages?.length ||
+      message.toolCalls?.length,
+  );
+  const isLoading =
+    (isTyping || isWaitingForResponse) && !displayedContent && !hasOutputEvents;
 
   // Detect error messages for styling (starts with Error:)
   const isErrorMessage =
@@ -770,8 +737,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
   // --- Display Info Calculation ---
   const displayTimestamp = message.timestamp;
   const displayTiming = message.timing;
-  const rawReasoning = message.reasoning;
-
   // Reasoning Thinking State & Icon Logic
   // Also check if tools are running
   const isThinking =
@@ -822,14 +787,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   // Search Data from Message
   const sources = message.searchSources || [];
-  const images = message.searchImages || [];
-  const isSearching = message.isSearching;
 
   // RAG Data
   const ragSources = message.ragSources || [];
 
   // Tool Data
-  const toolCalls = message.toolCalls || [];
   const skillInvocations = message.skillInvocations || [];
 
   const handleAttachmentClick = (index: number) => {
@@ -1118,28 +1080,21 @@ const MessageItem: React.FC<MessageItemProps> = ({
               {/* RAG Block Component */}
               <RAGBlock sources={ragSources} />
 
-              {/* Source Block Component */}
-              <SourceBlock
-                sources={sources}
-                images={images}
-                isSearching={isSearching}
-              />
-
-              {/* Tool Calls Block */}
-              <ToolCallBlock toolCalls={toolCalls} />
-
               {skillInvocations.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {skillInvocations.map((skill) => (
                     <Tooltip
                       key={`${skill.id}-${skill.mode}`}
-                      content={t("skillAppliedTooltip", {
-                        title: skill.title,
-                        mode:
-                          skill.mode === "manual"
-                            ? t("skillModeManual")
-                            : t("skillModeAuto"),
-                      })}
+                      content={
+                        skill.description ||
+                        t("skillAppliedTooltip", {
+                          title: skill.title,
+                          mode:
+                            skill.mode === "manual"
+                              ? t("skillModeManual")
+                              : t("skillModeAuto"),
+                        })
+                      }
                       position="top"
                       portal
                     >
@@ -1151,12 +1106,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   ))}
                 </div>
               )}
-
-              {/* Reasoning Block Component */}
-              <ReasoningBlock
-                reasoning={rawReasoning || ""}
-                isThinking={isThinking}
-              />
 
               {generationError ? (
                 <div
@@ -1189,19 +1138,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   />
                 </div>
               ) : (
-                <div
-                  className={isTyping ? "animate-in fade-in duration-500" : ""}
-                >
-                  <div>
-                    <MarkdownRenderer
-                      content={displayedContent}
-                      className={isErrorMessage ? "text-red-500" : undefined}
-                      searchSources={sources}
-                      onFileClick={handleFileClick}
-                      isStreaming={isTyping}
-                    />
-                  </div>
-                </div>
+                <MessageOutputRenderer
+                  message={message}
+                  displayedContent={displayedContent}
+                  isTyping={isTyping}
+                  isThinking={isThinking}
+                  isErrorMessage={isErrorMessage}
+                  searchSources={sources}
+                  onFileClick={handleFileClick}
+                />
               )}
             </>
           )}

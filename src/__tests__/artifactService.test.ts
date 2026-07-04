@@ -49,11 +49,12 @@ describe("artifact prompt serialization", () => {
     );
   });
 
-  it("builds a conservative text polishing prompt", () => {
+  it("builds an intent-aware text polishing prompt with safety bounds", () => {
     const prompt = polishTextContent("帮我问下 Neo Chat 现在怎么部署？");
 
-    expect(prompt).toContain("improve the clarity");
-    expect(prompt).toContain("preserve the original meaning");
+    expect(prompt).toContain("infer the user's likely intent");
+    expect(prompt).toContain("complete vague or under-specified wording");
+    expect(prompt).toContain("Do not invent facts");
     expect(prompt).toContain("Respond with ONLY the polished text");
   });
 });

@@ -10,6 +10,7 @@ src/store/
 │   ├── chatStore.ts
 │   ├── coreSettingsStore.ts
 │   ├── knowledgeStore.ts
+│   ├── memoryStore.ts
 │   ├── settingsStore.ts
 │   └── uiStore.ts
 ├── hooks/
@@ -42,6 +43,12 @@ Owns chat sessions, messages, workspaces, message branching, session export/impo
 ### `knowledgeStore`
 
 Owns knowledge collections, file metadata, upload and indexing status, OPFS-backed file records, and RAG chunk metadata.
+
+### `memoryStore`
+
+Owns local long-term memories, memory automation settings, and dream
+consolidation status. Memories are stored in IndexedDB and may be supplied to
+model requests when the built-in memory search tool is used.
 
 ### `uiStore`
 
@@ -82,7 +89,7 @@ const theme = useStoreWithSSR(
 ## Persistence Strategy
 
 - Use `localStorage` for small core settings that must be available immediately.
-- Use IndexedDB for larger or structured data such as sessions, messages, plugins, assistants, and knowledge metadata.
+- Use IndexedDB for larger or structured data such as sessions, messages, plugins, assistants, knowledge metadata, and memories.
 - Use OPFS for uploaded file bytes and local file handles.
 - Do not persist transient UI state.
 - Use `partialize` to persist only fields that need to survive reloads.

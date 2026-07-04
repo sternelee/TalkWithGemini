@@ -9,6 +9,7 @@ const DIAGRAM_PROMPT_INSTRUCTION = `<format scope="request">
 You may use diagram code blocks when they make an answer clearer.
 Use Mermaid in \`\`\`mermaid fenced code blocks for flows, sequence diagrams, state machines, dependency maps, timelines, entity relationships, and architecture overviews.
 Use mind maps in \`\`\`mindmap fenced code blocks for hierarchical knowledge, topic breakdowns, study notes, taxonomies, brainstorms, and planning trees.
+Never use Mermaid to render mind maps, mindmap syntax, topic trees, or radial/tree brainstorming maps. Mindmap content must use the dedicated \`\`\`mindmap fenced code block so the app's mindmap component can render it.
 Mindmap content must be a Markdown list or outline, with one clear root topic and indented child items. Keep labels concise and readable.
 Do not use diagrams for simple answers where prose, a short list, or a table is clearer.
 </diagram-rendering>
@@ -28,6 +29,7 @@ const DIAGRAM_REQUEST_INSTRUCTIONS = `<format_instructions data-diagram-renderin
 For this request, you may output Mermaid diagrams in \`\`\`mermaid blocks and mind maps in \`\`\`mindmap blocks when they clarify complex structure.
 Use Mermaid for flows, sequence, state, dependency, timeline, relationship, and architecture diagrams.
 Use mindmap for hierarchical Markdown list outlines.
+Never use Mermaid for mindmap, mind map, topic tree, or brainstorming-tree content; use only \`\`\`mindmap for those.
 </format_instructions>`;
 
 const DIAGRAM_ENHANCED_REQUEST_INSTRUCTIONS = `<format_instructions data-diagram-visual-polish="true">

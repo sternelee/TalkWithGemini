@@ -297,12 +297,14 @@ describe("skill service", () => {
       {
         id: "translation-localization",
         title: "翻译与本地化",
+        description: "翻译文本。",
         category: "writing",
         mode: "auto",
       },
       {
         id: "tone-adapter",
         title: "Tone Adapter",
+        description: "Adjust tone.",
         category: "writing",
         mode: "auto",
       },
@@ -395,6 +397,7 @@ describe("skill service", () => {
       {
         id: "translation-localization",
         title: "翻译与本地化",
+        description: "翻译文本。",
         category: "writing",
         mode: "auto",
       },

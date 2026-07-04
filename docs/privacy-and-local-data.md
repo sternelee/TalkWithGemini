@@ -8,14 +8,20 @@ RAG, document parsing, voice, and plugin execution.
 
 Neo Chat uses several browser storage layers:
 
-| Storage                         | Data                                                                                          |
-| ------------------------------- | --------------------------------------------------------------------------------------------- |
-| `localStorage`                  | Core settings, provider records, selected models, and provider API key envelopes.             |
-| IndexedDB through `localforage` | Chat metadata, messages, app settings, installed plugins, assistants, and knowledge metadata. |
-| OPFS                            | Uploaded chat files, workspace files, and knowledge-base source files.                        |
+| Storage                         | Data                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `localStorage`                  | Core settings, provider records, selected models, and provider API key envelopes.                             |
+| IndexedDB through `localforage` | Chat metadata, messages, app settings, installed plugins, assistants, knowledge metadata, and local memories. |
+| OPFS                            | Uploaded chat files, workspace files, and knowledge-base source files.                                        |
 
 Clearing browser data can remove local chats, settings, plugin configuration,
-assistant records, and uploaded files.
+assistant records, memories, and uploaded files.
+
+Memory is local-first, but it is not invisible to model providers. When the
+memory search tool is used, matching memory snippets are included in the
+current model request as context. Background memory extraction and dream
+consolidation also send the latest exchange or memory set to the configured
+memory task model.
 
 ## BYOK Envelopes
 
@@ -38,8 +44,9 @@ until users re-enter the affected secrets.
 
 Server routes can receive prompts, message context, generated tool calls,
 search queries, document parsing jobs, audio payloads, plugin requests, and
-BYOK envelopes. Deployments should treat server logs, observability tools, and
-hosting provider logs as sensitive.
+BYOK envelopes. Local memory tool results may also be present in model request
+context. Deployments should treat server logs, observability tools, and hosting
+provider logs as sensitive.
 
 Neo Chat validates request payloads, applies URL safety gates, limits response
 sizes, and uses hosted-mode restrictions, but upstream providers still receive

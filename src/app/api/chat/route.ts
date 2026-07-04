@@ -24,6 +24,7 @@ export const POST = withStreamApiHandler(
       systemInstruction: parsed.systemInstruction,
       tools: parsed.tools,
       enableGoogleSearch: parsed.enableGoogleSearch,
+      enableOpenAIWebSearch: parsed.enableOpenAIWebSearch,
     });
   },
 );

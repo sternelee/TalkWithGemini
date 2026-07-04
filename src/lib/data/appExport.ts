@@ -12,6 +12,7 @@ export interface AppExportInput {
   settings?: unknown;
   chat?: unknown;
   knowledge?: unknown;
+  memory?: unknown;
 }
 
 export interface AppExportPayload {
@@ -23,6 +24,7 @@ export interface AppExportPayload {
     settings?: unknown;
     chat?: unknown;
     knowledge?: unknown;
+    memory?: unknown;
   };
 }
 
@@ -85,15 +87,17 @@ export function createAppExportPayload(
       settings: input.settings,
       chat: input.chat,
       knowledge: input.knowledge,
+      memory: input.memory,
     },
   };
 }
 
 export async function createBrowserAppExportPayload(): Promise<AppExportPayload> {
-  const [settings, chat, knowledge] = await Promise.all([
+  const [settings, chat, knowledge, memory] = await Promise.all([
     appDb.getItem<unknown>(STORAGE_KEYS.SETTINGS),
     appDb.getItem<unknown>(STORAGE_KEYS.CHAT),
     appDb.getItem<unknown>(STORAGE_KEYS.KNOWLEDGE),
+    appDb.getItem<unknown>(STORAGE_KEYS.MEMORY),
   ]);
   const coreSettings =
     typeof window === "undefined"
@@ -105,6 +109,7 @@ export async function createBrowserAppExportPayload(): Promise<AppExportPayload>
     settings: parseStoredValue(settings),
     chat: parseStoredValue(chat),
     knowledge: parseStoredValue(knowledge),
+    memory: parseStoredValue(memory),
   });
 }
 

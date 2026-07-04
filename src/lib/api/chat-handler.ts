@@ -40,6 +40,7 @@ export interface ChatHandlerOptions {
   systemInstruction?: string;
   tools?: any[];
   enableGoogleSearch?: boolean;
+  enableOpenAIWebSearch?: boolean;
 }
 
 function convertToolsToOpenAIResponses(tools?: any[]) {
@@ -84,6 +85,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
     systemInstruction,
     tools,
     enableGoogleSearch,
+    enableOpenAIWebSearch,
   } = options;
 
   const stream = createStreamHandler(async (controller) => {
@@ -108,6 +110,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
         temperature: config?.temperature,
         tools: convertToolsToOpenAIResponses(tools),
         useReasoning: config?.useReasoning,
+        enableWebSearch: enableOpenAIWebSearch,
         onChunk: send,
       });
     } else if (provider.type === OPENAI_COMPATIBLE_PROVIDER_TYPE) {

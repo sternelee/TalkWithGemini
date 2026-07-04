@@ -11,6 +11,7 @@ import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
 import { SSEMessage } from "./sse";
 import { finalizeStreamedToolCall } from "./toolCalls";
 import { normalizeGeneratedImageAttachment } from "../utils/generatedImages";
+import { normalizeSearchSources } from "../search/results";
 
 export interface GeminiStreamOptions {
   client: GoogleGenAI;
@@ -22,6 +23,37 @@ export interface GeminiStreamOptions {
   enableGoogleSearch?: boolean;
   useReasoning?: boolean;
   onChunk: (message: SSEMessage) => void;
+}
+
+function extractGeminiGroundingSources(groundingMetadata: any) {
+  const chunks = Array.isArray(groundingMetadata?.groundingChunks)
+    ? groundingMetadata.groundingChunks
+    : [];
+  const supports = Array.isArray(groundingMetadata?.groundingSupports)
+    ? groundingMetadata.groundingSupports
+    : [];
+
+  const sources = chunks
+    .map((chunk: any, index: number) => {
+      const web = chunk?.web;
+      const uri = web?.uri || web?.url;
+      if (!uri) return null;
+
+      const support = supports.find((item: any) => {
+        const indexes = item?.groundingChunkIndices;
+        return Array.isArray(indexes) ? indexes.includes(index) : index === 0;
+      });
+      const title = web?.title || uri;
+      const content = support?.segment?.text || title;
+      return {
+        title,
+        url: uri,
+        content,
+      };
+    })
+    .filter(Boolean);
+
+  return normalizeSearchSources(sources);
 }
 
 /**
@@ -87,7 +119,8 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
     const candidates = (chunk as any).candidates;
 
     if (candidates && candidates[0] && candidates[0].content) {
-      const parts = candidates[0].content.parts;
+      const candidate = candidates[0];
+      const parts = candidate.content.parts;
 
       for (const part of parts) {
         // 处理思考过程
@@ -141,6 +174,17 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
             });
           }
         }
+      }
+
+      const sources = extractGeminiGroundingSources(
+        candidate.groundingMetadata,
+      );
+      if (sources.length > 0) {
+        onChunk({
+          type: "search",
+          isSearching: false,
+          results: { sources, images: [] },
+        });
       }
     }
 

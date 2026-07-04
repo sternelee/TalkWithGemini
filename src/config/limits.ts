@@ -66,6 +66,21 @@ export const SEARCH_RESULT_LIMITS = {
   maxImageDescriptionChars: 500,
 } as const;
 
+export const MEMORY_LIMITS = {
+  maxMemories: 500,
+  triggerCount: 100,
+  targetCount: 50,
+  defaultSearchResults: 5,
+  maxSearchResults: 10,
+  maxContentChars: 2_000,
+  maxTagChars: 40,
+  maxTags: 12,
+  maxTypeChars: 40,
+  maxToolResultContentChars: 700,
+  maxExtractionContextChars: 12_000,
+  maxDreamPromptChars: 80_000,
+} as const;
+
 export const PROVIDER_MODEL_LIMITS = {
   maxModels: 500,
   maxModelIdChars: 300,

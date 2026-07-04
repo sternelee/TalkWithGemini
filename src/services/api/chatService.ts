@@ -5,11 +5,13 @@ import {
   ImageSource,
   ModelMetadata,
   Session,
+  MessageOutputBlock,
   Source,
   ToolCall,
 } from "@/types";
 import { useSettingsStore, getTaskModel } from "@/store/core/settingsStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
+import { useMemoryStore } from "@/store/core/memoryStore";
 import { v7 as uuidv7 } from "uuid";
 import { executePluginFunction } from "@/utils/pluginUtils";
 import { createSearchProvider } from "./searchService";
@@ -23,6 +25,7 @@ import {
   getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
 } from "@/lib/settings/searchRag";
+import { createMessageOutputBlockBuilder } from "../../lib/chat/messageOutputBlocks";
 import {
   buildSearchContextForPrompt,
   createSearchDecisionPrompt,
@@ -47,8 +50,25 @@ import {
   allocateContextBudget,
   trimTextToEstimatedTokens,
 } from "../../lib/chat/contextBudget";
+import {
+  parseMemoryDreamToolCall,
+  parseMemoryRecordToolCall,
+  searchMemoryRecords,
+  shouldExposeMemorySearchTool,
+} from "../../lib/memory/entities";
+import {
+  createMemoryDreamPrompt,
+  createMemoryExtractionPrompt,
+  formatMemoryToolResult,
+  MEMORY_DREAM_TOOL,
+  MEMORY_DREAM_TOOL_NAME,
+  MEMORY_RECORD_TOOL,
+  MEMORY_RECORD_TOOL_NAME,
+  MEMORY_SEARCH_TOOL,
+  MEMORY_SEARCH_TOOL_NAME,
+} from "../../lib/memory/tools";
 import { logDevError, logDevWarn } from "../../lib/utils/devLogger";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { MEMORY_LIMITS, PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
 
 type SearchStatusResults = { sources: Source[]; images: ImageSource[] };
 type ChatUsagePayload = { usage?: unknown; usageMetadata?: unknown };
@@ -60,6 +80,53 @@ type ChatToolDefinition = {
     parameters?: unknown;
   };
 };
+
+function coerceToolDefinition(tool: unknown): ChatToolDefinition {
+  return tool as ChatToolDefinition;
+}
+
+function isMemorySearchEnabled(): boolean {
+  const { settings } = useMemoryStore.getState();
+  return Boolean(settings.enabled && settings.searchEnabled);
+}
+
+function addInternalMemoryTools(
+  tools: ChatToolDefinition[],
+  toolNames: Set<string>,
+  message: string,
+): void {
+  if (!isMemorySearchEnabled()) return;
+  if (!shouldExposeMemorySearchTool(message)) return;
+  tools.push(coerceToolDefinition(MEMORY_SEARCH_TOOL));
+  toolNames.add(MEMORY_SEARCH_TOOL_NAME);
+}
+
+function isInternalMemoryTool(name: string | undefined): boolean {
+  return name === MEMORY_SEARCH_TOOL_NAME;
+}
+
+function getNumberArg(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+async function executeMemorySearchTool(args: unknown): Promise<unknown> {
+  const state = useMemoryStore.getState();
+  const { settings, memories } = state;
+  if (!settings.enabled || !settings.searchEnabled) {
+    return { memories: [] };
+  }
+
+  const input =
+    args && typeof args === "object" && !Array.isArray(args)
+      ? (args as Record<string, unknown>)
+      : {};
+  const query =
+    typeof input.query === "string" && input.query.trim() ? input.query : "";
+  const limit = getNumberArg(input.limit, MEMORY_LIMITS.defaultSearchResults);
+  const results = searchMemoryRecords(memories, query, limit);
+  state.markMemoriesUsed(results.map((memory) => memory.id));
+  return formatMemoryToolResult(results);
+}
 
 function resolveModelMetadata(modelName: string): ModelMetadata | undefined {
   const { modelMetadata, customModelMetadata } = useSettingsStore.getState();
@@ -396,7 +463,11 @@ export const streamChatResponse = async (
   newMessage: string,
   attachments: Attachment[],
   config: Partial<ChatConfig>,
-  onChunk: (text: string, reasoning?: string) => void,
+  onChunk: (
+    text: string,
+    reasoning?: string,
+    outputBlocks?: MessageOutputBlock[],
+  ) => void,
   userSystemInstruction?: string,
   onSearchStatus?: (
     isSearching: boolean,
@@ -408,6 +479,7 @@ export const streamChatResponse = async (
   signal?: AbortSignal,
   activePlugins?: string[], // Add activePlugins parameter
   skillsContext?: string,
+  onOutputBlocks?: (outputBlocks: MessageOutputBlock[]) => void,
 ): Promise<string> => {
   const { providerId, modelName } = parseModelString(model);
 
@@ -427,6 +499,10 @@ export const streamChatResponse = async (
     searchConfig,
     modelProviderType: provider.type,
   });
+  const outputBlockBuilder = createMessageOutputBlockBuilder();
+  const emitOutputBlocks = () => {
+    onOutputBlocks?.(outputBlockBuilder.getBlocks());
+  };
 
   if (config?.useSearch && !searchCompatibility.enabled) {
     onSearchStatus?.(false, { sources: [], images: [] });
@@ -438,6 +514,7 @@ export const streamChatResponse = async (
     onSearchStatus &&
     searchCompatibility.mode === "external"
   ) {
+    let externalSearchStarted = false;
     try {
       const decision = await decideExternalSearchUse({
         model,
@@ -449,11 +526,19 @@ export const streamChatResponse = async (
       if (!decision.shouldSearch) {
         onSearchStatus(false, { sources: [], images: [] });
       } else {
+        outputBlockBuilder.upsertSearch({ isSearching: true });
+        externalSearchStarted = true;
         onSearchStatus(true);
+        emitOutputBlocks();
         const searchResults = await createSearchProvider({
           query: decision.query,
         });
+        outputBlockBuilder.upsertSearch({
+          isSearching: false,
+          results: searchResults,
+        });
         onSearchStatus(false, searchResults);
+        emitOutputBlocks();
 
         if (
           searchResults.sources.length > 0 ||
@@ -489,6 +574,13 @@ export const streamChatResponse = async (
       }
     } catch (searchError) {
       logDevWarn("Search preflight failed:", searchError);
+      if (externalSearchStarted) {
+        outputBlockBuilder.upsertSearch({
+          isSearching: false,
+          results: { sources: [], images: [] },
+        });
+        emitOutputBlocks();
+      }
       onSearchStatus(false, { sources: [], images: [] });
     }
   }
@@ -497,6 +589,8 @@ export const streamChatResponse = async (
   const { installedPlugins, pluginConfigs } = useSettingsStore.getState();
   const tools: ChatToolDefinition[] = [];
   const toolNames = new Set<string>();
+
+  addInternalMemoryTools(tools, toolNames, newMessage);
 
   if (activePlugins && activePlugins.length > 0) {
     activePlugins.forEach((pluginId) => {
@@ -580,6 +674,8 @@ export const streamChatResponse = async (
             tools,
             enableGoogleSearch:
               config?.useSearch && searchCompatibility.mode === "gemini-google",
+            enableOpenAIWebSearch:
+              config?.useSearch && searchCompatibility.mode === "openai-web",
           }),
           signal,
         }),
@@ -610,17 +706,21 @@ export const streamChatResponse = async (
         switch (parsed.type) {
           case "content":
             fullContent += parsed.content;
+            outputBlockBuilder.appendText(parsed.content);
             onChunk(
               committedContent + fullContent,
               committedReasoning + fullReasoning,
+              outputBlockBuilder.getBlocks(),
             );
             return false;
 
           case "reasoning":
             fullReasoning += parsed.content;
+            outputBlockBuilder.appendReasoning(parsed.content);
             onChunk(
               committedContent + fullContent,
               committedReasoning + fullReasoning,
+              outputBlockBuilder.getBlocks(),
             );
             return false;
 
@@ -632,18 +732,27 @@ export const streamChatResponse = async (
               status: parsed.toolCall?.status || "pending",
             };
             roundToolCalls.push(toolCall);
+            outputBlockBuilder.appendToolCall(toolCall);
+            emitOutputBlocks();
             upsertToolCall(toolCall);
             return false;
           }
 
           case "tool_result":
             if (parsed.toolCall) {
+              outputBlockBuilder.updateToolCall(parsed.toolCall);
+              emitOutputBlocks();
               upsertToolCall(parsed.toolCall);
             }
             return false;
 
           case "search":
+            outputBlockBuilder.upsertSearch({
+              isSearching: parsed.isSearching,
+              results: parsed.results,
+            });
             onSearchStatus?.(parsed.isSearching, parsed.results);
+            emitOutputBlocks();
             return false;
 
           case "image":
@@ -745,15 +854,18 @@ export const streamChatResponse = async (
       }
 
       if (round === maxToolRounds) {
-        pendingToolCalls.forEach((toolCall) =>
-          upsertToolCall({
+        pendingToolCalls.forEach((toolCall) => {
+          const skippedToolCall: ToolCall = {
             ...toolCall,
             status: "skipped",
             isError: true,
             result:
               "Tool execution skipped because the maximum tool-call rounds were reached.",
-          }),
-        );
+          };
+          outputBlockBuilder.updateToolCall(skippedToolCall);
+          emitOutputBlocks();
+          upsertToolCall(skippedToolCall);
+        });
         return (
           committedContent +
           result.content +
@@ -761,20 +873,25 @@ export const streamChatResponse = async (
         );
       }
 
-      pendingToolCalls.forEach((toolCall) =>
-        upsertToolCall({ ...toolCall, status: "running" }),
-      );
+      pendingToolCalls.forEach((toolCall) => {
+        const runningToolCall: ToolCall = { ...toolCall, status: "running" };
+        outputBlockBuilder.updateToolCall(runningToolCall);
+        emitOutputBlocks();
+        upsertToolCall(runningToolCall);
+      });
 
       const executedToolCalls = await Promise.all(
         pendingToolCalls.map(async (toolCall) => {
           try {
-            const resultData = await executePluginFunction(
-              toolCall.name,
-              toolCall.args,
-              toolCall.auth,
-              activePlugins,
-              signal,
-            );
+            const resultData = isInternalMemoryTool(toolCall.name)
+              ? await executeMemorySearchTool(toolCall.args)
+              : await executePluginFunction(
+                  toolCall.name,
+                  toolCall.args,
+                  toolCall.auth,
+                  activePlugins,
+                  signal,
+                );
             const isError =
               !!resultData &&
               typeof resultData === "object" &&
@@ -785,6 +902,8 @@ export const streamChatResponse = async (
               isError,
               result: resultData,
             };
+            outputBlockBuilder.updateToolCall(completed);
+            emitOutputBlocks();
             upsertToolCall(completed);
             return completed;
           } catch (toolError) {
@@ -797,6 +916,8 @@ export const streamChatResponse = async (
                   ? toolError.message
                   : String(toolError),
             };
+            outputBlockBuilder.updateToolCall(failed);
+            emitOutputBlocks();
             upsertToolCall(failed);
             return failed;
           }
@@ -1237,6 +1358,107 @@ export const streamGenerateToolCall = async (
       throw error;
     }
     logDevWarn("Skill tool selection failed:", error);
+    return null;
+  }
+};
+
+export const performBackgroundMemoryExtraction = async ({
+  sessionId,
+  userMessage,
+  assistantMessage,
+  signal,
+}: {
+  sessionId: string;
+  userMessage: Pick<Message, "id" | "content">;
+  assistantMessage: Pick<Message, "id" | "content">;
+  signal?: AbortSignal;
+}) => {
+  const state = useMemoryStore.getState();
+  const { settings } = state;
+  if (!settings.enabled || !settings.autoRecordEnabled) return [];
+  if (!userMessage.content.trim() || !assistantMessage.content.trim()) {
+    return [];
+  }
+
+  const toolCall = await streamGenerateToolCall(
+    getTaskModel("memory"),
+    createMemoryExtractionPrompt({
+      userMessage: userMessage.content,
+      assistantMessage: assistantMessage.content,
+    }),
+    [coerceToolDefinition(MEMORY_RECORD_TOOL)],
+    signal,
+  );
+
+  if (!toolCall || toolCall.name !== MEMORY_RECORD_TOOL_NAME) return [];
+
+  const memories = parseMemoryRecordToolCall(toolCall.args, {
+    source: "ai",
+    sourceSessionId: sessionId,
+    sourceMessageIds: [userMessage.id, assistantMessage.id],
+  });
+  if (memories.length === 0) return [];
+
+  const saved = useMemoryStore.getState().upsertMemories(memories);
+  const nextState = useMemoryStore.getState();
+  if (
+    nextState.settings.enabled &&
+    nextState.settings.dreamEnabled &&
+    nextState.memories.length > nextState.settings.triggerCount
+  ) {
+    void performMemoryDream({ force: false, signal });
+  }
+
+  return saved;
+};
+
+export const performMemoryDream = async ({
+  force = false,
+  signal,
+}: {
+  force?: boolean;
+  signal?: AbortSignal;
+} = {}) => {
+  const state = useMemoryStore.getState();
+  const { settings, memories, dreamStatus } = state;
+  if (!settings.enabled || !settings.dreamEnabled || dreamStatus.isRunning) {
+    return null;
+  }
+  if (memories.length <= settings.targetCount) return null;
+  if (!force && memories.length <= settings.triggerCount) return null;
+
+  state.startDream();
+  try {
+    const targetCount = Math.min(
+      settings.targetCount,
+      MEMORY_LIMITS.targetCount,
+    );
+    const toolCall = await streamGenerateToolCall(
+      getTaskModel("memory"),
+      createMemoryDreamPrompt({ memories, targetCount }),
+      [coerceToolDefinition(MEMORY_DREAM_TOOL)],
+      signal,
+    );
+
+    if (!toolCall || toolCall.name !== MEMORY_DREAM_TOOL_NAME) {
+      throw new Error("Memory dream did not return a valid tool call.");
+    }
+
+    const dreamed = parseMemoryDreamToolCall(toolCall.args, {
+      targetCount,
+    });
+
+    if (dreamed.length === 0 || dreamed.length > targetCount) {
+      throw new Error("Memory dream returned an invalid memory set.");
+    }
+
+    useMemoryStore.getState().replaceMemories(dreamed);
+    useMemoryStore.getState().finishDream();
+    return dreamed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    useMemoryStore.getState().finishDream(message);
+    logDevWarn("Memory dream failed:", error);
     return null;
   }
 };

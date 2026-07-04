@@ -194,7 +194,7 @@ export function polishTextContent(content: string) {
   );
 
   return `
-You are an expert writing assistant. Your task is to improve the clarity, flow, and expression of the following text. You must preserve the original meaning, facts, intent, language, formatting, and code blocks.
+You are an expert writing assistant. Your task is to infer the user's likely intent, improve clarity, flow, and expression, and complete vague or under-specified wording when the intended meaning is reasonably implied by the text.
 
 Text to polish:
 <text>
@@ -203,8 +203,10 @@ ${safeContent}
 
 Rules:
 - Respond with ONLY the polished text.
-- Do not add facts, claims, citations, explanations, prefixes, or suffixes.
+- Preserve the original language, key facts, names, product terms, numbers, URLs, placeholders, Markdown, links, and code blocks.
+- Do not invent facts, claims, citations, policies, metrics, owners, dates, or promises that are not provided or reasonably implied.
+- You may make implicit intent explicit, clarify the ask, improve structure, and fill small wording gaps when doing so helps the text achieve its likely purpose.
+- Do not add explanations, prefixes, suffixes, or alternative versions.
 - Keep the original language unless the user explicitly asks for translation.
-- Preserve Markdown, code blocks, links, and placeholders exactly when possible.
 `;
 }

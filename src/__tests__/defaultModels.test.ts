@@ -12,6 +12,7 @@ const defaultModels: DefaultModels = {
   contextCompression: "A:missing",
   promptOptimization: "",
   ragQuery: "C:model-c",
+  memory: "A:model-a",
 };
 
 const providers: ModelProvider[] = [
@@ -45,6 +46,7 @@ describe("default model pruning", () => {
       contextCompression: "",
       promptOptimization: "",
       ragQuery: "",
+      memory: "A:model-a",
     });
   });
 

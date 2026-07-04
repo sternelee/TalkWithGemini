@@ -14,4 +14,14 @@ describe("settings UI primitives", () => {
     expect(settingsUi).toContain("focus-visible:ring-ring");
     expect(settingsUi).toContain("data-[state=checked]");
   });
+
+  it("exposes memory management as a settings tab", () => {
+    const settingsPage = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SettingsPage.tsx"),
+      "utf8",
+    );
+
+    expect(settingsPage).toContain('id: "memory"');
+    expect(settingsPage).toContain("tabMemory");
+  });
 });

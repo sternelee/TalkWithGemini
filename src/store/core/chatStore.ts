@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from "uuid";
 import {
   Session,
   Message,
+  MessageOutputBlock,
   ChatConfig,
   Workspace,
   Attachment,
@@ -253,6 +254,10 @@ interface ChatState {
     id: string,
     compression: Session["compression"],
   ) => void;
+  updateSessionMemoryContext: (
+    id: string,
+    memoryContext: Session["memoryContext"],
+  ) => void;
   moveSessionToWorkspace: (
     sessionId: string,
     workspaceId: string | null,
@@ -267,6 +272,7 @@ interface ChatState {
     messageId: string,
     content: string,
     reasoning?: string,
+    outputBlocks?: MessageOutputBlock[],
   ) => void;
   updateMessage: (
     sessionId: string,
@@ -711,6 +717,20 @@ export const useChatStore = create<ChatState>()(
         }));
       },
 
+      updateSessionMemoryContext: (id, memoryContext) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id
+              ? normalizeSession({
+                  ...s,
+                  memoryContext,
+                  updatedAt: Date.now(),
+                })
+              : s,
+          ),
+        }));
+      },
+
       moveSessionToWorkspace: (sessionId, workspaceId) => {
         set((state) => ({
           sessions: state.sessions.map((s) =>
@@ -864,7 +884,13 @@ export const useChatStore = create<ChatState>()(
         });
       },
 
-      updateMessageContent: (sessionId, messageId, content, reasoning) => {
+      updateMessageContent: (
+        sessionId,
+        messageId,
+        content,
+        reasoning,
+        outputBlocks,
+      ) => {
         // Memory Update Only (Fast for streaming)
         set((state) => {
           if (state.currentSessionId !== sessionId) return {}; // Ignore updates for non-active sessions
@@ -879,6 +905,9 @@ export const useChatStore = create<ChatState>()(
               };
               if (reasoning !== undefined) {
                 newMessage.reasoning = reasoning;
+              }
+              if (outputBlocks !== undefined) {
+                newMessage.outputBlocks = outputBlocks;
               }
               return newMessage;
             },

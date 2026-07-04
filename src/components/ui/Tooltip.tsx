@@ -145,10 +145,7 @@ const Tooltip: React.FC<TooltipProps> = ({
 
   useEffect(() => {
     if (!portal) return;
-    if (!isVisible) {
-      setPortalStyle(HIDDEN_PORTAL_STYLE);
-      return;
-    }
+    if (!isVisible) return;
 
     let frameId = window.requestAnimationFrame(updatePortalPosition);
     const scheduleUpdate = () => {
@@ -195,7 +192,9 @@ const Tooltip: React.FC<TooltipProps> = ({
       ref={tooltipRef}
       id={tooltipId}
       role="tooltip"
-      style={portal ? portalStyle : undefined}
+      style={
+        portal ? (isVisible ? portalStyle : HIDDEN_PORTAL_STYLE) : undefined
+      }
       className={tooltipClassName}
     >
       {content}

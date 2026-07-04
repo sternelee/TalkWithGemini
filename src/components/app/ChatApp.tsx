@@ -25,6 +25,7 @@ import {
   streamChatResponse,
   prepareHistoryForLLM,
   performBackgroundCompression,
+  performBackgroundMemoryExtraction,
 } from "@/services/api/chatService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
 import {
@@ -36,8 +37,16 @@ import {
   getRandomAgents,
   getAgentDetail,
 } from "@/services/api/agentService";
-import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
+import {
+  Message,
+  Attachment,
+  ImageSource,
+  LobeAgent,
+  SessionMessageTree,
+  Source,
+} from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
+import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
 import { formatModelName } from "@/store/core/settingsStore";
 import { handleTokenUsageUpdate } from "@/lib/utils/message";
@@ -61,6 +70,8 @@ import {
   useChatThemeEffects,
 } from "@/features/chat";
 import { resolveEffectiveChatContext } from "@/lib/chat/effectiveChatContext";
+import { buildDirectMemoryPromptContext } from "@/lib/memory/entities";
+import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import {
   getActiveMessagePath,
   getMessageBranchInfo,
@@ -119,6 +130,50 @@ const SettingsPage = dynamic(
 
 const logChatAppError = logDevError;
 
+const mergeSources = (existing: Source[] = [], incoming: Source[] = []) => {
+  const seen = new Set<string>();
+  const merged: Source[] = [];
+
+  for (const source of [...existing, ...incoming]) {
+    const key = `${source.url}\n${source.title}\n${source.content}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(source);
+  }
+
+  return merged;
+};
+
+const mergeImages = (
+  existing: ImageSource[] = [],
+  incoming: ImageSource[] = [],
+) => {
+  const seen = new Set<string>();
+  const merged: ImageSource[] = [];
+
+  for (const image of [...existing, ...incoming]) {
+    const key = `${image.url}\n${image.description || ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(image);
+  }
+
+  return merged;
+};
+
+const buildSearchUpdate = (
+  message: Message | undefined,
+  isSearching: boolean,
+  results?: { sources: Source[]; images: ImageSource[] },
+): Partial<Message> => {
+  const updates: Partial<Message> = { isSearching };
+  if (results) {
+    updates.searchSources = mergeSources(message?.searchSources, results.sources);
+    updates.searchImages = mergeImages(message?.searchImages, results.images);
+  }
+  return updates;
+};
+
 const ChatApp = () => {
   // --- Global Store ---
   const {
@@ -137,6 +192,7 @@ const ChatApp = () => {
       updateSessionTitle,
       updateSessionInstruction,
       updateSessionCompression,
+      updateSessionMemoryContext,
       toggleSessionPin,
       duplicateSession,
       addMessage,
@@ -194,6 +250,23 @@ const ChatApp = () => {
     finishActiveGeneration,
     stopActiveGeneration,
   } = useChatGenerationController();
+
+  const queueMemoryExtraction = useCallback(
+    (
+      sessionId: string,
+      userMessage: Pick<Message, "id" | "content">,
+      assistantMessage: Pick<Message, "id" | "content">,
+    ) => {
+      performBackgroundMemoryExtraction({
+        sessionId,
+        userMessage,
+        assistantMessage,
+      }).catch((err) => {
+        logChatAppError("Memory extraction failed:", err);
+      });
+    },
+    [],
+  );
 
   const [viewMode, setViewMode] = useState<ChatPanel>("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("providers");
@@ -802,7 +875,45 @@ const ChatApp = () => {
         effectiveContext.workspaceKnowledgeCollectionIds,
     });
 
-    return { ...processedData, effectiveContext };
+    const memoryState = useMemoryStore.getState();
+    const directMemoryContext =
+      memoryState.settings.enabled && memoryState.settings.searchEnabled
+        ? buildDirectMemoryPromptContext({
+            memories: memoryState.memories,
+            query: text,
+            alreadyInjectedMemoryIds:
+              session?.memoryContext?.injectedMemoryIds || [],
+          })
+        : { text: "", injectedMemoryIds: [] };
+
+    return {
+      ...processedData,
+      finalText: directMemoryContext.text
+        ? appendContextToChatInput(processedData.finalText, directMemoryContext.text, {
+            separator: "\n\n",
+          })
+        : processedData.finalText,
+      effectiveContext,
+      injectedMemoryIds: directMemoryContext.injectedMemoryIds,
+    };
+  };
+
+  const commitInjectedMemoryContext = (
+    sessionId: string,
+    session: typeof currentSession | null | undefined,
+    injectedMemoryIds: string[],
+  ) => {
+    if (injectedMemoryIds.length === 0) return;
+    const merged = Array.from(
+      new Set([
+        ...(session?.memoryContext?.injectedMemoryIds || []),
+        ...injectedMemoryIds,
+      ]),
+    );
+    updateSessionMemoryContext(sessionId, {
+      injectedMemoryIds: merged,
+      updatedAt: Date.now(),
+    });
   };
 
   const handleSendMessage = async (text: string, attachments: Attachment[]) => {
@@ -858,10 +969,21 @@ const ChatApp = () => {
         attachments,
       );
 
-      const { finalText, finalAttachments, ragSources, userMessage } =
+      const {
+        finalText,
+        finalAttachments,
+        ragSources,
+        userMessage,
+        injectedMemoryIds,
+      } =
         processedData;
 
       if (!isGenerationRunActive(generation)) return;
+      commitInjectedMemoryContext(
+        targetSessionId,
+        sessionForProcessing,
+        injectedMemoryIds,
+      );
 
       // Add User Message
       await addMessage(targetSessionId, userMessage);
@@ -917,6 +1039,9 @@ const ChatApp = () => {
         });
       }
 
+      let latestStreamText = "";
+      let latestStreamReasoning = "";
+
       await streamChatResponse(
         targetSessionId,
         selectedModel,
@@ -924,25 +1049,32 @@ const ChatApp = () => {
         finalText, // Injected context included here
         finalAttachments, // Injected files included here (excluding original KB refs)
         effectiveConfig,
-        (streamText, streamReasoning) => {
+        (streamText, streamReasoning, outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
+          latestStreamText = streamText;
+          if (streamReasoning !== undefined) {
+            latestStreamReasoning = streamReasoning;
+          }
           // Update active state in memory only
           updateMessageContent(
             targetSessionId!,
             currentBotMsgId,
             streamText,
             streamReasoning,
+            outputBlocks,
           );
         },
         effectiveContext.systemInstruction,
         (isSearching, results) => {
           if (!isGenerationRunActive(generation)) return;
-          const updates: Partial<Message> = { isSearching };
-          if (results) {
-            // If native search results come in, append them or merge
-            updates.searchSources = results.sources;
-            updates.searchImages = results.images;
-          }
+          const currentMessage = useChatStore
+            .getState()
+            .activeMessages.find((message) => message.id === currentBotMsgId);
+          const updates = buildSearchUpdate(
+            currentMessage,
+            isSearching,
+            results,
+          );
           updateMessage(targetSessionId!, currentBotMsgId, updates);
         },
         (toolCalls) => {
@@ -974,6 +1106,16 @@ const ChatApp = () => {
         generation.controller.signal,
         effectiveContext.activePluginIds,
         skillResolution.context,
+        (outputBlocks) => {
+          if (!isGenerationRunActive(generation)) return;
+          updateMessageContent(
+            targetSessionId!,
+            currentBotMsgId,
+            latestStreamText,
+            latestStreamReasoning || undefined,
+            outputBlocks,
+          );
+        },
       );
 
       if (!isGenerationRunActive(generation)) return;
@@ -1011,6 +1153,13 @@ const ChatApp = () => {
             content: completedBotMessage.content,
           }
         : null;
+
+      if (completedBotMessage) {
+        queueMemoryExtraction(targetSessionId, userMessage, {
+          id: completedBotMessage.id,
+          content: completedBotMessage.content,
+        });
+      }
 
       // 1. Follow-up Questions
       if (system.enableRelatedQuestions && updatedHistory.length > 0) {
@@ -1199,8 +1348,19 @@ const ChatApp = () => {
 
     try {
       const sessionMeta = getCurrentSession();
-      const { finalText, finalAttachments, ragSources, effectiveContext } =
+      const {
+        finalText,
+        finalAttachments,
+        ragSources,
+        effectiveContext,
+        injectedMemoryIds,
+      } =
         await processPromptForModel(sessionMeta, promptText, promptAttachments);
+      commitInjectedMemoryContext(
+        currentSessionId,
+        sessionMeta,
+        injectedMemoryIds,
+      );
       const skillResolution = await resolveSkillsForMessage({
         message: promptText,
         selectedModel,
@@ -1228,6 +1388,9 @@ const ChatApp = () => {
       );
       if (!isGenerationRunActive(generation)) return;
 
+      let latestStreamText = "";
+      let latestStreamReasoning = "";
+
       await streamChatResponse(
         currentSessionId,
         selectedModel,
@@ -1235,23 +1398,31 @@ const ChatApp = () => {
         finalText,
         finalAttachments,
         chatConfig,
-        (streamText, streamReasoning) => {
+        (streamText, streamReasoning, outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
+          latestStreamText = streamText;
+          if (streamReasoning !== undefined) {
+            latestStreamReasoning = streamReasoning;
+          }
           updateMessageContent(
             currentSessionId,
             branchMessageId,
             streamText,
             streamReasoning,
+            outputBlocks,
           );
         },
         effectiveContext.systemInstruction,
         (isSearching, results) => {
           if (!isGenerationRunActive(generation)) return;
-          const updates: Partial<Message> = { isSearching };
-          if (results) {
-            updates.searchSources = results.sources;
-            updates.searchImages = results.images;
-          }
+          const currentMessage = useChatStore
+            .getState()
+            .activeMessages.find((message) => message.id === branchMessageId);
+          const updates = buildSearchUpdate(
+            currentMessage,
+            isSearching,
+            results,
+          );
           updateMessage(currentSessionId, branchMessageId, updates);
         },
         (toolCalls) => {
@@ -1282,6 +1453,16 @@ const ChatApp = () => {
         generation.controller.signal,
         effectiveContext.activePluginIds,
         skillResolution.context,
+        (outputBlocks) => {
+          if (!isGenerationRunActive(generation)) return;
+          updateMessageContent(
+            currentSessionId,
+            branchMessageId,
+            latestStreamText,
+            latestStreamReasoning || undefined,
+            outputBlocks,
+          );
+        },
       );
 
       if (!isGenerationRunActive(generation)) return;
@@ -1295,6 +1476,15 @@ const ChatApp = () => {
       });
 
       await syncActiveSession(currentSessionId);
+      const completedBranchMessage = useChatStore
+        .getState()
+        .activeMessages.find((message) => message.id === branchMessageId);
+      if (completedBranchMessage) {
+        queueMemoryExtraction(currentSessionId, lastUserMsg, {
+          id: completedBranchMessage.id,
+          content: completedBranchMessage.content,
+        });
+      }
     } catch (error: any) {
       if (error.name === "AbortError" || generation.controller.signal.aborted) {
         return;
@@ -1436,12 +1626,14 @@ const ChatApp = () => {
         ragSources,
         userMessage,
         effectiveContext,
+        injectedMemoryIds,
       } = await processPromptForModel(
         sessionMeta,
         newContent,
         sourceMessage.attachments || [],
       );
       if (!isGenerationRunActive(generation)) return;
+      commitInjectedMemoryContext(sessionId, sessionMeta, injectedMemoryIds);
 
       const skillResolution = await resolveSkillsForMessage({
         message: newContent,
@@ -1491,6 +1683,9 @@ const ChatApp = () => {
       );
       if (!isGenerationRunActive(generation)) return;
 
+      let latestStreamText = "";
+      let latestStreamReasoning = "";
+
       await streamChatResponse(
         sessionId,
         selectedModel,
@@ -1498,23 +1693,31 @@ const ChatApp = () => {
         finalText,
         finalAttachments,
         chatConfig,
-        (streamText, streamReasoning) => {
+        (streamText, streamReasoning, outputBlocks) => {
           if (!isGenerationRunActive(generation) || !modelMessageId) return;
+          latestStreamText = streamText;
+          if (streamReasoning !== undefined) {
+            latestStreamReasoning = streamReasoning;
+          }
           updateMessageContent(
             sessionId,
             modelMessageId,
             streamText,
             streamReasoning,
+            outputBlocks,
           );
         },
         effectiveContext.systemInstruction,
         (isSearching, results) => {
           if (!isGenerationRunActive(generation) || !modelMessageId) return;
-          const updates: Partial<Message> = { isSearching };
-          if (results) {
-            updates.searchSources = results.sources;
-            updates.searchImages = results.images;
-          }
+          const currentMessage = useChatStore
+            .getState()
+            .activeMessages.find((message) => message.id === modelMessageId);
+          const updates = buildSearchUpdate(
+            currentMessage,
+            isSearching,
+            results,
+          );
           updateMessage(sessionId, modelMessageId, updates);
         },
         (toolCalls) => {
@@ -1554,6 +1757,16 @@ const ChatApp = () => {
         generation.controller.signal,
         effectiveContext.activePluginIds,
         skillResolution.context,
+        (outputBlocks) => {
+          if (!isGenerationRunActive(generation) || !modelMessageId) return;
+          updateMessageContent(
+            sessionId,
+            modelMessageId,
+            latestStreamText,
+            latestStreamReasoning || undefined,
+            outputBlocks,
+          );
+        },
       );
 
       if (!isGenerationRunActive(generation) || !modelMessageId) return;
@@ -1567,6 +1780,19 @@ const ChatApp = () => {
       });
 
       await syncActiveSession(sessionId);
+      const completedModelMessage = useChatStore
+        .getState()
+        .activeMessages.find((message) => message.id === modelMessageId);
+      if (completedModelMessage && editedUserMessageId) {
+        queueMemoryExtraction(
+          sessionId,
+          { id: editedUserMessageId, content: newContent },
+          {
+            id: completedModelMessage.id,
+            content: completedModelMessage.content,
+          },
+        );
+      }
     } catch (error: any) {
       if (error.name === "AbortError" || generation.controller.signal.aborted) {
         return;

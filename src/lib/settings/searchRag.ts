@@ -35,11 +35,12 @@ const DEFAULT_SEARCH_PROVIDER: SearchProviderID = "firecrawl";
 const DEFAULT_DOCUMENT_PARSE_PROVIDER: DocumentParseProvider = "mineru";
 
 export type SearchCompatibilityMode =
-  "gemini-google" | "external" | "unavailable";
+  "gemini-google" | "openai-web" | "external" | "unavailable";
 
 export type SearchCompatibilityReason =
   | "missing_model_provider"
   | "google_requires_gemini"
+  | "model_builtin_search_unsupported"
   | "missing_search_api_key"
   | "missing_search_base_url";
 
@@ -133,11 +134,19 @@ export const getSearchCompatibility = ({
       };
     }
 
+    if (modelProviderType === "OpenAI") {
+      return {
+        enabled: true,
+        mode: "openai-web",
+        provider: searchProvider,
+      };
+    }
+
     return {
       enabled: false,
       mode: "unavailable",
       provider: searchProvider,
-      reason: "google_requires_gemini",
+      reason: "model_builtin_search_unsupported",
     };
   }
 
@@ -185,6 +194,8 @@ export const getSearchCompatibilityErrorMessage = (
       return "No active model provider is available for search.";
     case "google_requires_gemini":
       return "Google Search is only available with Gemini models. Choose an external search provider for OpenAI-compatible models.";
+    case "model_builtin_search_unsupported":
+      return "Model built-in search is only available with Gemini or OpenAI Responses models. Choose an external search provider for OpenAI-compatible models.";
     case "missing_search_api_key":
       return `${getSearchProviderLabel(result.provider)} search requires an API key.`;
     case "missing_search_base_url":

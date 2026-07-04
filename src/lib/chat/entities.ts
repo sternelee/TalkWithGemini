@@ -181,6 +181,33 @@ function normalizeSessionCompression(
   };
 }
 
+function normalizeSessionMemoryContext(
+  memoryContext: Session["memoryContext"],
+): Session["memoryContext"] | undefined {
+  if (!memoryContext || typeof memoryContext !== "object") return undefined;
+  const injectedMemoryIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of Array.isArray(memoryContext.injectedMemoryIds)
+    ? memoryContext.injectedMemoryIds
+    : []) {
+    const id = trimString(value, 160);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    injectedMemoryIds.push(id);
+    if (injectedMemoryIds.length >= 200) break;
+  }
+
+  if (injectedMemoryIds.length === 0) return undefined;
+  return {
+    injectedMemoryIds,
+    ...(typeof memoryContext.updatedAt === "number" &&
+    Number.isFinite(memoryContext.updatedAt)
+      ? { updatedAt: Math.floor(memoryContext.updatedAt) }
+      : {}),
+  };
+}
+
 export function normalizeSessionConfig(
   config?: SessionConfig,
 ): SessionConfig | undefined {
@@ -218,6 +245,7 @@ export function normalizeSession(session: Session): Session {
     pinned: session.pinned === true,
     config: normalizeSessionConfig(session.config),
     compression: normalizeSessionCompression(session.compression),
+    memoryContext: normalizeSessionMemoryContext(session.memoryContext),
   };
 }
 

@@ -6,7 +6,7 @@ import {
 } from "../lib/settings/searchRag";
 
 describe("search compatibility", () => {
-  it("allows Gemini native Google Search only for Gemini providers", () => {
+  it("routes model built-in search by provider capability", () => {
     expect(
       getSearchCompatibility({
         searchProvider: "google",
@@ -18,18 +18,29 @@ describe("search compatibility", () => {
       provider: "google",
     });
 
+    expect(
+      getSearchCompatibility({
+        searchProvider: "google",
+        modelProviderType: "OpenAI",
+      }),
+    ).toEqual({
+      enabled: true,
+      mode: "openai-web",
+      provider: "google",
+    });
+
     const result = getSearchCompatibility({
       searchProvider: "google",
-      modelProviderType: "OpenAI",
+      modelProviderType: "OpenAI Compatible",
     });
 
     expect(result).toEqual({
       enabled: false,
       mode: "unavailable",
       provider: "google",
-      reason: "google_requires_gemini",
+      reason: "model_builtin_search_unsupported",
     });
-    expect(getSearchCompatibilityErrorMessage(result)).toContain("Gemini");
+    expect(getSearchCompatibilityErrorMessage(result)).toContain("external");
   });
 
   it("requires API keys for external hosted search providers", () => {

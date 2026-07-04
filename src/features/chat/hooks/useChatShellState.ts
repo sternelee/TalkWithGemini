@@ -25,6 +25,7 @@ export function useChatShellState() {
       updateSessionInstruction: state.updateSessionInstruction,
       updateSessionConfig: state.updateSessionConfig,
       updateSessionCompression: state.updateSessionCompression,
+      updateSessionMemoryContext: state.updateSessionMemoryContext,
       toggleSessionPin: state.toggleSessionPin,
       duplicateSession: state.duplicateSession,
       addMessage: state.addMessage,

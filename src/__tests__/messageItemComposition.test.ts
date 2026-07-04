@@ -35,4 +35,19 @@ describe("MessageItem composition", () => {
     expect(attachmentView).toContain("AudioPlayer");
     expect(attachmentView).toContain("resolveObjectUrlWithLifecycle");
   });
+
+  it("keeps the reasoning panel focused on expand and read controls", () => {
+    const reasoningBlock = readFileSync(
+      resolve(process.cwd(), "src/components/content/ReasoningBlock.tsx"),
+      "utf8",
+    );
+
+    expect(reasoningBlock).toContain("text-violet-500 dark:text-violet-400");
+    expect(reasoningBlock).not.toContain("Languages");
+    expect(reasoningBlock).not.toContain("Copy");
+    expect(reasoningBlock).not.toContain("Undo2");
+    expect(reasoningBlock).not.toContain("copyTextToClipboard");
+    expect(reasoningBlock).not.toContain("createReasoningTranslationPrompt");
+    expect(reasoningBlock).not.toContain("streamGenerateContent");
+  });
 });

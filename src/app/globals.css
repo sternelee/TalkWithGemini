@@ -80,6 +80,9 @@
   --markdown-muted: #64748b;
   --markdown-link: #dc2626;
   --markdown-link-hover: #b91c1c;
+  --markdown-citation-link: #475569;
+  --markdown-citation-link-hover: #334155;
+  --markdown-citation-surface: rgb(226 232 240 / 0.7);
   --markdown-soft-surface: #fff1f2;
   --markdown-code-bg: #fff1f2;
   --markdown-code-text: #9f1239;
@@ -170,6 +173,9 @@ html.dark {
   --markdown-muted: #94a3b8;
   --markdown-link: #f87171;
   --markdown-link-hover: #fca5a5;
+  --markdown-citation-link: #cbd5e1;
+  --markdown-citation-link-hover: #e2e8f0;
+  --markdown-citation-surface: rgb(148 163 184 / 0.16);
   --markdown-soft-surface: rgb(127 29 29 / 0.22);
   --markdown-code-bg: rgb(127 29 29 / 0.28);
   --markdown-code-text: #fecdd3;
@@ -445,8 +451,8 @@ samp {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--html-visual-info-surface);
-  color: var(--html-visual-info-foreground);
+  background: var(--markdown-citation-surface);
+  color: var(--markdown-citation-link);
   padding: 0 0.125rem;
   font-size: 0.625rem;
   font-weight: 700;
@@ -458,7 +464,12 @@ samp {
 }
 
 .markdown-citation-badge:hover {
-  background: var(--html-visual-info-border);
+  background: color-mix(
+    in srgb,
+    var(--markdown-citation-surface) 76%,
+    var(--markdown-citation-link) 24%
+  );
+  color: var(--markdown-citation-link-hover);
 }
 
 .markdown-citation-badge-disabled {

@@ -183,6 +183,16 @@ describe("dark theme token contract", () => {
     );
   });
 
+  it("uses muted semantic tokens for inline search citations", () => {
+    const globals = readProjectFile("src/app/globals.css");
+
+    expect(globals).toContain("--markdown-citation-link");
+    expect(globals).toContain("--markdown-citation-link-hover");
+    expect(globals).toContain("--markdown-citation-surface");
+    expect(globals).toContain("color: var(--markdown-citation-link);");
+    expect(globals).toContain("background: var(--markdown-citation-surface);");
+  });
+
   it("defines lightweight markdown body rhythm for common HTML elements", () => {
     const globals = readProjectFile("src/app/globals.css");
 

@@ -20,6 +20,23 @@ vi.mock("@/store/core/settingsStore", () => ({
   },
 }));
 
+vi.mock("@/store/core/memoryStore", () => ({
+  useMemoryStore: {
+    getState: () => ({
+      settings: {
+        enabled: false,
+        searchEnabled: false,
+        autoRecordEnabled: false,
+        dreamEnabled: false,
+        triggerCount: 100,
+        targetCount: 50,
+      },
+      memories: [],
+      markMemoriesUsed: vi.fn(),
+    }),
+  },
+}));
+
 vi.mock("@/utils/pluginUtils", () => ({
   executePluginFunction: vi.fn(),
 }));

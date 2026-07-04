@@ -9,6 +9,7 @@ export { useSettingsStore } from "./core/settingsStore";
 export { useCoreSettingsStore } from "./core/coreSettingsStore";
 export { useKnowledgeStore } from "./core/knowledgeStore";
 export { useUIStore } from "./core/uiStore";
+export { useMemoryStore } from "./core/memoryStore";
 
 // Storage Configuration
 export { appDb, STORAGE_KEYS } from "./storage/storageConfig";

@@ -7,12 +7,13 @@ import {
 } from "../lib/chat/diagramPrompt";
 
 describe("diagram prompt helpers", () => {
-  it("always builds base mermaid and mindmap format guidance", () => {
+  it("builds base diagram guidance with separated Mermaid and mindmap formats", () => {
     const instruction = buildDiagramPromptInstruction();
 
     expect(instruction).toContain("<diagram-rendering>");
     expect(instruction).toContain("```mermaid");
     expect(instruction).toContain("```mindmap");
+    expect(instruction).toContain("Never use Mermaid to render mind maps");
     expect(instruction).toContain("Markdown list");
     expect(instruction).not.toContain("<diagram-visual-polish>");
     expect(isDiagramPromptInstructionEnabled(instruction)).toBe(true);
@@ -41,6 +42,7 @@ describe("diagram prompt helpers", () => {
     expect(message).toContain('data-diagram-rendering="true"');
     expect(message).toContain("Mermaid");
     expect(message).toContain("mindmap");
+    expect(message).toContain("Never use Mermaid for mindmap");
     expect(message).toContain("enhanced visual style");
 
     expect(

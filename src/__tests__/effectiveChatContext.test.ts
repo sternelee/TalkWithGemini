@@ -31,7 +31,7 @@ describe("effective chat context", () => {
       systemPrompt: "Global system prompt.",
       now: new Date("2026-07-01T02:03:04.000Z"),
       selectedModel: "openai:gpt-test",
-      provider: { type: "OpenAI" },
+      provider: { type: "OpenAI Compatible" },
       modelMetadata: {},
       customModelMetadata: {},
       chatConfig: {

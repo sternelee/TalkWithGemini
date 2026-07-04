@@ -75,4 +75,5 @@ export const STORAGE_KEYS = {
   SETTINGS: "neo-chat-settings",
   CHAT: "neo-chat-storage",
   KNOWLEDGE: "knowledge-storage",
+  MEMORY: "neo-chat-memory",
 } as const;

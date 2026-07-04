@@ -6,6 +6,13 @@ import type { LocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import type { SearchProviderID, SearchServiceConfig } from "../search/types";
 import type { SkillCatalog, SkillDataLocale, TextSkill } from "../skills/types";
 import type { VoiceSettings } from "../voice/types";
+export type {
+  MemoryDreamStatus,
+  MemoryRecord,
+  MemorySettings,
+  MemorySource,
+  MemoryType,
+} from "../memory/types";
 
 export type DocumentParseProvider = "mineru" | "llamaParse";
 
@@ -34,6 +41,7 @@ export interface DefaultModels {
   contextCompression: string;
   promptOptimization: string;
   ragQuery: string;
+  memory: string;
 }
 
 export interface SystemSettings {

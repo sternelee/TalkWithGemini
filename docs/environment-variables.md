@@ -91,13 +91,14 @@ pnpm byok:generate
 
 ## Default Task Models
 
-| Variable                            | Purpose                                         |
-| ----------------------------------- | ----------------------------------------------- |
-| `DEFAULT_MODEL_TITLE_GENERATION`    | Model used for automatic chat title generation. |
-| `DEFAULT_MODEL_RELATED_QUESTIONS`   | Model used for related-question generation.     |
-| `DEFAULT_MODEL_CONTEXT_COMPRESSION` | Model used for history/context compression.     |
-| `DEFAULT_MODEL_PROMPT_OPTIMIZATION` | Model used for prompt optimization.             |
-| `DEFAULT_MODEL_RAG_QUERY`           | Model used for RAG query generation.            |
+| Variable                            | Purpose                                                   |
+| ----------------------------------- | --------------------------------------------------------- |
+| `DEFAULT_MODEL_TITLE_GENERATION`    | Model used for automatic chat title generation.           |
+| `DEFAULT_MODEL_RELATED_QUESTIONS`   | Model used for related-question generation.               |
+| `DEFAULT_MODEL_CONTEXT_COMPRESSION` | Model used for history/context compression.               |
+| `DEFAULT_MODEL_PROMPT_OPTIMIZATION` | Model used for prompt optimization.                       |
+| `DEFAULT_MODEL_RAG_QUERY`           | Model used for RAG query generation.                      |
+| `DEFAULT_MODEL_MEMORY`              | Model used for memory extraction and dream consolidation. |
 
 ## Search Defaults
 
@@ -138,13 +139,13 @@ When `DEFAULT_VOICE_PROVIDER` is set to `elevenlabs` or `mimo`, an empty default
 
 ## Default System Behavior
 
-| Variable                           | Purpose                                                            |
-| ---------------------------------- | ------------------------------------------------------------------ |
-| `DEFAULT_SYSTEM_PROMPT`            | Default system prompt used when the browser has no local override. |
-| `DEFAULT_ENABLE_AUTO_TITLE`        | Enables automatic title generation by default.                     |
-| `DEFAULT_ENABLE_RELATED_QUESTIONS` | Enables related-question suggestions by default.                   |
-| `DEFAULT_ENABLE_AUTO_COMPRESSION`  | Enables automatic context compression by default.                  |
-| `DEFAULT_COMPRESSION_THRESHOLD`    | Number of turns before automatic compression can run.              |
-| `DEFAULT_HISTORY_KEEP_COUNT`       | Number of recent history items retained after compression.         |
-| `DEFAULT_ENABLE_CODE_COLLAPSE`     | Enables collapsible code blocks by default.                        |
+| Variable                            | Purpose                                                                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEFAULT_SYSTEM_PROMPT`             | Default system prompt used when the browser has no local override.                                                                        |
+| `DEFAULT_ENABLE_AUTO_TITLE`         | Enables automatic title generation by default.                                                                                            |
+| `DEFAULT_ENABLE_RELATED_QUESTIONS`  | Enables related-question suggestions by default.                                                                                          |
+| `DEFAULT_ENABLE_AUTO_COMPRESSION`   | Enables automatic context compression by default.                                                                                         |
+| `DEFAULT_COMPRESSION_THRESHOLD`     | Number of turns before automatic compression can run.                                                                                     |
+| `DEFAULT_HISTORY_KEEP_COUNT`        | Number of recent history items retained after compression.                                                                                |
+| `DEFAULT_ENABLE_CODE_COLLAPSE`      | Enables collapsible code blocks by default.                                                                                               |
 | `DEFAULT_ENABLE_HTML_VISUAL_PROMPT` | Guides models to use safe inline HTML for visual structures. Defaults to enabled; set to `false` to disable for new self-hosted defaults. |

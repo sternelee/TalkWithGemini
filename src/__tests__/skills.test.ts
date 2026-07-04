@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSkillMetadataContext,
   buildSkillPromptContext,
+  createSkillInvocations,
   createSkillSelectionTool,
   normalizeSkillCatalog,
   parseSkillSelectionResult,
@@ -176,6 +177,20 @@ describe("skills domain", () => {
     expect(context).toContain("risk: low, text-only");
     expect(context).not.toContain("Preserve terms and placeholders");
     expect(context.length).toBeLessThanOrEqual(800);
+  });
+
+  it("stores skill descriptions in message invocation metadata", () => {
+    expect(
+      createSkillInvocations([{ skill: baseSkill, mode: "auto" }]),
+    ).toEqual([
+      {
+        id: "translation-localization",
+        title: "Translation & Localization",
+        description: "Translate and localize text between Chinese and English.",
+        category: "writing",
+        mode: "auto",
+      },
+    ]);
   });
 
   it("creates and parses a bounded internal active-skill selection tool", () => {

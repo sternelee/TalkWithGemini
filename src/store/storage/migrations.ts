@@ -1,4 +1,4 @@
-import { Message, ToolCall } from "@/types";
+import { Message, MessageOutputBlock, ToolCall } from "@/types";
 import { normalizeSearchSettings } from "../../lib/settings/searchRag";
 
 export function normalizeToolCall(toolCall: Partial<ToolCall>): ToolCall {
@@ -25,11 +25,28 @@ export function normalizeToolCall(toolCall: Partial<ToolCall>): ToolCall {
 }
 
 export function normalizeMessage(message: Message): Message {
-  if (!message.toolCalls?.length) return message;
+  const normalizedBlocks = message.outputBlocks?.map((block) => {
+    if (block.type !== "tool_group") return block;
+    return {
+      ...block,
+      toolCalls: block.toolCalls.map((toolCall) =>
+        normalizeToolCall(toolCall),
+      ),
+    } satisfies MessageOutputBlock;
+  });
+
+  if (!message.toolCalls?.length && !normalizedBlocks) return message;
 
   return {
     ...message,
-    toolCalls: message.toolCalls.map((toolCall) => normalizeToolCall(toolCall)),
+    ...(message.toolCalls?.length
+      ? {
+          toolCalls: message.toolCalls.map((toolCall) =>
+            normalizeToolCall(toolCall),
+          ),
+        }
+      : {}),
+    ...(normalizedBlocks ? { outputBlocks: normalizedBlocks } : {}),
   };
 }
 

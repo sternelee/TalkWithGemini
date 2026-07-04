@@ -5,6 +5,7 @@ import type { Plugin, ToolCall } from "../types";
 const mocks = vi.hoisted(() => ({
   executePluginFunction: vi.fn(),
   settingsState: {} as Record<string, unknown>,
+  memoryState: {} as Record<string, unknown>,
   coreState: {} as Record<string, unknown>,
 }));
 
@@ -22,6 +23,12 @@ vi.mock("@/store/core/settingsStore", () => ({
 vi.mock("@/store/core/coreSettingsStore", () => ({
   useCoreSettingsStore: {
     getState: () => mocks.coreState,
+  },
+}));
+
+vi.mock("@/store/core/memoryStore", () => ({
+  useMemoryStore: {
+    getState: () => mocks.memoryState,
   },
 }));
 
@@ -131,6 +138,18 @@ describe("chat service tool execution", () => {
       installedPlugins: [writePlugin],
       pluginConfigs: {},
     };
+    mocks.memoryState = {
+      settings: {
+        enabled: false,
+        searchEnabled: false,
+        autoRecordEnabled: false,
+        dreamEnabled: false,
+        triggerCount: 100,
+        targetCount: 50,
+      },
+      memories: [],
+      markMemoriesUsed: vi.fn(),
+    };
     mocks.coreState = {
       providers: [
         {
@@ -142,6 +161,152 @@ describe("chat service tool execution", () => {
         },
       ],
     };
+  });
+
+  it("does not expose memory_search for ordinary prompts", async () => {
+    mocks.memoryState = {
+      settings: {
+        enabled: true,
+        searchEnabled: true,
+        autoRecordEnabled: false,
+        dreamEnabled: false,
+        triggerCount: 100,
+        targetCount: 50,
+      },
+      memories: [
+        {
+          id: "mem_1",
+          type: "project",
+          content: "Keep Mineru as the default document parser.",
+          createdAt: 100,
+          updatedAt: 100,
+          lastUsedAt: 0,
+          importance: 5,
+          tags: ["mineru", "documents"],
+          source: "manual",
+        },
+      ],
+      markMemoriesUsed: vi.fn(),
+    };
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.tools.map((tool: any) => tool.function.name)).not.toContain(
+          "memory_search",
+        );
+        return sseResponse([
+          { type: "content", content: "Use the configured parser." },
+          { type: "done" },
+        ]);
+      });
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    const result = await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Which parser should I use?",
+      [],
+      {},
+      () => undefined,
+    );
+
+    expect(result).toBe("Use the configured parser.");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("executes explicit memory_search as an internal tool before plugin tools", async () => {
+    const markMemoriesUsed = vi.fn();
+    mocks.memoryState = {
+      settings: {
+        enabled: true,
+        searchEnabled: true,
+        autoRecordEnabled: false,
+        dreamEnabled: false,
+        triggerCount: 100,
+        targetCount: 50,
+      },
+      memories: [
+        {
+          id: "mem_1",
+          type: "project",
+          content: "Keep Mineru as the default document parser.",
+          createdAt: 100,
+          updatedAt: 100,
+          lastUsedAt: 0,
+          importance: 5,
+          tags: ["mineru", "documents"],
+          source: "manual",
+        },
+      ],
+      markMemoriesUsed,
+    };
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.tools.map((tool: any) => tool.function.name)).toContain(
+          "memory_search",
+        );
+        return sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_memory",
+              name: "memory_search",
+              args: { query: "document parser" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]);
+      })
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          { type: "content", content: "Mineru stays the default." },
+          { type: "done" },
+        ]),
+      );
+
+    const updates: ToolCall[][] = [];
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    const result = await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "What do you remember about my document parser decision?",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      (toolCalls) => updates.push(toolCalls),
+    );
+
+    expect(result).toBe("Mineru stays the default.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mocks.executePluginFunction).not.toHaveBeenCalled();
+    expect(markMemoriesUsed).toHaveBeenCalledWith(["mem_1"]);
+    expect(updates.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "call_memory",
+          status: "success",
+          result: expect.objectContaining({
+            memories: [
+              expect.objectContaining({
+                id: "mem_1",
+                content: "Keep Mineru as the default document parser.",
+              }),
+            ],
+          }),
+        }),
+      ]),
+    );
   });
 
   it("executes side-effectful tool calls without runtime confirmation", async () => {

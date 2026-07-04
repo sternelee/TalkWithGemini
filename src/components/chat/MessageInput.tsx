@@ -378,6 +378,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           return t("searchUnavailableNoProvider");
         case "google_requires_gemini":
           return t("searchUnavailableGoogleGemini");
+        case "model_builtin_search_unsupported":
+          return t("searchUnavailableModelBuiltIn");
         case "missing_search_api_key":
           return t("searchUnavailableApiKey", {
             provider: getSearchProviderLabel(searchCompatibility.provider),
@@ -394,6 +396,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const searchModeLabel =
       searchCompatibility.mode === "gemini-google"
         ? t("searchModeGeminiGoogle")
+        : searchCompatibility.mode === "openai-web"
+          ? t("searchModeOpenAIWeb")
         : t("searchModeExternal", {
             provider: getSearchProviderLabel(searchCompatibility.provider),
           });

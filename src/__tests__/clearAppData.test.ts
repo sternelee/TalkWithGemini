@@ -54,6 +54,7 @@ vi.mock("../store/storage/storageConfig", () => ({
     SETTINGS: "neo-chat-settings",
     CHAT: "neo-chat-storage",
     KNOWLEDGE: "knowledge-storage",
+    MEMORY: "neo-chat-memory",
   },
 }));
 

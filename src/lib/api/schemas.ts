@@ -194,6 +194,7 @@ export const ChatRequestSchema = z
       .optional(),
     tools: z.array(ToolSchema).max(64).optional(),
     enableGoogleSearch: z.boolean().optional(),
+    enableOpenAIWebSearch: z.boolean().optional(),
   })
   .strict()
   .superRefine((request, ctx) => {

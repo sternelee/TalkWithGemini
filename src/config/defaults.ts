@@ -19,6 +19,7 @@ export const DEFAULT_MODELS = {
   contextCompression: "gemini-2.0-flash-exp",
   promptOptimization: "gemini-2.0-flash-exp",
   ragQuery: "gemini-2.0-flash-exp",
+  memory: "gemini-2.0-flash-exp",
 } as const;
 
 /**

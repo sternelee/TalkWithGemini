@@ -21,6 +21,20 @@ function toolCallMessages(messages: SSEMessage[]) {
   );
 }
 
+function reasoningMessages(messages: SSEMessage[]) {
+  return messages.filter(
+    (message): message is Extract<SSEMessage, { type: "reasoning" }> =>
+      message.type === "reasoning",
+  );
+}
+
+function searchMessages(messages: SSEMessage[]) {
+  return messages.filter(
+    (message): message is Extract<SSEMessage, { type: "search" }> =>
+      message.type === "search",
+  );
+}
+
 describe("streamed tool-call normalization", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -286,6 +300,134 @@ describe("streamed tool-call normalization", () => {
     expect(request).not.toHaveProperty("tools");
   });
 
+  it("streams OpenAI Compatible reasoning deltas", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () =>
+            asyncChunks([
+              {
+                choices: [
+                  {
+                    delta: {
+                      reasoning_content: "Consider freshness. ",
+                      content: "Answer",
+                    },
+                  },
+                ],
+              },
+              {
+                choices: [
+                  {
+                    delta: {
+                      reasoning: "Check sources.",
+                    },
+                  },
+                ],
+              },
+            ]),
+          ),
+        },
+      },
+    };
+
+    await streamOpenAIChatCompletions({
+      client: client as any,
+      model: "compat-model",
+      messages: [],
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(reasoningMessages(messages).map((message) => message.content)).toEqual([
+      "Consider freshness. ",
+      "Check sources.",
+    ]);
+    expect(messages).toContainEqual({ type: "content", content: "Answer" });
+  });
+
+  it("requests OpenAI Responses reasoning summaries and native web search", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      responses: {
+        create: vi.fn(async () =>
+          asyncChunks([
+            {
+              type: "response.output_item.done",
+              item: {
+                type: "web_search_call",
+                id: "ws_1",
+                status: "completed",
+                action: {
+                  type: "search",
+                  queries: ["neo chat"],
+                  sources: [{ type: "url", url: "https://example.com/a" }],
+                },
+              },
+            },
+            {
+              type: "response.output_item.done",
+              item: {
+                type: "reasoning",
+                summary: [{ type: "summary_text", text: "Need current info." }],
+              },
+            },
+            {
+              type: "response.output_item.done",
+              item: {
+                type: "message",
+                content: [
+                  {
+                    type: "output_text",
+                    text: "Result",
+                    annotations: [
+                      {
+                        type: "url_citation",
+                        title: "Example B",
+                        url: "https://example.com/b",
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ]),
+        ),
+      },
+    };
+
+    await streamOpenAIResponses({
+      client: client as any,
+      model: "gpt-test",
+      input: [],
+      useReasoning: true,
+      enableWebSearch: true,
+      onChunk: (message) => messages.push(message),
+    });
+
+    const request = (client.responses.create as any).mock.calls[0][0];
+    expect(request.reasoning).toMatchObject({ effort: "high", summary: "auto" });
+    expect(request.tools).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "web_search_preview" })]),
+    );
+    expect(request.include).toEqual(
+      expect.arrayContaining([
+        "web_search_call.results",
+        "web_search_call.action.sources",
+      ]),
+    );
+    expect(reasoningMessages(messages).map((message) => message.content)).toEqual([
+      "Need current info.",
+    ]);
+    expect(searchMessages(messages).flatMap((message) => message.results?.sources || []))
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ url: "https://example.com/a" }),
+          expect.objectContaining({ url: "https://example.com/b" }),
+        ]),
+      );
+  });
+
   it("normalizes Gemini tool calls with unique IDs and argument errors", async () => {
     const messages: SSEMessage[] = [];
     vi.spyOn(Date, "now").mockReturnValue(123);
@@ -344,5 +486,56 @@ describe("streamed tool-call normalization", () => {
       isError: true,
     });
     expect(String(calls[1].toolCall.result)).toMatch(/JSON object/i);
+  });
+
+  it("streams Gemini thought parts and grounding metadata as reasoning and search", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      models: {
+        generateContentStream: vi.fn(async () =>
+          asyncChunks([
+            {
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      { thought: true, text: "I should search. " },
+                      { text: "Answer" },
+                    ],
+                  },
+                  groundingMetadata: {
+                    groundingChunks: [
+                      { web: { uri: "https://example.com/g", title: "Gemini" } },
+                    ],
+                    groundingSupports: [
+                      { segment: { text: "Grounded snippet" } },
+                    ],
+                  },
+                },
+              ],
+            },
+          ]),
+        ),
+      },
+    };
+
+    await streamGeminiResponse({
+      client: client as any,
+      model: "gemini-test",
+      contents: [],
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(reasoningMessages(messages).map((message) => message.content)).toEqual([
+      "I should search. ",
+    ]);
+    expect(messages).toContainEqual({ type: "content", content: "Answer" });
+    expect(searchMessages(messages)[0].results?.sources).toEqual([
+      expect.objectContaining({
+        title: "Gemini",
+        url: "https://example.com/g",
+        content: "Grounded snippet",
+      }),
+    ]);
   });
 });

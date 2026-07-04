@@ -122,6 +122,7 @@ async function clearLocalStorageKeys(): Promise<void> {
   window.localStorage.removeItem(STORAGE_KEYS.SETTINGS);
   window.localStorage.removeItem(STORAGE_KEYS.CHAT);
   window.localStorage.removeItem(STORAGE_KEYS.KNOWLEDGE);
+  window.localStorage.removeItem(STORAGE_KEYS.MEMORY);
   await deleteLocalSecretMasterKey();
 }
 

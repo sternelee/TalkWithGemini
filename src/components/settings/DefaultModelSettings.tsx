@@ -5,6 +5,7 @@ import {
   FoldVertical,
   Sparkles,
   Search,
+  Brain,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSettingsStore, formatModelName } from "@/store/core/settingsStore";
@@ -145,6 +146,14 @@ const DefaultModelSettings = () => {
           t("ragQueryDesc"),
           "ragQuery",
           "bg-pink-50 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400",
+        )}
+
+        {renderSettingRow(
+          <Brain size={18} className="text-cyan-500" aria-hidden="true" />,
+          t("memory"),
+          t("memoryDesc"),
+          "memory",
+          "bg-cyan-50 text-cyan-600 dark:bg-cyan-900/20 dark:text-cyan-400",
         )}
       </div>
     </div>

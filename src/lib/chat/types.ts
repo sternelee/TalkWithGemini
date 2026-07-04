@@ -56,6 +56,30 @@ export interface ToolCall {
   };
 }
 
+export type MessageOutputBlock =
+  | {
+      id: string;
+      type: "text";
+      content: string;
+    }
+  | {
+      id: string;
+      type: "reasoning";
+      content: string;
+    }
+  | {
+      id: string;
+      type: "search";
+      isSearching?: boolean;
+      sources: Source[];
+      images: ImageSource[];
+    }
+  | {
+      id: string;
+      type: "tool_group";
+      toolCalls: ToolCall[];
+    };
+
 export interface Message {
   id: string;
   role: "user" | "model";
@@ -74,6 +98,7 @@ export interface Message {
   searchSources?: Source[];
   searchImages?: ImageSource[];
   isSearching?: boolean;
+  outputBlocks?: MessageOutputBlock[];
   ragSources?: Source[];
   versions?: MessageVersion[];
   activeVersionId?: string;
@@ -222,6 +247,10 @@ export interface Session {
   compression?: {
     compressedContent: string;
     lastCompressedMessageId: string;
+  };
+  memoryContext?: {
+    injectedMemoryIds: string[];
+    updatedAt?: number;
   };
 }
 

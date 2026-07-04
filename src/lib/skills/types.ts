@@ -82,6 +82,7 @@ export interface AppliedSkill {
 export interface AppliedSkillInvocation {
   id: string;
   title: string;
+  description?: string;
   category: string;
   mode: SkillInvocationMode;
 }

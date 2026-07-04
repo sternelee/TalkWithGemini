@@ -296,6 +296,7 @@ function buildDefaultModels(
     promptOptimization:
       stringValue(existing.promptOptimization) || selectedModel,
     ragQuery: stringValue(existing.ragQuery) || selectedModel,
+    memory: stringValue(existing.memory) || selectedModel,
   };
 }
 
