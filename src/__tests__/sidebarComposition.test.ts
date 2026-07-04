@@ -27,4 +27,15 @@ describe("Sidebar composition", () => {
     expect(sidebarSearch).toContain('name="sidebar-chat-search"');
     expect(sidebarSearch).toContain("onCollapsedSearchClick");
   });
+
+  it("defaults workspace chat lists to collapsed while search expands matches", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("newExpanded[w.id] = false");
+    expect(source).toContain("isSearchingChats || expandedSections[ws.id]");
+    expect(source).not.toContain("newExpanded[w.id] = true");
+  });
 });

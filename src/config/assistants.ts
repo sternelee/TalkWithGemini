@@ -1,12 +1,12 @@
 /**
- * 内置助手配置
- * 定义系统预设的 AI 助手
+ * 内置助理配置
+ * 定义系统预设的 AI 助理
  */
 
 import { Assistant } from "@/types";
 
 /**
- * 内置助手列表
+ * 内置助理列表
  */
 export const BUILT_IN_ASSISTANTS: Assistant[] = [
   {
@@ -44,7 +44,7 @@ export const BUILT_IN_ASSISTANTS: Assistant[] = [
 ];
 
 /**
- * 助手分类
+ * 助理分类
  */
 export const ASSISTANT_CATEGORIES = {
   productivity: "Productivity",

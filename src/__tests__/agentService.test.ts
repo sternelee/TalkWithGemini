@@ -128,8 +128,8 @@ describe("agent service", () => {
       identifier: "fresh-zh",
       meta: {
         avatar: "bot",
-        title: "中文助手",
-        description: "中文市场助手",
+        title: "中文助理",
+        description: "中文市场助理",
         tags: [],
         category: "General",
       },

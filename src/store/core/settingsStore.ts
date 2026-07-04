@@ -11,6 +11,9 @@ import {
   SystemSettings,
   RAGConfig,
   DefaultModels,
+  TextSkill,
+  SkillCatalog,
+  SkillDataLocale,
 } from "@/types";
 import {
   AGNES_IMAGE_PLUGIN,
@@ -57,6 +60,11 @@ import {
   normalizePluginConfig,
   normalizePluginConfigs,
 } from "../../lib/plugin/config";
+import {
+  normalizeCustomSkills,
+  normalizeSkillCatalog,
+  normalizeTextSkill,
+} from "../../lib/skills";
 import { normalizeSystemSettings } from "../../lib/settings/appConfig";
 import { clearBrowserAppData } from "../../lib/data/clearAppData";
 import {
@@ -91,11 +99,17 @@ interface SettingsState {
   marketAgents: LobeAgent[];
   marketAgentsTimestamp: number;
   marketAgentsLocale: AgentMarketLocale | "";
+  skillCatalogs: Partial<Record<SkillDataLocale, SkillCatalog>>;
+  skillCatalogTimestamps: Partial<Record<SkillDataLocale, number>>;
+  skillDefinitions: Record<string, TextSkill>;
+  skillDefinitionTimestamps: Record<string, number>;
   setMarketPlugins: (plugins: Plugin[]) => void;
   setMarketAgents: (
     agents: LobeAgent[],
     locale?: AgentMarketLocale | "",
   ) => void;
+  setSkillCatalog: (locale: SkillDataLocale, catalog: SkillCatalog) => void;
+  setSkillDefinition: (cacheKey: string, skill: TextSkill) => void;
 
   // System Settings
   system: SystemSettings;
@@ -141,6 +155,21 @@ interface SettingsState {
   togglePluginFunction: (pluginId: string, functionName: string) => void;
   ensureBuiltInPlugins: () => void;
 
+  // Skill Management
+  installedSkills: TextSkill[];
+  customSkills: TextSkill[];
+  activeSkillIds: string[];
+  skillAutoSelect: boolean;
+  installSkill: (skill: TextSkill) => void;
+  uninstallSkill: (skillId: string) => void;
+  updateInstalledSkill: (skillId: string, skill: Partial<TextSkill>) => void;
+  addCustomSkill: (skill: TextSkill) => void;
+  updateCustomSkill: (skillId: string, skill: Partial<TextSkill>) => void;
+  removeCustomSkill: (skillId: string) => void;
+  setActiveSkillIds: (skillIds: string[]) => void;
+  toggleSkillActive: (skillId: string) => void;
+  setSkillAutoSelect: (enabled: boolean) => void;
+
   // Agent Management
   customAgents: LobeAgent[];
   usedAgents: LobeAgent[];
@@ -172,6 +201,7 @@ const BUILT_IN_PLUGINS_BY_ID = new Map(
   BUILT_IN_PLUGINS.map((plugin) => [plugin.id, plugin]),
 );
 const REMOVED_BUILT_IN_PLUGIN_IDS = new Set(["image-generation"]);
+const SKILL_ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const removeRemovedBuiltInPlugins = (plugins: readonly Plugin[]): Plugin[] =>
   plugins.filter((plugin) => !REMOVED_BUILT_IN_PLUGIN_IDS.has(plugin.id));
@@ -195,6 +225,107 @@ const refreshBuiltInPluginDefinitions = (
 const initPluginConfig = (): PluginConfig => ({
   disabledFunctions: [],
 });
+
+const normalizeSkillIdRefsForStorage = (
+  value: unknown,
+  maxCount: number = MARKET_LIMITS.maxActiveSkills,
+): string[] => {
+  if (!Array.isArray(value)) return [];
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const id =
+      typeof item === "string"
+        ? item.trim().slice(0, MARKET_LIMITS.maxSkillIdChars)
+        : "";
+    if (!id || !SKILL_ID_RE.test(id) || seen.has(id)) continue;
+    refs.push(id);
+    seen.add(id);
+    if (refs.length >= maxCount) break;
+  }
+  return refs;
+};
+
+const normalizeInstalledSkills = (
+  value: unknown,
+  maxCount: number = MARKET_LIMITS.maxSkills,
+): TextSkill[] => {
+  if (!Array.isArray(value)) return [];
+  const skills: TextSkill[] = [];
+  const seen = new Set<string>();
+
+  for (const item of value) {
+    const skill = normalizeTextSkill(item);
+    if (!skill || seen.has(skill.id)) continue;
+    skills.push({
+      ...skill,
+      builtIn: skill.builtIn === true || undefined,
+      isCustom: skill.isCustom === true || undefined,
+    });
+    seen.add(skill.id);
+    if (skills.length >= maxCount) break;
+  }
+
+  return skills;
+};
+
+const syncCustomSkillsFromInstalled = (skills: readonly TextSkill[]) =>
+  normalizeCustomSkills(
+    skills.filter((skill) => skill.isCustom && !skill.builtIn),
+    MARKET_LIMITS.maxCustomSkills,
+  );
+
+const SKILL_DATA_LOCALES: readonly SkillDataLocale[] = ["en", "zh-CN"];
+
+const normalizeSkillCatalogCache = (
+  value: unknown,
+): Partial<Record<SkillDataLocale, SkillCatalog>> => {
+  if (!value || typeof value !== "object") return {};
+  const raw = value as Partial<Record<SkillDataLocale, unknown>>;
+  const result: Partial<Record<SkillDataLocale, SkillCatalog>> = {};
+
+  for (const locale of SKILL_DATA_LOCALES) {
+    const catalog = normalizeSkillCatalog(raw[locale]);
+    if (catalog.skills.length > 0) {
+      result[locale] = { ...catalog, locale };
+    }
+  }
+
+  return result;
+};
+
+const normalizeSkillDefinitionCache = (
+  value: unknown,
+): Record<string, TextSkill> => {
+  if (!value || typeof value !== "object") return {};
+  const result: Record<string, TextSkill> = {};
+  for (const [cacheKey, item] of Object.entries(value)) {
+    const skill = normalizeTextSkill(item);
+    if (!skill || cacheKey.length > 320) continue;
+    result[cacheKey] = skill;
+  }
+  return result;
+};
+
+const normalizeTimestampCache = (
+  value: unknown,
+): Record<string, number> => {
+  if (!value || typeof value !== "object") return {};
+  const result: Record<string, number> = {};
+  for (const [cacheKey, timestamp] of Object.entries(value)) {
+    const normalizedTimestamp = Number(timestamp);
+    if (
+      !cacheKey ||
+      cacheKey.length > 320 ||
+      !Number.isFinite(normalizedTimestamp) ||
+      normalizedTimestamp <= 0
+    ) {
+      continue;
+    }
+    result[cacheKey] = normalizedTimestamp;
+  }
+  return result;
+};
 
 // 检查插件是否需要认证
 // 检查插件是否可以自动激活
@@ -370,6 +501,10 @@ export const useSettingsStore = create<SettingsState>()(
       marketAgents: [],
       marketAgentsTimestamp: 0,
       marketAgentsLocale: "",
+      skillCatalogs: {},
+      skillCatalogTimestamps: {},
+      skillDefinitions: {},
+      skillDefinitionTimestamps: {},
       setMarketPlugins: (plugins) =>
         set({
           marketPlugins: plugins,
@@ -381,6 +516,33 @@ export const useSettingsStore = create<SettingsState>()(
           marketAgentsTimestamp: Date.now(),
           marketAgentsLocale: locale,
         }),
+      setSkillCatalog: (locale, catalog) => {
+        const normalizedCatalog = normalizeSkillCatalog(catalog);
+        set((state) => ({
+          skillCatalogs: {
+            ...state.skillCatalogs,
+            [locale]: { ...normalizedCatalog, locale },
+          },
+          skillCatalogTimestamps: {
+            ...state.skillCatalogTimestamps,
+            [locale]: Date.now(),
+          },
+        }));
+      },
+      setSkillDefinition: (cacheKey, skill) => {
+        const normalizedSkill = normalizeTextSkill(skill);
+        if (!normalizedSkill || !cacheKey || cacheKey.length > 320) return;
+        set((state) => ({
+          skillDefinitions: {
+            ...state.skillDefinitions,
+            [cacheKey]: normalizedSkill,
+          },
+          skillDefinitionTimestamps: {
+            ...state.skillDefinitionTimestamps,
+            [cacheKey]: Date.now(),
+          },
+        }));
+      },
 
       // System Settings
       system: DEFAULT_SYSTEM_SETTINGS,
@@ -709,6 +871,208 @@ export const useSettingsStore = create<SettingsState>()(
           };
         }),
 
+      // Skill Management
+      installedSkills: [],
+      customSkills: [],
+      activeSkillIds: [],
+      skillAutoSelect: true,
+
+      installSkill: (skill) =>
+        set((state) => {
+          const normalizedSkill = normalizeTextSkill({
+            ...skill,
+            builtIn: skill.builtIn === true,
+            isCustom: skill.isCustom === true || undefined,
+            createdAt: skill.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          if (!normalizedSkill) return state;
+
+          const installedSkills = normalizeInstalledSkills([
+            normalizedSkill,
+            ...state.installedSkills.filter(
+              (item) => item.id !== normalizedSkill.id,
+            ),
+          ]);
+
+          return {
+            installedSkills,
+            customSkills: syncCustomSkillsFromInstalled(installedSkills),
+          };
+        }),
+
+      uninstallSkill: (skillId) =>
+        set((state) => {
+          const normalizedId = normalizeSkillIdRefsForStorage([skillId], 1)[0];
+          if (!normalizedId) return state;
+          const installedSkills = state.installedSkills.filter(
+            (skill) => skill.id !== normalizedId,
+          );
+
+          return {
+            installedSkills,
+            customSkills: syncCustomSkillsFromInstalled(installedSkills),
+            activeSkillIds: state.activeSkillIds.filter(
+              (id) => id !== normalizedId,
+            ),
+          };
+        }),
+
+      updateInstalledSkill: (skillId, skill) =>
+        set((state) => {
+          const normalizedId = normalizeSkillIdRefsForStorage([skillId], 1)[0];
+          if (!normalizedId) return state;
+          let changed = false;
+          const installedSkills = state.installedSkills.map((current) => {
+            if (current.id !== normalizedId) return current;
+            const normalizedSkill = normalizeTextSkill({
+              ...current,
+              ...skill,
+              id: current.id,
+              name: skill.name || current.name,
+              activation: { ...current.activation, ...skill.activation },
+              risk: { ...current.risk, ...skill.risk },
+              builtIn: current.builtIn === true,
+              isCustom: true,
+              updatedAt: new Date().toISOString(),
+            });
+            if (!normalizedSkill) return current;
+            changed = true;
+            return {
+              ...normalizedSkill,
+              builtIn: current.builtIn === true || undefined,
+              isCustom: true,
+            };
+          });
+          if (!changed) return state;
+
+          const normalizedInstalledSkills =
+            normalizeInstalledSkills(installedSkills);
+          return {
+            installedSkills: normalizedInstalledSkills,
+            customSkills: syncCustomSkillsFromInstalled(
+              normalizedInstalledSkills,
+            ),
+          };
+        }),
+
+      addCustomSkill: (skill) =>
+        set((state) => {
+          const normalizedSkill = normalizeTextSkill({
+            ...skill,
+            builtIn: false,
+            isCustom: true,
+            createdAt: skill.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          if (!normalizedSkill) return state;
+
+          const installedSkills = normalizeInstalledSkills([
+            { ...normalizedSkill, builtIn: false, isCustom: true },
+            ...state.installedSkills.filter(
+              (item) => item.id !== normalizedSkill.id,
+            ),
+          ]);
+
+          return {
+            installedSkills,
+            customSkills: normalizeCustomSkills(
+              [
+                { ...normalizedSkill, builtIn: false, isCustom: true },
+                ...state.customSkills.filter(
+                  (item) => item.id !== normalizedSkill.id,
+                ),
+              ],
+              MARKET_LIMITS.maxCustomSkills,
+            ),
+          };
+        }),
+
+      updateCustomSkill: (skillId, skill) =>
+        set((state) => {
+          let changed = false;
+          const installedSkills = state.installedSkills.map((current) => {
+            if (current.id !== skillId || current.builtIn) return current;
+            const normalizedSkill = normalizeTextSkill({
+              ...current,
+              ...skill,
+              id: current.id,
+              name: skill.name || current.name,
+              activation: { ...current.activation, ...skill.activation },
+              risk: { ...current.risk, ...skill.risk },
+              builtIn: false,
+              isCustom: true,
+              updatedAt: new Date().toISOString(),
+            });
+            if (!normalizedSkill) return current;
+            changed = true;
+            return { ...normalizedSkill, builtIn: false, isCustom: true };
+          });
+          const customSkills = state.customSkills.map((current) => {
+            if (current.id !== skillId) return current;
+            const normalizedSkill = normalizeTextSkill({
+              ...current,
+              ...skill,
+              id: current.id,
+              name: skill.name || current.name,
+              activation: { ...current.activation, ...skill.activation },
+              risk: { ...current.risk, ...skill.risk },
+              builtIn: false,
+              isCustom: true,
+              updatedAt: new Date().toISOString(),
+            });
+            if (!normalizedSkill) return current;
+            changed = true;
+            return { ...normalizedSkill, builtIn: false, isCustom: true };
+          });
+          if (!changed) return state;
+
+          const normalizedInstalledSkills =
+            normalizeInstalledSkills(installedSkills);
+          return {
+            installedSkills: normalizedInstalledSkills,
+            customSkills: normalizeCustomSkills(
+              customSkills,
+              MARKET_LIMITS.maxCustomSkills,
+            ),
+          };
+        }),
+
+      removeCustomSkill: (skillId) =>
+        set((state) => {
+          const installedSkills = state.installedSkills.filter(
+            (skill) => skill.id !== skillId || skill.builtIn,
+          );
+          return {
+            installedSkills,
+            customSkills: state.customSkills.filter(
+              (skill) => skill.id !== skillId,
+            ),
+            activeSkillIds: state.activeSkillIds.filter((id) => id !== skillId),
+          };
+        }),
+
+      setActiveSkillIds: (skillIds) =>
+        set({
+          activeSkillIds: normalizeSkillIdRefsForStorage(skillIds),
+        }),
+
+      toggleSkillActive: (skillId) =>
+        set((state) => {
+          const normalizedId = normalizeSkillIdRefsForStorage([skillId], 1)[0];
+          if (!normalizedId) return state;
+          const isActive = state.activeSkillIds.includes(normalizedId);
+          return {
+            activeSkillIds: normalizeSkillIdRefsForStorage(
+              isActive
+                ? state.activeSkillIds.filter((id) => id !== normalizedId)
+                : [...state.activeSkillIds, normalizedId],
+            ),
+          };
+        }),
+
+      setSkillAutoSelect: (enabled) => set({ skillAutoSelect: enabled }),
+
       // Agent Management
       customAgents: [],
       usedAgents: [],
@@ -868,6 +1232,16 @@ export const useSettingsStore = create<SettingsState>()(
           marketAgents: normalizeMarketAgents(state.marketAgents),
           marketAgentsTimestamp: state.marketAgentsTimestamp || 0,
           marketAgentsLocale: state.marketAgentsLocale || "",
+          skillCatalogs: normalizeSkillCatalogCache(state.skillCatalogs),
+          skillCatalogTimestamps: normalizeTimestampCache(
+            state.skillCatalogTimestamps,
+          ),
+          skillDefinitions: normalizeSkillDefinitionCache(
+            state.skillDefinitions,
+          ),
+          skillDefinitionTimestamps: normalizeTimestampCache(
+            state.skillDefinitionTimestamps,
+          ),
           system: normalizeSystemSettings(
             state.system,
             DEFAULT_SYSTEM_SETTINGS,
@@ -888,6 +1262,20 @@ export const useSettingsStore = create<SettingsState>()(
           ),
           installedPlugins,
           pluginConfigs,
+          installedSkills: normalizeInstalledSkills(
+            state.installedSkills && state.installedSkills.length > 0
+              ? state.installedSkills
+              : state.customSkills,
+          ),
+          customSkills: normalizeCustomSkills(
+            state.customSkills,
+            MARKET_LIMITS.maxCustomSkills,
+          ),
+          activeSkillIds: normalizeSkillIdRefsForStorage(state.activeSkillIds),
+          skillAutoSelect:
+            typeof state.skillAutoSelect === "boolean"
+              ? state.skillAutoSelect
+              : true,
           customAgents: normalizeLocalAgents(
             state.customAgents,
             MARKET_LIMITS.maxCustomAgents,
@@ -905,6 +1293,10 @@ export const useSettingsStore = create<SettingsState>()(
         marketAgents: state.marketAgents,
         marketAgentsTimestamp: state.marketAgentsTimestamp,
         marketAgentsLocale: state.marketAgentsLocale,
+        skillCatalogs: state.skillCatalogs,
+        skillCatalogTimestamps: state.skillCatalogTimestamps,
+        skillDefinitions: state.skillDefinitions,
+        skillDefinitionTimestamps: state.skillDefinitionTimestamps,
         system: state.system,
         modelMetadata: state.modelMetadata,
         modelMetadataTimestamp: state.modelMetadataTimestamp,
@@ -915,6 +1307,10 @@ export const useSettingsStore = create<SettingsState>()(
         activePlugins: state.activePlugins,
         installedPlugins: state.installedPlugins,
         pluginConfigs: stripPluginConfigPlainSecrets(state.pluginConfigs),
+        installedSkills: state.installedSkills,
+        customSkills: state.customSkills,
+        activeSkillIds: state.activeSkillIds,
+        skillAutoSelect: state.skillAutoSelect,
         customAgents: state.customAgents,
         usedAgents: state.usedAgents,
         agentOverrides: state.agentOverrides,

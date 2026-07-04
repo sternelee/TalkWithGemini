@@ -17,6 +17,20 @@ export type MarkdownDiagramSegment =
       diagram: MarkdownDiagramBlock;
     };
 
+export function getRenderableDiagram(
+  diagram: MarkdownDiagramBlock,
+  lastRenderedDiagram: MarkdownDiagramBlock | null,
+): MarkdownDiagramBlock {
+  if (
+    diagram.incomplete &&
+    lastRenderedDiagram &&
+    lastRenderedDiagram.type === diagram.type
+  ) {
+    return lastRenderedDiagram;
+  }
+  return diagram;
+}
+
 const OPEN_FENCE_PATTERN = /^([ \t]{0,3})(`{3,}|~{3,})[ \t]*([^\n\r]*)$/;
 
 function splitLinesWithEndings(content: string): string[] {

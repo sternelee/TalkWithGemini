@@ -135,6 +135,26 @@ export const usePluginSettings = () => {
   );
 };
 
+export const useSkillSettings = () => {
+  return useSettingsStore(
+    useShallow((state) => ({
+      customSkills: state.customSkills,
+      installedSkills: state.installedSkills,
+      activeSkillIds: state.activeSkillIds,
+      skillAutoSelect: state.skillAutoSelect,
+      installSkill: state.installSkill,
+      uninstallSkill: state.uninstallSkill,
+      updateInstalledSkill: state.updateInstalledSkill,
+      addCustomSkill: state.addCustomSkill,
+      updateCustomSkill: state.updateCustomSkill,
+      removeCustomSkill: state.removeCustomSkill,
+      setActiveSkillIds: state.setActiveSkillIds,
+      toggleSkillActive: state.toggleSkillActive,
+      setSkillAutoSelect: state.setSkillAutoSelect,
+    })),
+  );
+};
+
 export const useAgentSettings = () => {
   return useSettingsStore(
     useShallow((state) => ({

@@ -112,6 +112,19 @@ export const ToolCallSchema = z
           : "pending"),
   }));
 
+export const SkillInvocationSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1)
+      .max(160)
+      .regex(/^[A-Za-z0-9_-]+$/),
+    title: z.string().min(1).max(160),
+    category: z.string().min(1).max(120),
+    mode: z.enum(["manual", "auto"]),
+  })
+  .strict();
+
 export const MessageSchema = z.object({
   id: z.string().default(""),
   role: z.enum(["user", "model"]),
@@ -123,6 +136,7 @@ export const MessageSchema = z.object({
     .array(ToolCallSchema)
     .max(PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls)
     .optional(),
+  skillInvocations: z.array(SkillInvocationSchema).max(20).optional(),
   model: ModelNameSchema.optional(),
 });
 

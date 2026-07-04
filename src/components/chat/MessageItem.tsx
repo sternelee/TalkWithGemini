@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo, useId } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
-import { Message } from "@/types";
+import type { Attachment, Message } from "@/types";
 import MarkdownRenderer from "../content/MarkdownRenderer";
 import Tooltip from "../ui/Tooltip";
 import Artifact from "../content/Artifact";
@@ -42,6 +42,7 @@ import {
   RefreshCw,
   Library,
   PencilSparkles,
+  Sparkles,
 } from "lucide-react";
 import { BubblesLoading } from "../ui/Icons";
 import { useChatStore } from "@/store/core/chatStore";
@@ -68,6 +69,10 @@ import {
 } from "@/lib/utils/timedStatus";
 import { logDevError } from "@/lib/utils/devLogger";
 import { buildMobileMessageMetaTooltip } from "@/lib/utils/messageMetaTooltip";
+import {
+  decodeAttachmentText,
+  isTextDocumentMimeType,
+} from "@/lib/utils/documentAttachments";
 
 interface MessageItemProps {
   message: Message;
@@ -88,6 +93,14 @@ interface MessageItemProps {
 
 type CopyStatus = "idle" | "copied" | "error";
 
+interface ReadableAttachmentDocument {
+  name: string;
+  mimeType: string;
+  content: string;
+  downloadName: string;
+  renderAsMarkdown: boolean;
+}
+
 const logMessageItemError = logDevError;
 
 const actionButtonFocusClass =
@@ -106,6 +119,23 @@ const getTokenCount = (text: string) => {
   }
   return Math.ceil(text.length / 4);
 };
+
+const markdownFileNamePattern = /\.(?:md|markdown)$/i;
+
+const getAttachmentDownloadName = (attachment: Attachment) => {
+  const baseName = attachment.fileName || "attachment";
+  if (
+    attachment.mimeType === "text/markdown" &&
+    !markdownFileNamePattern.test(baseName)
+  ) {
+    return `${baseName}.md`;
+  }
+  return baseName;
+};
+
+const shouldRenderAttachmentAsMarkdown = (attachment: Attachment) =>
+  attachment.mimeType === "text/markdown" ||
+  markdownFileNamePattern.test(attachment.fileName || "");
 
 interface UserMessageEditorProps {
   initialContent: string;
@@ -281,6 +311,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const t = useTranslations("Message");
   const [isEditing, setIsEditing] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
+  const [readerCopyStatus, setReaderCopyStatus] =
+    useState<CopyStatus>("idle");
   const isCopied = copyStatus === "copied";
   const copyTooltip =
     copyStatus === "copied"
@@ -295,12 +327,14 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const [showAddToKnowledgeModal, setShowAddToKnowledgeModal] = useState(false);
 
   // Immersive / Reading Mode State
-  const [readingMode, setReadingMode] = useState<"none" | "message" | "file">(
-    "none",
-  );
+  const [readingMode, setReadingMode] = useState<
+    "none" | "message" | "file" | "attachment"
+  >("none");
   const [fileToRead, setFileToRead] = useState<MarkdownGeneratedFile | null>(
     null,
   );
+  const [attachmentToRead, setAttachmentToRead] =
+    useState<ReadableAttachmentDocument | null>(null);
 
   // Typewriter effect state
   const [displayedContent, setDisplayedContent] = useState(
@@ -315,6 +349,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const currentAudioRef = useRef<DisposableAudioElement | null>(null);
   const speechPollerRef = useRef<DisposablePoller | null>(null);
   const copyStatusResetRef =
+    useRef<TimedStatusResetController<CopyStatus> | null>(null);
+  const readerCopyStatusResetRef =
     useRef<TimedStatusResetController<CopyStatus> | null>(null);
   const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -346,6 +382,24 @@ const MessageItem: React.FC<MessageItemProps> = ({
       });
     copyStatusResetRef.current = controller;
     controller.set(status);
+  };
+
+  const setReaderCopyFeedback = (status: Exclude<CopyStatus, "idle">) => {
+    const controller =
+      readerCopyStatusResetRef.current ||
+      createTimedStatusResetController<CopyStatus>({
+        setStatus: setReaderCopyStatus,
+        resetValue: "idle",
+      });
+    readerCopyStatusResetRef.current = controller;
+    controller.set(status);
+  };
+
+  const closeReadingMode = () => {
+    setReadingMode("none");
+    setFileToRead(null);
+    setAttachmentToRead(null);
+    setReaderCopyStatus("idle");
   };
 
   const clearDeleteConfirmTimer = () => {
@@ -384,6 +438,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
       if (readingMode !== "none") {
         setReadingMode("none");
         setFileToRead(null);
+        setAttachmentToRead(null);
+        setReaderCopyStatus("idle");
         return;
       }
 
@@ -425,6 +481,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   useEffect(() => {
     return () => {
       copyStatusResetRef.current?.dispose();
+      readerCopyStatusResetRef.current?.dispose();
       clearDeleteConfirmTimer();
       stopCurrentAudio();
       // Also stop browser synthesis if running
@@ -537,20 +594,70 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   const handleFileClick = (file: MarkdownGeneratedFile) => {
     setFileToRead(normalizeMarkdownGeneratedFile(file));
+    setAttachmentToRead(null);
+    setReaderCopyStatus("idle");
     setReadingMode("file");
   };
 
+  const handleDocumentAttachmentClick = (attachment: Attachment) => {
+    if (!attachment.data || !isTextDocumentMimeType(attachment.mimeType)) return;
+
+    try {
+      setAttachmentToRead({
+        name: attachment.fileName,
+        mimeType: attachment.mimeType,
+        content: decodeAttachmentText(attachment),
+        downloadName: getAttachmentDownloadName(attachment),
+        renderAsMarkdown: shouldRenderAttachmentAsMarkdown(attachment),
+      });
+      setFileToRead(null);
+      setReaderCopyStatus("idle");
+      setReadingMode("attachment");
+    } catch (error) {
+      logMessageItemError("Failed to decode document attachment", error);
+    }
+  };
+
+  const getActiveReadingFile = (): ReadableAttachmentDocument | null => {
+    if (readingMode === "file" && fileToRead) {
+      return {
+        name: fileToRead.name,
+        mimeType: "text/plain",
+        content: fileToRead.content,
+        downloadName: fileToRead.name,
+        renderAsMarkdown: false,
+      };
+    }
+    if (readingMode === "attachment" && attachmentToRead) {
+      return attachmentToRead;
+    }
+    return null;
+  };
+
   const handleDownloadFile = () => {
-    if (!fileToRead) return;
-    const blob = new Blob([fileToRead.content], { type: "text/plain" });
+    const readingFile = getActiveReadingFile();
+    if (!readingFile) return;
+    const blob = new Blob([readingFile.content], {
+      type: readingFile.mimeType || "text/plain",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = sanitizeDownloadFilename(fileToRead.name, "attachment.txt");
+    a.download = sanitizeDownloadFilename(
+      readingFile.downloadName,
+      "attachment.txt",
+    );
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleCopyReadingFile = async () => {
+    const readingFile = getActiveReadingFile();
+    if (!readingFile) return;
+    const copied = await copyTextToClipboard(readingFile.content);
+    setReaderCopyFeedback(copied ? "copied" : "error");
   };
 
   const handleToggleReadAloud = async () => {
@@ -723,6 +830,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   // Tool Data
   const toolCalls = message.toolCalls || [];
+  const skillInvocations = message.skillInvocations || [];
 
   const handleAttachmentClick = (index: number) => {
     if (!message.attachments) return;
@@ -782,6 +890,21 @@ const MessageItem: React.FC<MessageItemProps> = ({
     }
   };
 
+  const readingFile = getActiveReadingFile();
+  const readerCopied = readerCopyStatus === "copied";
+  const readerCopyTooltip =
+    readerCopyStatus === "copied"
+      ? t("copied")
+      : readerCopyStatus === "error"
+        ? t("copyFailed")
+        : t("copy");
+  const readingTitle =
+    readingMode === "file" && fileToRead
+      ? t("readingFile", { name: fileToRead.name })
+      : readingMode === "attachment" && attachmentToRead
+        ? t("readingAttachment", { name: attachmentToRead.name })
+        : t("readingMessage");
+
   return (
     <>
       {showAddToKnowledgeModal && (
@@ -806,54 +929,83 @@ const MessageItem: React.FC<MessageItemProps> = ({
             className="fixed inset-0 z-999 bg-white dark:bg-background overflow-y-auto overscroll-contain animate-in fade-in duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400/40"
           >
             <h2 id={readingDialogTitleId} className="sr-only">
-              {readingMode === "file" && fileToRead
-                ? t("readingFile", { name: fileToRead.name })
-                : t("readingMessage")}
+              {readingTitle}
             </h2>
             <p id={readingDialogDescriptionId} className="sr-only">
               {t("pressEscapeToClose")}
             </p>
             <div className="max-w-5xl mx-auto px-4 pb-4 pt-4 md:pt-8 min-h-screen relative flex flex-col">
-              {readingMode === "file" && fileToRead && (
-                <div className="mb-4 pb-2 border-b border-gray-100 dark:border-border flex items-center justify-between shrink-0">
+              {readingFile && (
+                <div className="markdown-preview-header mb-4 flex shrink-0 items-center justify-between gap-3 rounded-lg border px-3 py-2">
                   <div className="flex min-w-0 items-center gap-2 text-gray-700 dark:text-foreground font-semibold">
                     <FileText
                       size={20}
                       className="text-blue-500 shrink-0"
                       aria-hidden="true"
                     />
-                    <span className="truncate">{fileToRead.name}</span>
-                    {fileToRead.truncated ? (
+                    <span className="truncate">{readingFile.name}</span>
+                    <span className="markdown-file-type-badge max-w-40 truncate rounded px-1.5 py-0.5 font-mono text-[10px] font-normal">
+                      {readingFile.mimeType}
+                    </span>
+                    {fileToRead?.truncated && readingMode === "file" ? (
                       <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
                         {t("truncated")}
                       </span>
                     ) : null}
-                    {fileToRead.incomplete ? (
+                    {fileToRead?.incomplete && readingMode === "file" ? (
                       <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-muted dark:text-foreground/85">
                         {t("incomplete")}
                       </span>
                     ) : null}
                   </div>
-                  <button
-                    type="button"
-                    aria-label={t("downloadFileAria", {
-                      name: fileToRead.name,
-                    })}
-                    onClick={handleDownloadFile}
-                    className={`p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-muted rounded-lg transition-colors ${actionButtonFocusClass}`}
-                  >
-                    <Download size={18} aria-hidden="true" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Tooltip content={readerCopyTooltip} position="bottom">
+                      <button
+                        type="button"
+                        aria-label={t("copyFileAria", {
+                          name: readingFile.name,
+                        })}
+                        onClick={handleCopyReadingFile}
+                        className={`p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-muted rounded-lg transition-colors ${actionButtonFocusClass} ${
+                          readerCopyStatus === "error"
+                            ? "text-red-500 dark:text-red-400"
+                            : ""
+                        }`}
+                      >
+                        {readerCopied ? (
+                          <Check size={18} aria-hidden="true" />
+                        ) : (
+                          <Copy size={18} aria-hidden="true" />
+                        )}
+                      </button>
+                    </Tooltip>
+                    <button
+                      type="button"
+                      aria-label={t("downloadFileAria", {
+                        name: readingFile.name,
+                      })}
+                      onClick={handleDownloadFile}
+                      className={`p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-muted rounded-lg transition-colors ${actionButtonFocusClass}`}
+                    >
+                      <Download size={18} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               )}
 
               <div className="flex-1 overflow-auto custom-scrollbar">
-                {readingMode === "file" && fileToRead ? (
-                  <div className="bg-gray-50 dark:bg-card rounded-lg border border-gray-200 dark:border-border p-4">
-                    <pre className="font-mono text-sm whitespace-pre-wrap wrap-break-word text-gray-800 dark:text-foreground">
-                      {fileToRead.content}
-                    </pre>
-                  </div>
+                {readingFile ? (
+                  readingFile.renderAsMarkdown ? (
+                    <div className="mx-auto max-w-4xl px-1 py-2">
+                      <MarkdownRenderer content={readingFile.content} />
+                    </div>
+                  ) : (
+                    <div className="markdown-codeblock overflow-hidden rounded-lg">
+                      <pre className="markdown-codeblock-content whitespace-pre-wrap wrap-break-word p-4 font-mono text-sm leading-relaxed">
+                        {readingFile.content}
+                      </pre>
+                    </div>
+                  )
                 ) : (
                   <MarkdownRenderer
                     content={message.content}
@@ -867,18 +1019,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
               <div className="sticky bottom-4 mt-4 left-0 right-0 flex justify-center pointer-events-none shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    setReadingMode("none");
-                    setFileToRead(null);
-                  }}
+                  onClick={closeReadingMode}
                   className={`pointer-events-auto flex items-center gap-2 px-5 py-2.5 bg-red-500/80 hover:bg-red-600/80 backdrop-blur-md text-white rounded-full shadow-lg transition-[background-color,box-shadow,color] font-medium text-sm ${actionButtonFocusClass}`}
                 >
-                  {readingMode === "file" ? (
+                  {readingFile ? (
                     <X size={18} aria-hidden="true" />
                   ) : (
                     <Minimize2 size={18} aria-hidden="true" />
                   )}
-                  {readingMode === "file" ? t("closeFile") : t("exitReading")}
+                  {readingFile ? t("closeFile") : t("exitReading")}
                 </button>
               </div>
             </div>
@@ -935,6 +1084,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   key={att.id}
                   attachment={att}
                   onImageClick={() => handleAttachmentClick(idx)}
+                  onDocumentClick={handleDocumentAttachmentClick}
                 />
               ))}
             </div>
@@ -977,6 +1127,30 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
               {/* Tool Calls Block */}
               <ToolCallBlock toolCalls={toolCalls} />
+
+              {skillInvocations.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {skillInvocations.map((skill) => (
+                    <Tooltip
+                      key={`${skill.id}-${skill.mode}`}
+                      content={t("skillAppliedTooltip", {
+                        title: skill.title,
+                        mode:
+                          skill.mode === "manual"
+                            ? t("skillModeManual")
+                            : t("skillModeAuto"),
+                      })}
+                      position="top"
+                      portal
+                    >
+                      <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
+                        <Sparkles size={11} aria-hidden="true" />
+                        <span className="truncate">{skill.title}</span>
+                      </span>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
 
               {/* Reasoning Block Component */}
               <ReasoningBlock

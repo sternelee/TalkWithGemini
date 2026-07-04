@@ -14,6 +14,7 @@ import {
   isPluginAuthRequired,
   normalizeActivePluginIds,
 } from "../plugin/config";
+import { normalizeSkillIdRefs } from "../skills";
 import {
   hasPluginAuthValue,
   hasRagVectorStore,
@@ -54,6 +55,7 @@ export interface EffectiveChatContext {
   workspaceFiles: Workspace["files"];
   workspaceKnowledgeCollectionIds: string[];
   activePluginIds: string[];
+  activeSkillIds: string[];
   modelCapabilities: ModelCapabilities;
   searchCompatibility: SearchCompatibilityResult;
   capabilityStatuses: CapabilityStatus[];
@@ -119,7 +121,9 @@ function buildSystemInstruction({
     sections.push(trimmed);
   }
   sections.push(
-    buildDiagramPromptInstruction({ enhanced: Boolean(enableHtmlVisualPrompt) }),
+    buildDiagramPromptInstruction({
+      enhanced: Boolean(enableHtmlVisualPrompt),
+    }),
   );
   if (enableHtmlVisualPrompt) {
     sections.push(buildHtmlVisualPromptInstruction());
@@ -193,6 +197,10 @@ export function resolveEffectiveChatContext(
     pluginConfigs,
     { unauthenticatedAllowedPluginIds: ["unsplash"] },
   );
+  const activeSkillIds = normalizeSkillIdRefs(
+    session?.config?.activeSkills || workspace?.activeSkills || [],
+    [],
+  );
   const statuses: CapabilityStatus[] = [];
 
   if (chatConfig.useSearch && !searchCompatibility.enabled) {
@@ -248,6 +256,7 @@ export function resolveEffectiveChatContext(
     workspaceFiles: workspace?.files || [],
     workspaceKnowledgeCollectionIds: workspace?.knowledgeCollectionIds || [],
     activePluginIds,
+    activeSkillIds,
     modelCapabilities,
     searchCompatibility,
     capabilityStatuses: statuses.length

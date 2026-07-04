@@ -4,6 +4,7 @@ import {
   type MarkdownFileSegment,
 } from "../lib/utils/markdownFiles";
 import {
+  getRenderableDiagram,
   parseMarkdownDiagramBlocks,
   type MarkdownDiagramSegment,
 } from "../lib/utils/markdownDiagrams";
@@ -115,5 +116,22 @@ describe("markdown diagram block parsing", () => {
         content: "Visible\n  - Diagram",
       },
     });
+  });
+
+  it("holds the last rendered diagram while a streamed update is incomplete", () => {
+    const stable = {
+      type: "mermaid" as const,
+      language: "mermaid",
+      content: "graph TD\n  A --> B",
+      incomplete: false,
+    };
+    const streaming = {
+      ...stable,
+      content: "graph TD\n  A --> B\n  B -->",
+      incomplete: true,
+    };
+
+    expect(getRenderableDiagram(stable, null)).toEqual(stable);
+    expect(getRenderableDiagram(streaming, stable)).toEqual(stable);
   });
 });

@@ -71,6 +71,8 @@ interface SidebarProps {
   onRequestClose?: () => void;
   onOpenPluginMarket: () => void;
   isPluginMarketOpen: boolean;
+  onOpenSkillMarket: () => void;
+  isSkillMarketOpen: boolean;
   onOpenAssistantHub: () => void;
   isAssistantHubOpen: boolean;
   onOpenKnowledgeBase: () => void;
@@ -138,6 +140,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onRequestClose,
   onOpenPluginMarket,
   isPluginMarketOpen,
+  onOpenSkillMarket,
+  isSkillMarketOpen,
   onOpenAssistantHub,
   isAssistantHubOpen,
   onOpenKnowledgeBase,
@@ -312,7 +316,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     let changed = false;
     workspaces.forEach((w) => {
       if (newExpanded[w.id] === undefined) {
-        newExpanded[w.id] = true;
+        newExpanded[w.id] = false;
         changed = true;
       }
     });
@@ -479,6 +483,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         useSearch: workspace.enableSearch,
         useReasoning: workspace.enableReasoning,
         activePlugins: workspace.activePlugins,
+        activeSkills: workspace.activeSkills,
       },
     );
 
@@ -826,6 +831,31 @@ const Sidebar: React.FC<SidebarProps> = ({
         </Tooltip>
 
         <Tooltip
+          content={t("skillMarket")}
+          position="right"
+          className={isOpen ? "w-full" : "w-full justify-center"}
+        >
+          <button
+            type="button"
+            aria-label={t("openSkillMarket")}
+            aria-current={isSkillMarketOpen ? "page" : undefined}
+            onClick={onOpenSkillMarket}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
+              isSkillMarketOpen
+                ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+          >
+            <Sparkles
+              size={18}
+              className={`shrink-0 ${isSkillMarketOpen ? "text-emerald-500" : "text-gray-500"}`}
+              aria-hidden="true"
+            />
+            {isOpen && <span className="truncate">{t("skillMarket")}</span>}
+          </button>
+        </Tooltip>
+
+        <Tooltip
           content={t("pluginMarket")}
           position="right"
           className={isOpen ? "w-full" : "w-full justify-center"}
@@ -942,7 +972,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                       wsSessions.length - WORKSPACE_SESSION_PREVIEW_LIMIT,
                       0,
                     );
-                    const isExpanded = expandedSections[ws.id];
+                    const isExpanded =
+                      isSearchingChats || expandedSections[ws.id];
                     const folderColorClass = ws.color
                       ? WORKSPACE_COLOR_MAP[ws.color]
                       : "text-blue-500";

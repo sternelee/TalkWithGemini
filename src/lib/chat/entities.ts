@@ -6,6 +6,7 @@ import type {
 } from "../../types";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
+import { normalizeSkillIdRefs } from "../skills";
 import { normalizeCompressedContent } from "../utils/contextCompression";
 
 const WORKSPACE_COLORS = new Set([
@@ -184,12 +185,18 @@ export function normalizeSessionConfig(
   config?: SessionConfig,
 ): SessionConfig | undefined {
   if (!config) return undefined;
-  const { activePlugins: rawActivePlugins, ...rest } = config;
+  const {
+    activePlugins: rawActivePlugins,
+    activeSkills: rawActiveSkills,
+    ...rest
+  } = config;
   const activePlugins = normalizePluginIdRefs(rawActivePlugins);
+  const activeSkills = normalizeSkillIdRefs(rawActiveSkills, []);
 
   return {
     ...rest,
     ...(activePlugins.length > 0 ? { activePlugins } : {}),
+    ...(activeSkills.length > 0 ? { activeSkills } : {}),
   };
 }
 
@@ -242,6 +249,7 @@ export function normalizeWorkspace(workspace: Workspace): Workspace {
     enableSearch: workspace.enableSearch === true,
     enableReasoning: workspace.enableReasoning === true,
     activePlugins: normalizePluginIdRefs(workspace.activePlugins),
+    activeSkills: normalizeSkillIdRefs(workspace.activeSkills, []),
     createdAt: Number.isFinite(Number(workspace.createdAt))
       ? Number(workspace.createdAt)
       : Date.now(),

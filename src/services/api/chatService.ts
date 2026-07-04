@@ -407,6 +407,7 @@ export const streamChatResponse = async (
   onUsage?: (usage: ChatUsagePayload) => void,
   signal?: AbortSignal,
   activePlugins?: string[], // Add activePlugins parameter
+  skillsContext?: string,
 ): Promise<string> => {
   const { providerId, modelName } = parseModelString(model);
 
@@ -528,9 +529,14 @@ export const streamChatResponse = async (
     let committedContent = "";
     let committedReasoning = "";
     let requestHistory = history as Message[];
+    const messageWithSkills = skillsContext?.trim()
+      ? appendContextToChatInput(effectiveNewMessage, skillsContext, {
+          separator: "\n\n",
+        })
+      : effectiveNewMessage;
     let requestMessage = appendDiagramRequestInstructions(
       appendHtmlVisualRequestInstructions(
-        effectiveNewMessage,
+        messageWithSkills,
         userSystemInstruction,
       ),
       userSystemInstruction,
@@ -1126,5 +1132,111 @@ export const streamGenerateContent = async (
     }
     logDevError("Stream generate error:", error);
     throw error;
+  }
+};
+
+export const streamGenerateToolCall = async (
+  model: string,
+  prompt: string,
+  tools: ChatToolDefinition[],
+  signal?: AbortSignal,
+): Promise<ToolCall | null> => {
+  if (tools.length === 0) return null;
+
+  const { providerId, modelName } = parseModelString(model);
+
+  const { providers } = useCoreSettingsStore.getState();
+  const provider = providerId
+    ? providers.find((p) => p.id === providerId)
+    : providers.find((p) => p.enabled);
+
+  if (!provider) {
+    logDevWarn("Skill tool selection skipped: no provider found.");
+    return null;
+  }
+
+  try {
+    const response = await fetchWithByokRetry(async () =>
+      fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider: await buildProviderRuntimeConfig(provider),
+          modelName,
+          history: [],
+          newMessage: prompt,
+          attachments: [],
+          config: { temperature: 0 },
+          tools,
+        }),
+        signal,
+      }),
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        await getResponseErrorMessage(response, "Tool selection failed"),
+      );
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    const readEvent = (event: string): ToolCall | null | undefined => {
+      const data = event
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice(6))
+        .join("\n");
+
+      if (!data || data === "[DONE]") return undefined;
+
+      const parsed = JSON.parse(data);
+      switch (parsed.type) {
+        case "tool_call":
+          return parsed.toolCall || null;
+        case "error":
+          throw new Error(parsed.error);
+        case "done":
+          return null;
+        default:
+          return undefined;
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || "";
+
+      for (const event of events) {
+        const result = readEvent(event);
+        if (result !== undefined) {
+          await reader.cancel().catch(() => undefined);
+          return result;
+        }
+      }
+    }
+
+    if (buffer.trim()) {
+      const result = readEvent(buffer);
+      if (result !== undefined) return result;
+    }
+
+    return null;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    logDevWarn("Skill tool selection failed:", error);
+    return null;
   }
 };

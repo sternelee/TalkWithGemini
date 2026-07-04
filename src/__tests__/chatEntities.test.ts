@@ -37,6 +37,7 @@ describe("chat entity normalization", () => {
       ),
       config: {
         activePlugins: ["search", "search", "", "image"],
+        activeSkills: ["clarity-rewrite", "clarity-rewrite", "", "summary"],
       },
       compression: {
         compressedContent: "c".repeat(
@@ -53,6 +54,10 @@ describe("chat entity normalization", () => {
       CHAT_ENTITY_LIMITS.maxSessionSystemInstructionChars,
     );
     expect(session.config?.activePlugins).toEqual(["search", "image"]);
+    expect(session.config?.activeSkills).toEqual([
+      "clarity-rewrite",
+      "summary",
+    ]);
     expect(session.compression?.compressedContent).toHaveLength(
       CONTEXT_COMPRESSION_LIMITS.maxCompressedContentChars,
     );
@@ -82,6 +87,7 @@ describe("chat entity normalization", () => {
         model: "model",
         config: {
           activePlugins: [],
+          activeSkills: [],
         },
       } as Session).config,
     ).toEqual({});
@@ -111,6 +117,7 @@ describe("chat entity normalization", () => {
       ],
       color: "not-a-color",
       activePlugins: ["reader", "reader"],
+      activeSkills: ["meeting-minutes", "meeting-minutes", ""],
       enableSearch: "yes",
       enableReasoning: true,
       createdAt: Number.NaN,
@@ -129,6 +136,7 @@ describe("chat entity normalization", () => {
     );
     expect(workspace.color).toBe("blue");
     expect(workspace.activePlugins).toEqual(["reader"]);
+    expect(workspace.activeSkills).toEqual(["meeting-minutes"]);
     expect(workspace.enableSearch).toBe(false);
     expect(workspace.enableReasoning).toBe(true);
     expect(workspace.createdAt).toEqual(expect.any(Number));

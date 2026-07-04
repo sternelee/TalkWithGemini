@@ -21,7 +21,11 @@ import {
 import { v7 as uuidv7 } from "uuid";
 import { useLocale, useTranslations } from "next-intl";
 import { LobeAgent, LobeAgentMeta } from "@/types";
-import { getAgents, getAgentDetail } from "@/services/api/agentService";
+import {
+  getAgents,
+  getAgentDetail,
+  getCachedAgentsForLocale,
+} from "@/services/api/agentService";
 import { useSettingsStore } from "@/store/core/settingsStore";
 import { optimizeSystemPrompt } from "@/services/artifactService";
 import { streamGenerateContent } from "@/services/api/chatService";
@@ -912,6 +916,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
     removeLocalAgent,
     resetAgent,
     recordUsedAgent,
+    _hasHydrated,
   } = useSettingsStore();
 
   const [apiAgents, setApiAgents] = useState<LobeAgent[]>([]);
@@ -946,6 +951,15 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
   }, []);
 
   useEffect(() => {
+    if (!_hasHydrated) return;
+
+    const cachedAgents = getCachedAgentsForLocale(locale);
+    if (cachedAgents.length > 0) {
+      setApiAgents(cachedAgents);
+      setIsLoading(false);
+      return;
+    }
+
     const load = async () => {
       const requestId = agentListRequestRef.current + 1;
       agentListRequestRef.current = requestId;
@@ -966,7 +980,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
       }
     };
     load();
-  }, [locale]);
+  }, [_hasHydrated, locale]);
 
   const handleRefresh = async () => {
     const requestId = agentListRequestRef.current + 1;

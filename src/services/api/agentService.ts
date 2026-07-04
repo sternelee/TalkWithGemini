@@ -21,6 +21,29 @@ type AgentListResponse = {
 
 const agentListRequests = new Map<AgentMarketLocale, Promise<LobeAgent[]>>();
 
+export const getCachedAgentsForLocale = (
+  requestedLocale: string = "en",
+): LobeAgent[] => {
+  const locale = normalizeAgentMarketLocale(requestedLocale);
+  const { marketAgents, marketAgentsTimestamp, marketAgentsLocale } =
+    useSettingsStore.getState();
+
+  if (
+    !marketAgents ||
+    marketAgents.length === 0 ||
+    !marketAgentsTimestamp ||
+    marketAgentsLocale !== locale
+  ) {
+    return [];
+  }
+
+  if (Date.now() - marketAgentsTimestamp >= CACHE_DURATION) {
+    return [];
+  }
+
+  return normalizeMarketAgents(marketAgents);
+};
+
 export const getAgents = async (
   forceRefresh: boolean = false,
   requestedLocale: string = "en",
@@ -37,6 +60,12 @@ export const getAgents = async (
     marketAgentsLocale === locale && marketAgents && marketAgents.length > 0
       ? normalizeMarketAgents(marketAgents)
       : [];
+
+  const cachedAgents = getCachedAgentsForLocale(locale);
+  if (!forceRefresh && cachedAgents.length > 0) {
+    logDevInfo("Using cached agents data");
+    return cachedAgents;
+  }
 
   // Check cache validity (skip if force refresh)
   if (

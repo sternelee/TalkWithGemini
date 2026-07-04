@@ -33,6 +33,19 @@ export type {
   PluginFunctionRisk,
 } from "./lib/plugin/types";
 export type {
+  AppliedSkill,
+  AppliedSkillInvocation,
+  SelectedSkill,
+  SkillCandidate,
+  SkillCatalog,
+  SkillCatalogEntry,
+  SkillDataLocale,
+  SkillSelectionResult,
+  TextSkill,
+  TextSkillActivation,
+  TextSkillRisk,
+} from "./lib/skills/types";
+export type {
   ModelMetadata,
   ModelProvider,
   ProviderType,

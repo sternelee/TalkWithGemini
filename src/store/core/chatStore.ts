@@ -248,6 +248,7 @@ interface ChatState {
   deleteSession: (id: string) => Promise<void>;
   updateSessionTitle: (id: string, newTitle: string) => void;
   updateSessionInstruction: (id: string, instruction: string) => void;
+  updateSessionConfig: (id: string, config: Partial<SessionConfig>) => void;
   updateSessionCompression: (
     id: string,
     compression: Session["compression"],
@@ -672,6 +673,23 @@ export const useChatStore = create<ChatState>()(
               ? normalizeSession({
                   ...s,
                   systemInstruction: instruction,
+                  updatedAt: Date.now(),
+                })
+              : s,
+          ),
+        }));
+      },
+
+      updateSessionConfig: (id, config) => {
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === id
+              ? normalizeSession({
+                  ...s,
+                  config: normalizeSessionConfig({
+                    ...s.config,
+                    ...config,
+                  }),
                   updatedAt: Date.now(),
                 })
               : s,

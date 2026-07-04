@@ -10,6 +10,20 @@ import { CACHE_CONFIG } from "../../config/api";
 
 let pluginListRequest: Promise<Plugin[]> | null = null;
 
+export const getCachedPlugins = (): Plugin[] => {
+  const { marketPlugins, marketPluginsTimestamp } = useSettingsStore.getState();
+
+  if (!marketPlugins || marketPlugins.length === 0 || !marketPluginsTimestamp) {
+    return [];
+  }
+
+  if (Date.now() - marketPluginsTimestamp >= CACHE_CONFIG.plugins) {
+    return [];
+  }
+
+  return normalizeMarketPlugins(marketPlugins);
+};
+
 export const fetchApiGuruList = async (
   forceRefresh: boolean = false,
 ): Promise<Plugin[]> => {
@@ -25,6 +39,12 @@ export const fetchApiGuruList = async (
     }
     return [];
   };
+
+  const cachedPlugins = getCachedPlugins();
+  if (!forceRefresh && cachedPlugins.length > 0) {
+    logDevInfo("Using cached plugins data");
+    return cachedPlugins;
+  }
 
   // Check cache validity (skip if force refresh)
   if (

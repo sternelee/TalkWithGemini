@@ -29,6 +29,7 @@ import {
   Square,
   Library,
   PencilSparkles,
+  Sparkles,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Attachment } from "@/types";
@@ -78,7 +79,9 @@ import {
 import { hasPluginAuthValue } from "@/lib/security/localSecretResolvers";
 import { isPluginAuthRequired } from "@/lib/plugin/config";
 import { isKnowledgeAttachment } from "@/lib/utils/knowledgeAttachments";
+import { createChatDocumentAttachment } from "@/lib/utils/documentAttachments";
 import { polishTextContent } from "@/services/artifactService";
+import { normalizeSkillIdRefs } from "@/lib/skills";
 
 interface MessageInputProps {
   onSend: (text: string, attachments: Attachment[]) => void;
@@ -118,6 +121,9 @@ const iconButtonFocusClass =
 const iconButtonBaseClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
 
+const isNativeMediaFile = (file: File) =>
+  file.type.startsWith("image/") || file.type.startsWith("audio/");
+
 const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   (
     {
@@ -138,26 +144,36 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
     const [showModelSelect, setShowModelSelect] = useState(false);
+    const [showSkillSelect, setShowSkillSelect] = useState(false);
     const [showPluginSelect, setShowPluginSelect] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [isPolishingInput, setIsPolishingInput] = useState(false);
+    const [isParsingAttachments, setIsParsingAttachments] = useState(false);
 
     const t = useTranslations("MessageInput");
     const tConfig = useTranslations("Config");
-    const { chatConfig, setChatConfig } = useChatStore();
+    const {
+      chatConfig,
+      setChatConfig,
+      currentSessionId,
+      sessions,
+      updateSessionConfig,
+    } = useChatStore();
     const {
       modelMetadata,
       customModelMetadata,
       installedPlugins,
       activePlugins,
       togglePluginActive,
+      installedSkills,
       pluginConfigs,
       voice,
       updateVoiceSettings,
       search,
+      rag,
       system,
       updateSystemSettings,
     } = useSettingsStore();
@@ -324,6 +340,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key !== "Escape") return;
         setShowAttachMenu(false);
+        setShowSkillSelect(false);
         setShowPluginSelect(false);
         setShowModelSelect(false);
       };
@@ -395,6 +412,48 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onToggleSearch?.();
     };
 
+    const currentSession = useMemo(
+      () => sessions.find((session) => session.id === currentSessionId),
+      [currentSessionId, sessions],
+    );
+    const activeSkillIds = useMemo(
+      () =>
+        normalizeSkillIdRefs(
+          currentSession?.config?.activeSkills,
+          installedSkills,
+        ),
+      [currentSession?.config?.activeSkills, installedSkills],
+    );
+    const activeSkillSet = useMemo(
+      () => new Set(activeSkillIds),
+      [activeSkillIds],
+    );
+    const skillsForMenu = useMemo(
+      () =>
+        [...installedSkills].sort((a, b) =>
+          a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+        ),
+      [installedSkills],
+    );
+    const setSessionActiveSkillIds = useCallback(
+      (skillIds: string[]) => {
+        if (!currentSessionId) return;
+        updateSessionConfig(currentSessionId, {
+          activeSkills: normalizeSkillIdRefs(skillIds, installedSkills),
+        });
+      },
+      [currentSessionId, installedSkills, updateSessionConfig],
+    );
+    const toggleSessionSkill = useCallback(
+      (skillId: string) => {
+        setSessionActiveSkillIds(
+          activeSkillSet.has(skillId)
+            ? activeSkillIds.filter((id) => id !== skillId)
+            : [...activeSkillIds, skillId],
+        );
+      },
+      [activeSkillIds, activeSkillSet, setSessionActiveSkillIds],
+    );
     // Group models by provider name
     const groupedModels = useMemo(() => {
       const groups: Record<string, ModelInfo[]> = {};
@@ -472,6 +531,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       if (
         (!input.trim() && attachments.length === 0) ||
         disabled ||
+        isParsingAttachments ||
         !selectedModel
       ) {
         return;
@@ -491,6 +551,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         !originalText.trim() ||
         disabled ||
         isTranscribing ||
+        isParsingAttachments ||
         isPolishingInput
       ) {
         return;
@@ -815,39 +876,73 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         if (selectionMessage) setErrorMsg(selectionMessage);
         const newAttachments: Attachment[] = [];
 
-        for (const file of selection.accepted) {
-          try {
-            const base64 = await fileToBase64(file);
-            if (
-              !isMountedRef.current ||
-              fileSelectionRunRef.current !== runId
-            ) {
-              return;
-            }
-            const base64Data = base64.split(",")[1];
+        setIsParsingAttachments(true);
+        try {
+          for (const file of selection.accepted) {
+            try {
+              if (isNativeMediaFile(file)) {
+                const base64 = await fileToBase64(file);
+                if (
+                  !isMountedRef.current ||
+                  fileSelectionRunRef.current !== runId
+                ) {
+                  return;
+                }
+                const base64Data = base64.split(",")[1];
 
-            newAttachments.push({
-              id: uuidv7(),
-              mimeType: file.type || "application/octet-stream",
-              data: base64Data,
-              fileName: file.name,
-            });
-          } catch (err) {
-            if (
-              !isMountedRef.current ||
-              fileSelectionRunRef.current !== runId
-            ) {
-              return;
+                newAttachments.push({
+                  id: uuidv7(),
+                  mimeType: file.type || "application/octet-stream",
+                  data: base64Data,
+                  fileName: file.name,
+                });
+                continue;
+              }
+
+              const result = await createChatDocumentAttachment(file, {
+                id: uuidv7(),
+                rag,
+              });
+              if (
+                !isMountedRef.current ||
+                fileSelectionRunRef.current !== runId
+              ) {
+                return;
+              }
+              newAttachments.push(result.attachment);
+            } catch (err) {
+              if (
+                !isMountedRef.current ||
+                fileSelectionRunRef.current !== runId
+              ) {
+                return;
+              }
+              logInputError(
+                isNativeMediaFile(file)
+                  ? "Error reading file"
+                  : "Error parsing document attachment",
+                err,
+              );
+              setErrorMsg(
+                t(
+                  isNativeMediaFile(file)
+                    ? "failedToReadFile"
+                    : "failedToParseDocument",
+                  { fileName: file.name },
+                ),
+              );
             }
-            logInputError("Error reading file", err);
-            setErrorMsg(t("failedToReadFile", { fileName: file.name }));
           }
-        }
 
-        if (isMountedRef.current && fileSelectionRunRef.current === runId) {
-          appendAttachments(newAttachments);
-          if (inputEl.value) inputEl.value = ""; // Reset input
-          setShowAttachMenu(false);
+          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
+            appendAttachments(newAttachments);
+            if (inputEl.value) inputEl.value = ""; // Reset input
+            setShowAttachMenu(false);
+          }
+        } finally {
+          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
+            setIsParsingAttachments(false);
+          }
         }
       }
     };
@@ -866,45 +961,47 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         if (selectionMessage) setErrorMsg(selectionMessage);
         const newAttachments: Attachment[] = [];
 
-        for (const file of selection.accepted) {
-          try {
-            // Use fileToBase64 to treat it like a normal attachment but with text processing logic
-            const base64 = await fileToBase64(file);
-            if (
-              !isMountedRef.current ||
-              fileSelectionRunRef.current !== runId
-            ) {
-              return;
+        setIsParsingAttachments(true);
+        try {
+          for (const file of selection.accepted) {
+            try {
+              const result = await createChatDocumentAttachment(file, {
+                id: uuidv7(),
+                rag,
+              });
+              if (
+                !isMountedRef.current ||
+                fileSelectionRunRef.current !== runId
+              ) {
+                return;
+              }
+              newAttachments.push(result.attachment);
+            } catch (err) {
+              if (
+                !isMountedRef.current ||
+                fileSelectionRunRef.current !== runId
+              ) {
+                return;
+              }
+              logInputError("Error parsing text or document file", err);
+              setErrorMsg(t("failedToParseDocument", { fileName: file.name }));
             }
-            const base64Data = base64.split(",")[1];
-
-            newAttachments.push({
-              id: uuidv7(),
-              mimeType: file.type || "text/plain",
-              data: base64Data,
-              fileName: file.name,
-            });
-          } catch (err) {
-            if (
-              !isMountedRef.current ||
-              fileSelectionRunRef.current !== runId
-            ) {
-              return;
-            }
-            logInputError("Error reading text file", err);
-            setErrorMsg(t("failedToReadFile", { fileName: file.name }));
           }
-        }
 
-        if (
-          newAttachments.length > 0 &&
-          isMountedRef.current &&
-          fileSelectionRunRef.current === runId
-        ) {
-          appendAttachments(newAttachments);
-        }
-        if (isMountedRef.current && fileSelectionRunRef.current === runId) {
-          if (inputEl.value) inputEl.value = "";
+          if (
+            newAttachments.length > 0 &&
+            isMountedRef.current &&
+            fileSelectionRunRef.current === runId
+          ) {
+            appendAttachments(newAttachments);
+          }
+          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
+            if (inputEl.value) inputEl.value = "";
+          }
+        } finally {
+          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
+            setIsParsingAttachments(false);
+          }
         }
       }
     };
@@ -916,27 +1013,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const fileToBase64 = (file: File): Promise<string> => {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        const isMedia =
-          file.type.startsWith("image/") || file.type.startsWith("audio/");
-
-        if (isMedia) {
-          reader.readAsDataURL(file);
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = (error) => reject(error);
-        } else {
-          reader.readAsText(file, "UTF-8");
-          reader.onload = () => {
-            try {
-              const text = reader.result as string;
-              const base64 = btoa(unescape(encodeURIComponent(text)));
-              const mime = file.type || "text/plain";
-              resolve(`data:${mime};base64,${base64}`);
-            } catch (e) {
-              reject(e);
-            }
-          };
-          reader.onerror = (error) => reject(error);
-        }
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (error) => reject(error);
       });
     };
 
@@ -966,6 +1045,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const hasKnowledgeAttachments = attachments.some(isKnowledgeAttachment);
     const hasAttachmentMenu =
       modelCapabilities.attachment || modelCapabilities.vision;
+    const isInputBusy = disabled || isTranscribing || isParsingAttachments;
 
     const handleAttachClick = () => {
       if (!hasAttachmentMenu) {
@@ -977,7 +1057,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     return (
       <div
         className="glass-shell relative flex flex-col rounded-xl border focus-within:ring-2 focus-within:ring-red-100/50 dark:focus-within:ring-red-900/30 focus-within:border-red-400/50 transition-[background-color,border-color,box-shadow] duration-200"
-        aria-busy={disabled || isTranscribing}
+        aria-busy={isInputBusy}
       >
         {/* Modals */}
         {showRemoteModal && (
@@ -1017,6 +1097,19 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           </div>
         )}
 
+        {!errorMsg && isParsingAttachments && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute -top-10 left-0 right-0 z-50 flex justify-center animate-in fade-in slide-in-from-bottom-2"
+          >
+            <div className="flex items-center gap-2 rounded-full bg-gray-900 px-3 py-1.5 text-xs font-medium text-white shadow-lg dark:bg-muted dark:text-foreground">
+              <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+              <span>{t("parsingDocument")}</span>
+            </div>
+          </div>
+        )}
+
         {/* Attachments Preview Area */}
         <MessageInputAttachmentTray
           attachments={attachments}
@@ -1045,7 +1138,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={disabled || isTranscribing}
+          disabled={isInputBusy}
         />
 
         {/* Toolbar */}
@@ -1085,12 +1178,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onChange={handleTextFallbackSelect}
                 className="hidden"
                 multiple
-                accept="text/*,application/json,application/xml,application/javascript,application/xhtml+xml,application/x-yaml,application/sql,application/graphql,application/ld+json,application/x-sh,application/x-httpd-php,application/typescript"
+                accept="text/*,application/json,application/xml,application/javascript,application/xhtml+xml,application/x-yaml,application/sql,application/graphql,application/ld+json,application/x-sh,application/x-httpd-php,application/typescript,.csv,.doc,.docx,.md,.markdown,.pdf,.ppt,.pptx,.txt,.xls,.xlsx"
               />
 
               <DropdownMenu
                 open={showAttachMenu && hasAttachmentMenu}
                 onOpenChange={(open) => {
+                  setShowSkillSelect(false);
                   setShowPluginSelect(false);
                   setShowModelSelect(false);
                   setShowAttachMenu(hasAttachmentMenu ? open : false);
@@ -1103,7 +1197,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       aria-label={t("attachFiles")}
                       className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${showAttachMenu ? "bg-gray-100 dark:bg-accent text-gray-800 dark:text-foreground" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
                       onClick={handleAttachClick}
-                      disabled={disabled || isTranscribing}
+                      disabled={isInputBusy}
                     >
                       <Paperclip size={16} aria-hidden="true" />
                     </button>
@@ -1179,15 +1273,99 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   }`}
                   onClick={() => {
                     setShowAttachMenu(false);
+                    setShowSkillSelect(false);
                     setShowPluginSelect(false);
                     setShowModelSelect(false);
                     setShowKBModal(true);
                   }}
-                  disabled={disabled || isTranscribing}
+                  disabled={isInputBusy}
                 >
                   <Library size={16} aria-hidden="true" />
                 </button>
               </Tooltip>
+            </div>
+
+            {/* Skill Toggle Button */}
+            <div className="relative">
+              <DropdownMenu
+                open={showSkillSelect}
+                onOpenChange={(open) => {
+                  setShowAttachMenu(false);
+                  setShowPluginSelect(false);
+                  setShowModelSelect(false);
+                  setShowSkillSelect(open);
+                }}
+              >
+                <Tooltip
+                  content={
+                    activeSkillIds.length > 0
+                      ? t("activeSkillsCount", { count: activeSkillIds.length })
+                      : t("skills")
+                  }
+                  position="top"
+                >
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={
+                        activeSkillIds.length > 0
+                          ? t("activeSkillsAria", {
+                              count: activeSkillIds.length,
+                            })
+                          : t("skills")
+                      }
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                        activeSkillIds.length > 0
+                          ? "text-emerald-500 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-900/20"
+                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground"
+                      }`}
+                      disabled={isInputBusy}
+                    >
+                      <Sparkles size={16} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </Tooltip>
+
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  className="max-h-64 w-64 overflow-y-auto custom-scrollbar"
+                >
+                  {skillsForMenu.length > 0 ? (
+                    <>
+                      <DropdownMenuLabel>
+                        {t("installedSkills")}
+                      </DropdownMenuLabel>
+                      {skillsForMenu.map((skill) => {
+                        const isActive = activeSkillSet.has(skill.id);
+                        return (
+                          <DropdownMenuCheckboxItem
+                            key={skill.id}
+                            checked={isActive}
+                            indicatorPosition="right"
+                            indicator={
+                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-emerald-500 bg-emerald-500">
+                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                              </span>
+                            }
+                            onSelect={(event) => event.preventDefault()}
+                            onCheckedChange={() => toggleSessionSkill(skill.id)}
+                          >
+                            <span className="truncate">{skill.title}</span>
+                          </DropdownMenuCheckboxItem>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <div
+                      className="px-3 py-4 text-center text-xs text-muted-foreground"
+                      role="status"
+                    >
+                      {t("noSkillsAvailable")}
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Plugin Toggle Button */}
@@ -1196,6 +1374,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 open={showPluginSelect}
                 onOpenChange={(open) => {
                   setShowAttachMenu(false);
+                  setShowSkillSelect(false);
                   setShowModelSelect(false);
                   setShowPluginSelect(open);
                 }}
@@ -1218,8 +1397,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                             })
                           : t("plugins")
                       }
-                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePlugins.length > 0 ? "text-green-500 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                      disabled={disabled || isTranscribing}
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePlugins.length > 0 ? "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
+                      disabled={isInputBusy}
                     >
                       <Blocks size={16} aria-hidden="true" />
                     </button>
@@ -1248,7 +1427,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                             }
                             indicatorPosition="right"
                             indicator={
-                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-green-500 bg-green-500">
+                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-blue-500 bg-blue-500">
                                 <span className="h-1.5 w-1.5 rounded-full bg-white" />
                               </span>
                             }
@@ -1310,7 +1489,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   onClick={() =>
                     setChatConfig({ useReasoning: !chatConfig.useReasoning })
                   }
-                  disabled={disabled || isTranscribing}
+                  disabled={isInputBusy}
                 >
                   <Lightbulb size={16} aria-hidden="true" />
                 </button>
@@ -1339,7 +1518,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                         : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
                   }`}
                   onClick={handleSearchToggle}
-                  disabled={disabled || isTranscribing}
+                  disabled={isInputBusy}
                 >
                   <Globe size={16} aria-hidden="true" />
                 </button>
@@ -1373,7 +1552,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     enableHtmlVisualPrompt: !system.enableHtmlVisualPrompt,
                   })
                 }
-                disabled={disabled || isTranscribing}
+                disabled={isInputBusy}
               >
                 <LayoutDashboard size={16} aria-hidden="true" />
               </button>
@@ -1387,6 +1566,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 open={showModelSelect && availableModels.length > 0}
                 onOpenChange={(open) => {
                   setShowAttachMenu(false);
+                  setShowSkillSelect(false);
                   setShowPluginSelect(false);
                   setShowModelSelect(open && availableModels.length > 0);
                 }}
@@ -1399,7 +1579,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                         model: currentModelName,
                       })}
                       className={`group inline-flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:w-auto md:max-w-52 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground ${iconButtonFocusClass}`}
-                      disabled={disabled || isTranscribing}
+                      disabled={isInputBusy}
                     >
                       {/* Mobile: Just Icon */}
                       <Cpu size={16} className="md:hidden" aria-hidden="true" />
@@ -1471,12 +1651,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 type="button"
                 aria-label={t("polishTextAria")}
                 aria-busy={isPolishingInput || undefined}
-                disabled={
-                  disabled ||
-                  isTranscribing ||
-                  isPolishingInput ||
-                  !input.trim()
-                }
+                disabled={isInputBusy || isPolishingInput || !input.trim()}
                 className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
                   input.trim()
                     ? "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
@@ -1498,8 +1673,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
             {/* Actions */}
             <div className="flex shrink-0 items-center gap-1">
-              {disabled || isTranscribing ? (
-                onStop ? (
+              {isInputBusy ? (
+                onStop && !isParsingAttachments ? (
                   <Tooltip content={t("stopGeneration")} position="top">
                     <button
                       type="button"
@@ -1542,7 +1717,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   <button
                     type="button"
                     aria-label={t("sendMessageAria")}
-                    disabled={!selectedModel}
+                    disabled={!selectedModel || isParsingAttachments}
                     className={`${iconButtonBaseClass} bg-gray-100 text-gray-500 shadow-sm transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-accent dark:text-muted-foreground dark:hover:bg-accent/80 ${iconButtonFocusClass}`}
                     onClick={handleSend}
                   >

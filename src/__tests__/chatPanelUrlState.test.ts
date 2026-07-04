@@ -39,6 +39,19 @@ describe("chat panel URL state", () => {
     expect(params.get("settingsTab")).toBe("rag");
   });
 
+  it("round-trips the skills panel without settings params", () => {
+    const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
+      panel: "skills",
+    });
+    const state = parseChatPanelUrlState(params);
+
+    expect(params.get("panel")).toBe("skills");
+    expect(params.has("settingsTab")).toBe(false);
+    expect(state.panel).toBe("skills");
+    expect(state.settingsTab).toBeNull();
+    expect(state.needsReplace).toBe(false);
+  });
+
   it("removes panel params when returning to chat", () => {
     const params = setChatPanelUrlState(
       new URLSearchParams("panel=settings&settingsTab=voice&keep=1"),

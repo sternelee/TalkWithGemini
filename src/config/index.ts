@@ -6,7 +6,7 @@
 // API 配置
 export * from "./api";
 
-// 助手配置
+// 助理配置
 export * from "./assistants";
 
 // 插件配置

@@ -10,6 +10,10 @@ import {
 import { withResolvedObjectUrl } from "./objectUrlLifecycle";
 import { logDevError } from "./devLogger";
 import {
+  decodeBase64Text,
+  isTextDocumentMimeType,
+} from "./documentAttachments";
+import {
   isKnowledgeAttachment,
   isKnowledgeCollectionAttachment,
   parseKnowledgeFileAttachmentData,
@@ -163,39 +167,33 @@ export async function processAttachmentsForModel(
       }
     }
 
-    // Handle different attachment types
     if (
       processedAtt.mimeType.startsWith("image/") ||
       processedAtt.mimeType.startsWith("audio/")
     ) {
       finalAttachments.push(processedAtt);
-    } else {
-      const isTextType =
-        processedAtt.mimeType.startsWith("text/") ||
-        processedAtt.mimeType.includes("json") ||
-        processedAtt.mimeType.includes("xml");
+      continue;
+    }
 
-      if (supportAttachment && isTextType) {
-        finalAttachments.push(processedAtt);
-      } else {
-        try {
-          if (processedAtt.data) {
-            const decodedContent = decodeURIComponent(
-              escape(atob(processedAtt.data)),
-            );
-            const parts: string[] = [];
-            appendPromptContextFile(parts, contextBudget, {
-              fileName: processedAtt.fileName,
-              mimeType: processedAtt.mimeType,
-              content: decodedContent,
-            });
-            convertedContent += parts.join("");
-          }
-        } catch (e) {
-          logDevError("Failed to decode text file attachment", e);
-          finalAttachments.push(processedAtt);
-        }
+    const isTextType = isTextDocumentMimeType(processedAtt.mimeType);
+    if (isTextType && processedAtt.data) {
+      try {
+        const decodedContent = decodeBase64Text(processedAtt.data);
+        const parts: string[] = [];
+        appendPromptContextFile(parts, contextBudget, {
+          fileName: processedAtt.fileName,
+          mimeType: processedAtt.mimeType,
+          content: decodedContent,
+        });
+        convertedContent += parts.join("");
+        continue;
+      } catch (e) {
+        logDevError("Failed to decode text file attachment", e);
       }
+    }
+
+    if (processedAtt.url || supportAttachment) {
+      finalAttachments.push(processedAtt);
     }
   }
 

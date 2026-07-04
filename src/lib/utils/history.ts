@@ -98,7 +98,7 @@ export function prepareOpenAIHistory(messages: Message[]) {
     } else {
       // 模型消息
       if (msg.toolCalls?.length) {
-        // 添加助手的工具调用
+        // 添加助理的工具调用
         result.push({
           role: "assistant",
           content: msg.content || null,

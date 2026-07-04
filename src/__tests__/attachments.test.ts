@@ -5,7 +5,7 @@ describe("attachment processing", () => {
   const encodeText = (value: string) =>
     btoa(unescape(encodeURIComponent(value)));
 
-  it("converts OPFS attachments to inline data without keeping the local URL", async () => {
+  it("converts OPFS text attachments into prompt context without keeping the local URL", async () => {
     const revokeObjectURL = vi
       .spyOn(URL, "revokeObjectURL")
       .mockImplementation(() => {});
@@ -41,14 +41,40 @@ describe("attachment processing", () => {
       async () => "blob:http://localhost/note",
     );
 
-    expect(result.finalAttachments[0]).toMatchObject({
-      id: "att_1",
-      data: "aGVsbG8=",
-    });
-    expect(result.finalAttachments[0]?.url).toBeUndefined();
+    expect(result.finalAttachments).toEqual([]);
+    expect(result.convertedContent).toContain('name="note.txt"');
+    expect(result.convertedContent).toContain("hello");
+    expect(result.convertedContent).not.toContain("opfs://note.txt");
     expect(fetchMock).toHaveBeenCalledWith("blob:http://localhost/note");
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/note");
     vi.stubGlobal("FileReader", originalFileReader);
+  });
+
+  it("keeps image and audio attachments native for model providers", async () => {
+    const result = await processAttachmentsForModel(
+      [
+        {
+          id: "img_1",
+          mimeType: "image/png",
+          fileName: "image.png",
+          data: "aW1hZ2U=",
+        },
+        {
+          id: "audio_1",
+          mimeType: "audio/mpeg",
+          fileName: "voice.mp3",
+          data: "YXVkaW8=",
+        },
+      ],
+      false,
+      async () => null,
+    );
+
+    expect(result.finalAttachments.map((attachment) => attachment.id)).toEqual([
+      "img_1",
+      "audio_1",
+    ]);
+    expect(result.convertedContent).toBe("");
   });
 
   it("escapes converted text attachment delimiters for non-attachment models", async () => {

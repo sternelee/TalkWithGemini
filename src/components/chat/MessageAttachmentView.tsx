@@ -10,18 +10,24 @@ import {
   isKnowledgeCollectionAttachment,
   isKnowledgeFileAttachment,
 } from "@/lib/utils/knowledgeAttachments";
+import { isTextDocumentMimeType } from "@/lib/utils/documentAttachments";
 
 interface MessageAttachmentViewProps {
   attachment: Attachment;
   onImageClick: () => void;
+  onDocumentClick?: (attachment: Attachment) => void;
 }
 
 const actionButtonFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
 
+const documentCardClass =
+  "group/attachment markdown-file-card inline-flex min-w-50 max-w-full select-none items-center gap-3 rounded-xl p-3 text-left transition-[border-color,background-color,box-shadow] md:w-72";
+
 const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
   attachment,
   onImageClick,
+  onDocumentClick,
 }) => {
   const t = useTranslations("Message");
   const fallbackUrl =
@@ -114,14 +120,49 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
     );
   }
 
-  return (
-    <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50 shadow-sm dark:border-border dark:bg-muted">
-      <div className="flex h-20 w-32 flex-col items-center justify-center p-2 text-gray-500 dark:text-muted-foreground">
-        <FileText size={24} aria-hidden="true" />
-        <span className="mt-1 w-full truncate text-center text-xs">
+  const isReadableDocument =
+    Boolean(attachment.data) && isTextDocumentMimeType(attachment.mimeType);
+  const documentCardBody = (
+    <>
+      <div className="markdown-file-card-icon">
+        <FileText size={20} aria-hidden="true" />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="markdown-strong-text truncate text-sm font-medium">
           {attachment.fileName}
         </span>
+        <div className="markdown-file-card-meta flex min-w-0 flex-wrap items-center gap-2 text-xs">
+          <span className="markdown-file-card-action">
+            {isReadableDocument
+              ? t("openDocumentAttachment")
+              : t("documentAttachment")}
+          </span>
+        </div>
       </div>
+    </>
+  );
+
+  if (isReadableDocument && onDocumentClick) {
+    return (
+      <button
+        type="button"
+        aria-label={t("openDocumentAttachmentAria", {
+          fileName: attachment.fileName,
+        })}
+        onClick={() => onDocumentClick(attachment)}
+        className={`${documentCardClass} markdown-file-card-interactive markdown-focus-ring cursor-pointer`}
+      >
+        {documentCardBody}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      aria-label={attachment.fileName}
+      className={`${documentCardClass} cursor-default`}
+    >
+      {documentCardBody}
     </div>
   );
 };

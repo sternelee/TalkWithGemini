@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "skills.schema.json",
+  "title": "Skills Dataset",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/catalog"
+    },
+    {
+      "$ref": "#/$defs/skill"
+    }
+  ],
+  "$defs": {
+    "runtime": {
+      "type": "object",
+      "required": [
+        "environment",
+        "storage",
+        "executionModel",
+        "supportsScripts",
+        "supportsExternalTools",
+        "supportsNetwork"
+      ],
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "storage": {
+          "type": "string"
+        },
+        "executionModel": {
+          "type": "string"
+        },
+        "supportsScripts": {
+          "type": "boolean"
+        },
+        "supportsExternalTools": {
+          "type": "boolean"
+        },
+        "supportsNetwork": {
+          "type": "boolean"
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "required": [
+        "level",
+        "textOnly",
+        "scriptRequired",
+        "externalToolRequired",
+        "networkRequired",
+        "reviewRequiredForHighStakes"
+      ],
+      "properties": {
+        "level": {
+          "type": "string"
+        },
+        "textOnly": {
+          "type": "boolean"
+        },
+        "scriptRequired": {
+          "type": "boolean"
+        },
+        "externalToolRequired": {
+          "type": "boolean"
+        },
+        "networkRequired": {
+          "type": "boolean"
+        },
+        "reviewRequiredForHighStakes": {
+          "type": "boolean"
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "required": ["embeddingText", "useWhen", "avoidWhen", "exampleQueries"],
+      "properties": {
+        "embeddingText": {
+          "type": "string"
+        },
+        "useWhen": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "avoidWhen": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exampleQueries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "skillBase": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "title",
+        "description",
+        "category",
+        "tags",
+        "audience",
+        "language",
+        "outputFormat",
+        "risk",
+        "activation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audience": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "outputFormat": {
+          "type": "string"
+        },
+        "risk": {
+          "$ref": "#/$defs/risk"
+        },
+        "activation": {
+          "$ref": "#/$defs/activation"
+        },
+        "file": {
+          "type": "string"
+        },
+        "builtIn": {
+          "type": "boolean"
+        }
+      }
+    },
+    "skillEntry": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/skillBase"
+        },
+        {
+          "type": "object",
+          "required": ["file"],
+          "properties": {
+            "file": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "skill": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/skillBase"
+        },
+        {
+          "type": "object",
+          "required": ["file", "content"],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "catalog": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "generatedAt",
+        "locale",
+        "datasetName",
+        "description",
+        "intendedRuntime",
+        "globalPolicy",
+        "skillCount",
+        "categories",
+        "skills"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "skills-v1"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "locale": {
+          "enum": ["en", "zh-CN"]
+        },
+        "datasetName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "intendedRuntime": {
+          "$ref": "#/$defs/runtime"
+        },
+        "globalPolicy": {
+          "type": "object"
+        },
+        "sourceBasis": {
+          "type": "array"
+        },
+        "skillCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/skillEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

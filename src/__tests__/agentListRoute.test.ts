@@ -132,7 +132,7 @@ describe("agent detail route", () => {
       response: new Response(null, { status: 200 }),
       data: {
         identifier: "agent-1",
-        meta: { title: "中文助手" },
+        meta: { title: "中文助理" },
         config: { systemRole: "中文系统提示词" },
       },
     });

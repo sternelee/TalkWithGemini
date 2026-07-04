@@ -94,13 +94,13 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
   zh: {
     title: "Neo Chat - 本地优先的 AI 对话工作台",
     description:
-      "Neo Chat 是本地优先的 AI 对话工作台，支持多模型对话、助手预设、插件工具、联网搜索、知识库 RAG、语音和可编辑产物。",
+      "Neo Chat 是本地优先的 AI 对话工作台，支持多模型对话、助理预设、插件工具、联网搜索、知识库 RAG、语音和可编辑产物。",
     keywords: [
       "Neo Chat",
       "AI 对话",
       "本地优先 AI",
       "多模型聊天",
-      "AI 助手",
+      "AI 助理",
       "知识库 RAG",
       "联网搜索",
       "AI 插件",
@@ -109,13 +109,13 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
     ],
     ogTitle: "Neo Chat - 本地优先的 AI 对话工作台",
     ogDescription:
-      "在一个双语工作台中使用多模型、助手、插件、联网搜索、知识库 RAG、语音和可编辑产物。",
+      "在一个双语工作台中使用多模型、助理、插件、联网搜索、知识库 RAG、语音和可编辑产物。",
     ogImageAlt: "Neo Chat AI 对话工作台",
     openGraphLocale: "zh_CN",
     structuredDataLanguage: "zh-CN",
     features: [
       "多模型 AI 对话",
-      "助手预设与自定义助手",
+      "助理预设与自定义助理",
       "插件工具与联网搜索",
       "知识库 RAG",
       "语音输入与语音合成",

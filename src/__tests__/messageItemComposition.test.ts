@@ -14,6 +14,10 @@ describe("MessageItem composition", () => {
     );
 
     expect(messageItem).toContain("MessageAttachmentView");
+    expect(messageItem).toContain(
+      "const skillInvocations = message.skillInvocations || []",
+    );
+    expect(messageItem).toContain("portal");
     expect(messageItem).toContain("AddToKnowledgeModal");
     expect(messageItem).toContain("handleAddToKnowledge");
     expect(messageItem).toContain("canEditUserMessage");
@@ -25,6 +29,7 @@ describe("MessageItem composition", () => {
     expect(messageItem).not.toContain("dark:text-amber-300");
     expect(messageItem).not.toContain("PencilSparklesIcon");
     expect(messageItem).not.toContain("const AttachmentView");
+    expect(messageItem).not.toContain("activeSkillIds");
     expect(messageItem).not.toContain("onBranch");
     expect(messageItem).not.toContain("<Split");
     expect(attachmentView).toContain("AudioPlayer");

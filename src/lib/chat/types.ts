@@ -1,5 +1,6 @@
 import type { PluginFunctionRisk } from "../plugin/types";
 import type { ImageSource, Source } from "../search/types";
+import type { AppliedSkillInvocation } from "../skills/types";
 
 export interface Attachment {
   id: string;
@@ -63,6 +64,7 @@ export interface Message {
   timestamp: number;
   attachments?: Attachment[];
   toolCalls?: ToolCall[];
+  skillInvocations?: AppliedSkillInvocation[];
   model?: string;
   generationError?: {
     message: string;
@@ -203,6 +205,7 @@ export interface SessionConfig {
   useSearch?: boolean;
   useReasoning?: boolean;
   activePlugins?: string[];
+  activeSkills?: string[];
 }
 
 export interface Session {
@@ -232,6 +235,7 @@ export interface Workspace {
   enableSearch?: boolean;
   enableReasoning?: boolean;
   activePlugins?: string[];
+  activeSkills?: string[];
   createdAt: number;
 }
 

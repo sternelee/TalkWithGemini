@@ -28,7 +28,24 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("text-brand hover:bg-brand-soft");
     expect(messageInput).toContain("PencilSparkles");
     expect(messageInput).not.toContain("PencilSparklesIcon");
+    expect(messageInput).toContain("installedSkills");
+    expect(messageInput).toContain("updateSessionConfig");
+    expect(messageInput).toContain("normalizeSkillIdRefs");
+    expect(messageInput).not.toContain("toggleSkillActive");
+    expect(messageInput).not.toContain("formatSkillCategory");
+    expect(messageInput).not.toContain("autoSelectSkills");
+    expect(messageInput).not.toContain("manageSkills");
+    expect(messageInput).not.toContain("setSkillAutoSelect");
+    expect(messageInput).not.toContain("border border-green-500 bg-green-500");
+    expect(messageInput).toContain("border border-blue-500 bg-blue-500");
+    expect(messageInput).not.toContain("text-green-500 dark:text-green-400");
+    expect(messageInput).toContain("text-blue-500 dark:text-blue-400");
     expect(messageInput).toContain("handlePolishInput");
+    expect(messageInput).toContain("createChatDocumentAttachment");
+    expect(messageInput).toContain("isParsingAttachments");
+    expect(messageInput).toContain("failedToParseDocument");
+    expect(messageInput).toContain(".pdf");
+    expect(messageInput).not.toContain("reader.readAsText");
     expect(messageInput).not.toContain(
       "text-amber-500 hover:bg-amber-50 hover:text-amber-600",
     );
@@ -54,5 +71,9 @@ describe("MessageInput composition", () => {
     );
     expect(attachmentTray).toContain("AttachmentPreviewCard");
     expect(attachmentTray).toContain("resolveObjectUrlWithLifecycle");
+    expect(attachmentTray).toContain("markdown-file-card");
+    expect(attachmentTray).toContain("markdown-file-card-icon");
+    expect(attachmentTray).toContain("markdown-file-card-action");
+    expect(attachmentTray).not.toContain("h-16 w-16");
   });
 });

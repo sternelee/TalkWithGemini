@@ -53,6 +53,7 @@ import {
   type MarkdownGeneratedFile,
 } from "@/lib/utils/markdownFiles";
 import {
+  getRenderableDiagram,
   parseMarkdownDiagramBlocks,
   type MarkdownDiagramBlock,
 } from "@/lib/utils/markdownDiagrams";
@@ -540,6 +541,22 @@ const DiagramSvgView = ({
   );
 };
 
+const mermaidSvgCache = new Map<string, string>();
+let mermaidImportPromise: Promise<typeof import("mermaid")> | null = null;
+
+const getMermaidModule = () => {
+  mermaidImportPromise ??= import("mermaid");
+  return mermaidImportPromise;
+};
+
+const hashDiagramKey = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+};
+
 const MermaidDiagram = ({
   source,
   incomplete,
@@ -565,53 +582,86 @@ const MermaidDiagram = ({
     error: string;
   }>({ status: "idle", svg: "", error: "" });
   const trimmedSource = source.trim();
+  const cacheKey = React.useMemo(
+    () =>
+      JSON.stringify({
+        source: trimmedSource,
+        theme,
+        enhanced,
+        mode,
+      }),
+    [enhanced, mode, theme, trimmedSource],
+  );
 
   useEffect(() => {
     if (!trimmedSource) {
-      setState({ status: "idle", svg: "", error: "" });
+      return;
+    }
+    if (incomplete) {
       return;
     }
 
-    let cancelled = false;
-    setState((current) => ({ ...current, status: "loading", error: "" }));
-
-    void import("mermaid")
-      .then(async (module) => {
-        const mermaid = module.default;
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "strict",
-          theme: "base",
-          flowchart: { htmlLabels: false },
-          sequence: { useMaxWidth: true },
-          themeVariables: buildMermaidThemeVariables(theme, enhanced),
-        });
-        const result = await mermaid.render(
-          `${renderId}-${theme}-${enhanced ? "enhanced" : "plain"}`,
-          trimmedSource,
+    const cachedSvg = mermaidSvgCache.get(cacheKey);
+    if (cachedSvg) {
+      const cacheTimer = window.setTimeout(() => {
+        setState((current) =>
+          current.status === "ready" && current.svg === cachedSvg
+            ? current
+            : { status: "ready", svg: cachedSvg, error: "" },
         );
-        if (!cancelled) {
-          setState({
-            status: "ready",
-            svg: normalizeMermaidSvg(result.svg),
-            error: "",
+      }, 0);
+      return () => window.clearTimeout(cacheTimer);
+    }
+
+    let cancelled = false;
+    const renderTimer = window.setTimeout(() => {
+      setState((current) =>
+        current.svg
+          ? { ...current, error: "" }
+          : { ...current, status: "loading", error: "" },
+      );
+
+      void getMermaidModule()
+        .then(async (module) => {
+          const mermaid = module.default;
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "strict",
+            theme: "base",
+            flowchart: { htmlLabels: false },
+            sequence: { useMaxWidth: true },
+            themeVariables: buildMermaidThemeVariables(theme, enhanced),
           });
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setState({
-            status: "error",
-            svg: "",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      });
+          const result = await mermaid.render(
+            `${renderId}-${hashDiagramKey(cacheKey)}`,
+            trimmedSource,
+          );
+          if (!cancelled) {
+            const svg = normalizeMermaidSvg(result.svg);
+            mermaidSvgCache.set(cacheKey, svg);
+            setState({
+              status: "ready",
+              svg,
+              error: "",
+            });
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setState({
+              status: "error",
+              svg: "",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        });
+    }, 120);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(renderTimer);
     };
-  }, [enhanced, renderId, theme, trimmedSource]);
+  }, [cacheKey, enhanced, incomplete, renderId, theme, trimmedSource]);
 
   if (!trimmedSource) {
     return <DiagramStatus label={t("diagramEmpty")} />;
@@ -784,6 +834,10 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
   >("idle");
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const copyResetTimerRef = React.useRef<TimeoutHandle | null>(null);
+  const [lastRenderedDiagram, setLastRenderedDiagram] =
+    React.useState<MarkdownDiagramBlock | null>(() =>
+      diagram.incomplete ? null : diagram,
+    );
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
   const titleId = React.useId();
@@ -793,6 +847,20 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
   React.useEffect(() => {
     return () => clearTimeoutRef(copyResetTimerRef);
   }, []);
+
+  const renderableDiagram = getRenderableDiagram(
+    diagram,
+    lastRenderedDiagram,
+  );
+
+  React.useEffect(() => {
+    if (!diagram.incomplete && diagram.content.trim()) {
+      const updateTimer = window.setTimeout(() => {
+        setLastRenderedDiagram(diagram);
+      }, 0);
+      return () => window.clearTimeout(updateTimer);
+    }
+  }, [diagram]);
 
   React.useEffect(() => {
     if (!isFullscreen) return;
@@ -908,7 +976,7 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
             </div>
             <div className="markdown-diagram-fullscreen flex-1 overflow-auto p-4">
               <DiagramRenderer
-                diagram={diagram}
+                diagram={renderableDiagram}
                 theme={theme}
                 enhanced={enhanced}
                 mode="fullscreen"
@@ -934,7 +1002,7 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
         </div>
         <div className="markdown-diagram-body">
           <DiagramRenderer
-            diagram={diagram}
+            diagram={renderableDiagram}
             theme={theme}
             enhanced={enhanced}
             mode="inline"

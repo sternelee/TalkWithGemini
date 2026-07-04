@@ -26,6 +26,7 @@ import {
   prepareHistoryForLLM,
   performBackgroundCompression,
 } from "@/services/api/chatService";
+import { resolveSkillsForMessage } from "@/services/api/skillService";
 import {
   buildProviderRuntimeConfig,
   fetchWithByokRetry,
@@ -92,6 +93,9 @@ const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
 });
 const PluginMarket = dynamic(() => import("@/components/plugin/PluginMarket"), {
+  ssr: false,
+});
+const SkillMarket = dynamic(() => import("@/components/skill/SkillMarket"), {
   ssr: false,
 });
 const AssistantHub = dynamic(
@@ -161,6 +165,8 @@ const ChatApp = () => {
       activePlugins,
       installedPlugins,
       pluginConfigs,
+      installedSkills,
+      skillAutoSelect,
       setActivePlugins,
       applyServerConfig: applySettingsServerConfig,
     },
@@ -894,6 +900,22 @@ const ChatApp = () => {
       if (!isGenerationRunActive(generation)) return;
 
       const effectiveConfig = { ...chatConfig };
+      const skillResolution = await resolveSkillsForMessage({
+        message: text,
+        selectedModel,
+        locale,
+        installedSkills,
+        activeSkillIds: effectiveContext.activeSkillIds,
+        autoSelect: skillAutoSelect,
+        signal: generation.controller.signal,
+      });
+      if (!isGenerationRunActive(generation)) return;
+
+      if (skillResolution.invocations.length > 0) {
+        updateMessage(targetSessionId, currentBotMsgId, {
+          skillInvocations: skillResolution.invocations,
+        });
+      }
 
       await streamChatResponse(
         targetSessionId,
@@ -951,6 +973,7 @@ const ChatApp = () => {
         },
         generation.controller.signal,
         effectiveContext.activePluginIds,
+        skillResolution.context,
       );
 
       if (!isGenerationRunActive(generation)) return;
@@ -1178,9 +1201,23 @@ const ChatApp = () => {
       const sessionMeta = getCurrentSession();
       const { finalText, finalAttachments, ragSources, effectiveContext } =
         await processPromptForModel(sessionMeta, promptText, promptAttachments);
+      const skillResolution = await resolveSkillsForMessage({
+        message: promptText,
+        selectedModel,
+        locale,
+        installedSkills,
+        activeSkillIds: effectiveContext.activeSkillIds,
+        autoSelect: skillAutoSelect,
+        signal: generation.controller.signal,
+      });
       if (ragSources.length > 0) {
         updateMessage(currentSessionId, branchMessageId, {
           ragSources,
+        });
+      }
+      if (skillResolution.invocations.length > 0) {
+        updateMessage(currentSessionId, branchMessageId, {
+          skillInvocations: skillResolution.invocations,
         });
       }
       const historyBeforeUser = historyContext.slice(0, -1);
@@ -1244,6 +1281,7 @@ const ChatApp = () => {
         },
         generation.controller.signal,
         effectiveContext.activePluginIds,
+        skillResolution.context,
       );
 
       if (!isGenerationRunActive(generation)) return;
@@ -1405,6 +1443,17 @@ const ChatApp = () => {
       );
       if (!isGenerationRunActive(generation)) return;
 
+      const skillResolution = await resolveSkillsForMessage({
+        message: newContent,
+        selectedModel,
+        locale,
+        installedSkills,
+        activeSkillIds: effectiveContext.activeSkillIds,
+        autoSelect: skillAutoSelect,
+        signal: generation.controller.signal,
+      });
+      if (!isGenerationRunActive(generation)) return;
+
       const modelDisplayName = getModelDisplayName(
         selectedModel,
         availableModels,
@@ -1428,6 +1477,11 @@ const ChatApp = () => {
 
       editedUserMessageId = branchIds.userMessageId;
       modelMessageId = branchIds.modelMessageId;
+      if (skillResolution.invocations.length > 0) {
+        updateMessage(sessionId, modelMessageId, {
+          skillInvocations: skillResolution.invocations,
+        });
+      }
 
       const historyBeforeUser = sessionMessages.slice(0, msgIndex);
       const historyForApi = await prepareHistoryForLLM(
@@ -1499,6 +1553,7 @@ const ChatApp = () => {
         },
         generation.controller.signal,
         effectiveContext.activePluginIds,
+        skillResolution.context,
       );
 
       if (!isGenerationRunActive(generation) || !modelMessageId) return;
@@ -1694,6 +1749,8 @@ const ChatApp = () => {
         onRequestClose={() => setIsSidebarOpen(false)}
         onOpenPluginMarket={() => navigateToPanel("plugins")}
         isPluginMarketOpen={viewMode === "plugins"}
+        onOpenSkillMarket={() => navigateToPanel("skills")}
+        isSkillMarketOpen={viewMode === "skills"}
         onOpenAssistantHub={() => navigateToPanel("assistants")}
         isAssistantHubOpen={viewMode === "assistants"}
         onOpenKnowledgeBase={() => navigateToPanel("knowledge")}
@@ -1722,6 +1779,8 @@ const ChatApp = () => {
         )}
         {viewMode === "plugins" ? (
           <PluginMarket onClose={() => navigateToPanel("chat")} />
+        ) : viewMode === "skills" ? (
+          <SkillMarket onClose={() => navigateToPanel("chat")} />
         ) : viewMode === "assistants" ? (
           <AssistantHub
             onClose={() => navigateToPanel("chat")}

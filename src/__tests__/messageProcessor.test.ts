@@ -64,6 +64,32 @@ describe("message preprocessing", () => {
     );
   });
 
+  it("converts text attachments into prompt context even when the model supports attachments", async () => {
+    const result = await processMessageForSending({
+      text: "Read this",
+      attachments: [
+        {
+          id: "att_text",
+          mimeType: "text/markdown",
+          fileName: "brief.md",
+          data: encodeText("Project notes"),
+        },
+      ],
+      selectedModel: "provider:model",
+      modelMetadata: {
+        model: { attachment: true },
+      },
+      customModelMetadata: {},
+      ragConfig: { enabled: false },
+      knowledgeCollections: [],
+    });
+
+    expect(result.finalAttachments).toEqual([]);
+    expect(result.finalText).toContain('name="brief.md"');
+    expect(result.finalText).toContain("Project notes");
+    expect(result.userMessage.attachments).toHaveLength(1);
+  });
+
   it("keeps workspace knowledge out of the persisted user attachments while using it for context", async () => {
     const result = await processMessageForSending({
       text: "What changed?",

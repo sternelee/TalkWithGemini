@@ -24,6 +24,7 @@ const AttachmentPreviewCard: React.FC<{
   onRemove: (id: string) => void;
 }> = ({ attachment, onRemove }) => {
   const t = useTranslations("MessageInput");
+  const tMessage = useTranslations("Message");
   const fallbackSrc =
     attachment.url ||
     (attachment.data
@@ -55,21 +56,26 @@ const AttachmentPreviewCard: React.FC<{
         ? resolvedOpfsSrc.url
         : ""
       : fallbackSrc;
+  const isKnowledgeCollection = isKnowledgeCollectionAttachment(attachment);
+  const isKnowledgeFile = isKnowledgeFileAttachment(attachment);
+  const isImage = attachment.mimeType.startsWith("image/");
+  const isAudio = attachment.mimeType.startsWith("audio/");
+  const isRemote = Boolean(attachment.url && !isOPFSUrl(attachment.url));
 
   const renderIcon = () => {
-    if (isKnowledgeCollectionAttachment(attachment)) {
+    if (isKnowledgeCollection) {
       return (
         <Library size={20} className="text-purple-500" aria-hidden="true" />
       );
     }
 
-    if (isKnowledgeFileAttachment(attachment)) {
+    if (isKnowledgeFile) {
       return (
         <FileText size={20} className="text-purple-500" aria-hidden="true" />
       );
     }
 
-    if (attachment.mimeType.startsWith("image/") && resolvedSrc) {
+    if (isImage && resolvedSrc) {
       return (
         <img
           src={resolvedSrc}
@@ -84,34 +90,44 @@ const AttachmentPreviewCard: React.FC<{
       );
     }
 
-    if (attachment.mimeType.startsWith("audio/")) {
+    if (isAudio) {
       return <FileAudio size={20} aria-hidden="true" />;
     }
-    if (attachment.url && !isOPFSUrl(attachment.url)) {
+    if (isRemote) {
       return <Link size={20} aria-hidden="true" />;
     }
     return <FileText size={20} aria-hidden="true" />;
   };
 
+  const actionText = isKnowledgeCollection
+    ? tMessage("knowledgeBase")
+    : isKnowledgeFile
+      ? tMessage("knowledgeFile")
+      : isRemote
+        ? t("remoteFile")
+        : isAudio
+          ? tMessage("audioAttachment")
+          : isImage
+            ? tMessage("previewImageAria", { fileName: attachment.fileName })
+            : tMessage("documentAttachment");
+
   return (
-    <li className="group relative h-16 w-16 shrink-0 select-none overflow-hidden rounded-lg border border-gray-400/80 bg-white/50 dark:border-input dark:bg-accent">
-      <div className="flex h-full w-full flex-col items-center justify-center text-gray-500 dark:text-foreground/85">
+    <li className="group/attachment markdown-file-card relative inline-flex w-56 max-w-[75vw] shrink-0 select-none items-center gap-3 rounded-xl p-2.5 pr-8 text-left transition-[border-color,background-color,box-shadow]">
+      <div className="markdown-file-card-icon overflow-hidden">
         {renderIcon()}
-        {!attachment.mimeType.startsWith("image/") && (
-          <span className="mt-1 w-full truncate px-1 text-center text-[8px]">
-            {attachment.fileName}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="markdown-strong-text truncate text-sm font-medium">
+          {attachment.fileName}
+        </span>
+        <div className="markdown-file-card-meta flex min-w-0 items-center gap-1.5 text-xs">
+          <span className="markdown-file-card-action truncate">
+            {actionText}
           </span>
-        )}
-        {attachment.url &&
-          !isOPFSUrl(attachment.url) &&
-          !attachment.mimeType.startsWith("image/") && (
-            <div
-              className="absolute bottom-0 right-0 rounded-tl bg-blue-500 p-0.5 text-white"
-              aria-hidden="true"
-            >
-              <Link size={8} aria-hidden="true" />
-            </div>
-          )}
+          {isRemote && !isImage ? (
+            <Link size={11} className="shrink-0" aria-hidden="true" />
+          ) : null}
+        </div>
       </div>
       <button
         type="button"
@@ -119,7 +135,7 @@ const AttachmentPreviewCard: React.FC<{
           fileName: attachment.fileName,
         })}
         onClick={() => onRemove(attachment.id)}
-        className={`absolute right-0.5 top-0.5 z-10 rounded-full bg-black/50 p-0.5 text-white transition-colors hover:bg-red-500 ${iconButtonFocusClass}`}
+        className={`absolute right-2 top-2 z-10 rounded-full bg-black/50 p-0.5 text-white opacity-100 transition-[background-color,opacity] hover:bg-red-500 md:opacity-0 md:group-hover/attachment:opacity-100 ${iconButtonFocusClass}`}
       >
         <X size={10} aria-hidden="true" />
       </button>

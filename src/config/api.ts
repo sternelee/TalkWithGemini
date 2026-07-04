@@ -154,6 +154,7 @@ export const CACHE_DURATIONS = {
 export const CACHE_CONFIG = {
   agents: CACHE_DURATIONS.threeDays, // 72 小时
   plugins: CACHE_DURATIONS.threeDays, // 72 小时
+  skills: CACHE_DURATIONS.threeDays, // 72 小时
   modelMetadata: CACHE_DURATIONS.threeDays, // 72 小时
   searchResults: CACHE_DURATIONS.short, // 5 分钟
 } as const;

@@ -26,6 +26,7 @@ import {
 import { useSettingsStore } from "@/store/core/settingsStore";
 import {
   fetchApiGuruList,
+  getCachedPlugins,
   installPlugin,
   installCustomPlugin,
 } from "@/services/api/pluginService";
@@ -845,6 +846,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     addInstalledPlugin,
     togglePluginActive,
     pluginConfigs,
+    _hasHydrated,
   } = useSettingsStore();
 
   // Built-in plugins carry English product copy in the store; localize their
@@ -884,6 +886,15 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   }, []);
 
   useEffect(() => {
+    if (!_hasHydrated) return;
+
+    const cachedPlugins = getCachedPlugins();
+    if (cachedPlugins.length > 0) {
+      setAvailablePlugins(cachedPlugins);
+      setIsLoading(false);
+      return;
+    }
+
     const load = async () => {
       const requestId = pluginListRequestRef.current + 1;
       pluginListRequestRef.current = requestId;
@@ -913,7 +924,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       }
     };
     load();
-  }, [t]);
+  }, [_hasHydrated, t]);
 
   const handleRefresh = async () => {
     const requestId = pluginListRequestRef.current + 1;

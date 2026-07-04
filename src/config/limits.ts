@@ -227,6 +227,16 @@ export const MARKET_LIMITS = {
   maxPluginDocsUrlChars: 4_096,
   maxPluginCategoryChars: 80,
   maxPluginCategories: 8,
+  maxSkills: 500,
+  maxSkillIdChars: 160,
+  maxSkillTitleChars: 160,
+  maxSkillDescriptionChars: 1_000,
+  maxSkillCategoryChars: 80,
+  maxSkillTags: 12,
+  maxSkillTagChars: 60,
+  maxSkillContentChars: 200_000,
+  maxCustomSkills: 100,
+  maxActiveSkills: 20,
 } as const;
 
 export const PLUGIN_CONFIG_LIMITS = {

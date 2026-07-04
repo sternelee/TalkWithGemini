@@ -215,18 +215,18 @@ describe("chat service tool execution", () => {
   });
 
   it("adds API-only HTML visual request instructions when system prompt enables them", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
-      sseResponse([
-        { type: "content", content: "Rendered." },
-        { type: "done" },
-      ]),
-    );
-    const { buildHtmlVisualPromptInstruction } = await import(
-      "../lib/chat/htmlVisualPrompt"
-    );
-    const { buildDiagramPromptInstruction } = await import(
-      "../lib/chat/diagramPrompt"
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        sseResponse([
+          { type: "content", content: "Rendered." },
+          { type: "done" },
+        ]),
+      );
+    const { buildHtmlVisualPromptInstruction } =
+      await import("../lib/chat/htmlVisualPrompt");
+    const { buildDiagramPromptInstruction } =
+      await import("../lib/chat/diagramPrompt");
     const { streamChatResponse } = await import("../services/api/chatService");
 
     await streamChatResponse(
@@ -255,6 +255,44 @@ describe("chat service tool execution", () => {
     expect(body.systemInstruction).toContain("<html-visual>");
     expect(body.systemInstruction).toContain("<diagram-rendering>");
     expect(body.systemInstruction).toContain("<diagram-visual-polish>");
+  });
+
+  it("injects resolved skills context into the final model request", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () =>
+        sseResponse([
+          { type: "content", content: "Translated." },
+          { type: "done" },
+        ]),
+      );
+    const { streamChatResponse } = await import("../services/api/chatService");
+
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "请翻译成英文",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "[Skills]\nUse Translation & Localization.",
+    );
+
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    );
+    expect(body.newMessage).toContain("请翻译成英文");
+    expect(body.newMessage).toContain("[Skills]");
+    expect(body.newMessage).toContain("Translation & Localization");
+    expect(body.systemInstruction).toBeUndefined();
   });
 
   it("uses the centralized high tool-round limit before stopping recursive calls", async () => {
