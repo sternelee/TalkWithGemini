@@ -22,6 +22,8 @@ import {
   getSearchCompatibility,
   type SearchCompatibilityResult,
 } from "../settings/searchRag";
+import { buildDiagramPromptInstruction } from "./diagramPrompt";
+import { buildHtmlVisualPromptInstruction } from "./htmlVisualPrompt";
 import { parseModelString } from "../utils/model";
 
 export type CapabilityStatusCode =
@@ -61,6 +63,7 @@ export interface ResolveEffectiveChatContextOptions {
   session?: Session | null;
   workspace?: Workspace | null;
   systemPrompt?: string;
+  enableHtmlVisualPrompt?: boolean;
   now?: Date | number;
   selectedModel: string;
   provider?: Pick<ModelProvider, "type"> | null;
@@ -98,11 +101,13 @@ function buildSystemInstruction({
   systemPrompt,
   workspacePrompt,
   sessionInstruction,
+  enableHtmlVisualPrompt,
   now,
 }: {
   systemPrompt?: string;
   workspacePrompt?: string;
   sessionInstruction?: string;
+  enableHtmlVisualPrompt?: boolean;
   now?: Date | number;
 }) {
   const sections: string[] = [];
@@ -112,6 +117,12 @@ function buildSystemInstruction({
     if (!trimmed || seen.has(trimmed)) continue;
     seen.add(trimmed);
     sections.push(trimmed);
+  }
+  sections.push(
+    buildDiagramPromptInstruction({ enhanced: Boolean(enableHtmlVisualPrompt) }),
+  );
+  if (enableHtmlVisualPrompt) {
+    sections.push(buildHtmlVisualPromptInstruction());
   }
   sections.push(formatCurrentDateTime(now));
   return sections.join("\n\n");
@@ -149,6 +160,7 @@ export function resolveEffectiveChatContext(
     session,
     workspace,
     systemPrompt,
+    enableHtmlVisualPrompt,
     now,
     selectedModel,
     provider,
@@ -230,6 +242,7 @@ export function resolveEffectiveChatContext(
       systemPrompt,
       workspacePrompt: workspace?.systemPrompt,
       sessionInstruction: session?.systemInstruction,
+      enableHtmlVisualPrompt,
       now,
     }),
     workspaceFiles: workspace?.files || [],

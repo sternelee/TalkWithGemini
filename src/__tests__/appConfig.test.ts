@@ -33,6 +33,7 @@ describe("app config normalization", () => {
   it("uses shared defaults for missing app config fields", () => {
     expect(normalizeChatConfig({})).toEqual(DEFAULT_CHAT_CONFIG);
     expect(normalizeSystemSettings({})).toEqual(DEFAULT_SYSTEM_SETTINGS);
+    expect(DEFAULT_SYSTEM_SETTINGS.enableHtmlVisualPrompt).toBe(true);
   });
 
   it("normalizes system settings text and numeric ranges", () => {
@@ -44,6 +45,7 @@ describe("app config normalization", () => {
       compressionThreshold: 999,
       historyKeepCount: 0,
       enableCodeCollapse: true,
+      enableHtmlVisualPrompt: true,
     });
 
     expect(system.systemPrompt).toHaveLength(
@@ -59,6 +61,7 @@ describe("app config normalization", () => {
       SYSTEM_SETTINGS_LIMITS.minHistoryKeepCount,
     );
     expect(system.enableCodeCollapse).toBe(true);
+    expect(system.enableHtmlVisualPrompt).toBe(true);
   });
 
   it("normalizes system font size", () => {

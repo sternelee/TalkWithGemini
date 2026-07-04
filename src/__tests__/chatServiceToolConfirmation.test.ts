@@ -62,6 +62,10 @@ vi.mock("@/lib/chat/entities", () => ({
   normalizeSessionTitle: vi.fn((title?: string) => title || "New Chat"),
 }));
 
+vi.mock("@/lib/chat/htmlVisualPrompt", async () =>
+  vi.importActual("../lib/chat/htmlVisualPrompt"),
+);
+
 vi.mock("@/lib/utils/contextCompression", () => ({
   createContextCompressionSummaryPrompt: vi.fn((text: string) => text),
   mergeCompressedContent: vi.fn((content: string) => content),
@@ -208,6 +212,49 @@ describe("chat service tool execution", () => {
         expect.objectContaining({ status: "denied" }),
       ]),
     );
+  });
+
+  it("adds API-only HTML visual request instructions when system prompt enables them", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      sseResponse([
+        { type: "content", content: "Rendered." },
+        { type: "done" },
+      ]),
+    );
+    const { buildHtmlVisualPromptInstruction } = await import(
+      "../lib/chat/htmlVisualPrompt"
+    );
+    const { buildDiagramPromptInstruction } = await import(
+      "../lib/chat/diagramPrompt"
+    );
+    const { streamChatResponse } = await import("../services/api/chatService");
+
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Compare these options.",
+      [],
+      {},
+      () => undefined,
+      `${buildDiagramPromptInstruction({ enhanced: true })}\n\n${buildHtmlVisualPromptInstruction()}`,
+    );
+
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    );
+    expect(body.newMessage).toContain("Compare these options.");
+    expect(body.newMessage).toContain("<format_instructions");
+    expect(body.newMessage).toContain("raw HTML fragments directly");
+    expect(body.newMessage).toContain(
+      "Never place HTML visual fragments inside code fences",
+    );
+    expect(body.newMessage).toContain('data-diagram-rendering="true"');
+    expect(body.newMessage).toContain("Mermaid");
+    expect(body.newMessage).toContain("mindmap");
+    expect(body.systemInstruction).toContain("<html-visual>");
+    expect(body.systemInstruction).toContain("<diagram-rendering>");
+    expect(body.systemInstruction).toContain("<diagram-visual-polish>");
   });
 
   it("uses the centralized high tool-round limit before stopping recursive calls", async () => {

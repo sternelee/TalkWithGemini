@@ -47,5 +47,5 @@ cloudflare-env.d.ts
 *.tsbuildinfo
 next-env.d.ts
 
-# kiro
-.kiro
+# tmp
+tmp

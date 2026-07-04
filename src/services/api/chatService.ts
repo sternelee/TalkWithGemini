@@ -16,10 +16,9 @@ import { createSearchProvider } from "./searchService";
 import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
 import { parseModelString } from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
-import {
-  appendContextToChatInput,
-  clampChatInputText,
-} from "@/lib/utils/chatInput";
+import { appendContextToChatInput } from "@/lib/utils/chatInput";
+import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
+import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
 import {
   getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
@@ -529,7 +528,13 @@ export const streamChatResponse = async (
     let committedContent = "";
     let committedReasoning = "";
     let requestHistory = history as Message[];
-    let requestMessage = clampChatInputText(effectiveNewMessage);
+    let requestMessage = appendDiagramRequestInstructions(
+      appendHtmlVisualRequestInstructions(
+        effectiveNewMessage,
+        userSystemInstruction,
+      ),
+      userSystemInstruction,
+    );
     let requestAttachments = attachments;
     const maxToolRounds = PLUGIN_EXECUTION_LIMITS.maxToolRounds;
 

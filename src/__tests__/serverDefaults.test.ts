@@ -110,6 +110,7 @@ const ENV_KEYS = [
   "DEFAULT_COMPRESSION_THRESHOLD",
   "DEFAULT_HISTORY_KEEP_COUNT",
   "DEFAULT_ENABLE_CODE_COLLAPSE",
+  "DEFAULT_ENABLE_HTML_VISUAL_PROMPT",
 ] as const;
 
 const LEGACY_PROVIDER_ENV_KEYS = [
@@ -180,6 +181,7 @@ describe("server default configuration", () => {
       DEFAULT_ELEVENLABS_TTS_VOICE_ID: "SAz9YHcvj6GT2YYXdXww",
       DEFAULT_SYSTEM_PROMPT: "Use the hosted defaults.",
       DEFAULT_ENABLE_AUTO_TITLE: "false",
+      DEFAULT_ENABLE_HTML_VISUAL_PROMPT: "true",
       DEFAULT_COMPRESSION_THRESHOLD: "12",
     });
 
@@ -218,6 +220,7 @@ describe("server default configuration", () => {
     expect(config.system).toMatchObject({
       systemPrompt: "Use the hosted defaults.",
       enableAutoTitle: false,
+      enableHtmlVisualPrompt: true,
       compressionThreshold: 12,
     });
 
@@ -234,6 +237,18 @@ describe("server default configuration", () => {
     ]) {
       expect(serialized).not.toContain(secret);
     }
+  });
+
+  it("allows self-hosted defaults to disable HTML visual prompting", async () => {
+    setEnv({
+      DEFAULT_ENABLE_HTML_VISUAL_PROMPT: "false",
+    });
+
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+    const config = getPublicServerConfig();
+
+    expect(config.system?.enableHtmlVisualPrompt).toBe(false);
   });
 
   it("does not publish a default voice provider unless it is explicitly configured", async () => {

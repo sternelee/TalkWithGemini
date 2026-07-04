@@ -761,6 +761,7 @@ const ChatApp = () => {
       session,
       workspace,
       systemPrompt: system.systemPrompt,
+      enableHtmlVisualPrompt: system.enableHtmlVisualPrompt,
       selectedModel,
       provider,
       modelMetadata,

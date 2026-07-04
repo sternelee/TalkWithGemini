@@ -79,6 +79,7 @@ describe("effective chat context", () => {
     expect(context.systemInstruction).toContain("Global system prompt.");
     expect(context.systemInstruction).toContain("Answer in project voice.");
     expect(context.systemInstruction).toContain("Workspace context.");
+    expect(context.systemInstruction).toContain("<diagram-rendering>");
     expect(context.systemInstruction).toContain("Current date and time");
     expect(context.systemInstruction).toContain("2026-07-01T02:03:04.000Z");
     expect(context.activePluginIds).toEqual(["free-plugin"]);
@@ -89,5 +90,90 @@ describe("effective chat context", () => {
         "plugin_auth_missing",
       ]),
     );
+  });
+
+  it("appends safe inline HTML guidance when the visual prompt setting is enabled", () => {
+    const context = resolveEffectiveChatContext({
+      systemPrompt: "Global system prompt.",
+      enableHtmlVisualPrompt: true,
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: {
+        provider: "google",
+        configs: {},
+      },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [],
+      pluginConfigs: {},
+      activePlugins: [],
+    });
+
+    expect(context.systemInstruction).toContain("Global system prompt.");
+    expect(context.systemInstruction).toContain("<format");
+    expect(context.systemInstruction).toContain("<html-visual>");
+    expect(context.systemInstruction).toContain("actively use safe inline HTML");
+    expect(context.systemInstruction).toContain("raw HTML");
+    expect(context.systemInstruction).toContain("<diagram-visual-polish>");
+    expect(context.systemInstruction).toContain(
+      "Do not wrap HTML visual fragments in code fences",
+    );
+    expect(context.systemInstruction).toContain("Do not use class attributes");
+    expect(context.systemInstruction).toContain("Do not output full HTML documents");
+  });
+
+  it("does not inject HTML visual guidance when the setting is disabled", () => {
+    const context = resolveEffectiveChatContext({
+      systemPrompt: "Global system prompt.",
+      enableHtmlVisualPrompt: false,
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI" },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: {
+        provider: "google",
+        configs: {},
+      },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru",
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [],
+      pluginConfigs: {},
+      activePlugins: [],
+    });
+
+    expect(context.systemInstruction).not.toContain("<html-visual>");
+    expect(context.systemInstruction).toContain("<diagram-rendering>");
+    expect(context.systemInstruction).not.toContain("<diagram-visual-polish>");
+    expect(context.systemInstruction).not.toContain("<format_instructions");
   });
 });

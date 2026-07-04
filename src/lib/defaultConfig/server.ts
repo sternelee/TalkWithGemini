@@ -433,6 +433,7 @@ function getDefaultSystemSettings(): SystemSettings | undefined {
     "DEFAULT_COMPRESSION_THRESHOLD",
     "DEFAULT_HISTORY_KEEP_COUNT",
     "DEFAULT_ENABLE_CODE_COLLAPSE",
+    "DEFAULT_ENABLE_HTML_VISUAL_PROMPT",
   ].some((name) => env(name));
 
   if (!hasSystemEnv) return undefined;
@@ -455,6 +456,7 @@ function getDefaultSystemSettings(): SystemSettings | undefined {
         SYSTEM_SETTINGS_LIMITS.maxHistoryKeepCount,
       ),
       enableCodeCollapse: envBool("DEFAULT_ENABLE_CODE_COLLAPSE"),
+      enableHtmlVisualPrompt: envBool("DEFAULT_ENABLE_HTML_VISUAL_PROMPT"),
     },
     DEFAULT_SYSTEM_SETTINGS,
   );

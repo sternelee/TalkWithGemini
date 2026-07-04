@@ -5,6 +5,9 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import { defaultSchema } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import {
@@ -19,7 +22,11 @@ import {
   X,
   SquareTerminal,
   Loader2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
 } from "lucide-react";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { Source } from "@/types";
 import { useUIStore } from "@/store/core/uiStore";
 import { useSettingsStore } from "@/store/core/settingsStore";
@@ -37,9 +44,18 @@ import {
 } from "@/lib/security/clientUrl";
 import { createSandboxedHtmlPreviewSrcDoc } from "@/lib/utils/htmlPreview";
 import {
+  sanitizeHtmlStyle,
+  sanitizeHtmlTableContainerStyle,
+} from "@/lib/utils/htmlStyle";
+import { normalizeHtmlVisualMarkdown } from "@/lib/utils/htmlVisualMarkdown";
+import {
   parseMarkdownFileBlocks,
   type MarkdownGeneratedFile,
 } from "@/lib/utils/markdownFiles";
+import {
+  parseMarkdownDiagramBlocks,
+  type MarkdownDiagramBlock,
+} from "@/lib/utils/markdownDiagrams";
 import {
   collectMarkdownImageGallery,
   getMarkdownImageGalleryIndex,
@@ -49,10 +65,10 @@ import { linkifyCitationReferences } from "@/lib/utils/citations";
 import { resolveObjectUrlWithLifecycle } from "@/lib/utils/objectUrlLifecycle";
 import { parseModelString } from "@/lib/utils/model";
 import type { PreviewImageInput } from "@/lib/utils/imagePreview";
+import type { ExportMindMapToSVGOptions } from "@xiangfa/mindmap";
 import Tooltip from "../ui/Tooltip";
 
 import "katex/dist/katex.min.css";
-import "highlight.js/styles/github-dark.min.css";
 
 interface MarkdownRendererProps {
   content: string;
@@ -65,6 +81,869 @@ interface MarkdownRendererProps {
 const extractHtmlTitle = (html: string) => {
   const match = html.match(/<title>(.*?)<\/title>/i);
   return match ? match[1].trim() : "HTML Preview";
+};
+
+const UNSAFE_HTML_TAGS = new Set([
+  "embed",
+  "form",
+  "iframe",
+  "input",
+  "object",
+  "script",
+  "style",
+  "textarea",
+]);
+
+const SAFE_INLINE_HTML_TAGS = [
+  "article",
+  "aside",
+  "caption",
+  "col",
+  "colgroup",
+  "details",
+  "div",
+  "figcaption",
+  "figure",
+  "main",
+  "section",
+  "span",
+  "summary",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+];
+
+const HTML_STYLE_TAGS = [
+  "article",
+  "aside",
+  "blockquote",
+  "div",
+  "figcaption",
+  "figure",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "main",
+  "ol",
+  "p",
+  "section",
+  "span",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+];
+
+const htmlSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: Array.from(
+    new Set([...(defaultSchema.tagNames || []), ...SAFE_INLINE_HTML_TAGS]),
+  ).filter((tag) => !UNSAFE_HTML_TAGS.has(tag)),
+  strip: Array.from(
+    new Set([...(defaultSchema.strip || []), ...UNSAFE_HTML_TAGS]),
+  ),
+  attributes: {
+    ...Object.fromEntries(HTML_STYLE_TAGS.map((tag) => [tag, ["style"]])),
+    a: ["href", "title"],
+    blockquote: ["cite", "style"],
+    code: [["className", /^language-./]],
+    details: ["open"],
+    img: ["alt", "height", "src", "title", "width"],
+    ol: ["start", "style"],
+    table: ["style"],
+    td: ["align", "colSpan", "rowSpan", "style"],
+    th: ["align", "colSpan", "rowSpan", "scope", "style"],
+    ul: ["style"],
+  },
+  protocols: {
+    href: ["http", "https", "mailto"],
+    cite: ["http", "https"],
+    src: ["http", "https", "data"],
+  },
+};
+
+function rehypeSanitizeInlineStyles() {
+  return (tree: any) => {
+    const visit = (node: any) => {
+      if (!node || typeof node !== "object") return;
+      if (node.type === "element" && node.properties?.style) {
+        const safeStyle = sanitizeHtmlStyle(node.properties.style);
+        if (safeStyle) {
+          node.properties.style = safeStyle;
+        } else {
+          delete node.properties.style;
+        }
+      }
+      if (Array.isArray(node.children)) {
+        node.children.forEach(visit);
+      }
+    };
+
+    visit(tree);
+  };
+}
+
+const markdownRehypePlugins = [
+  rehypeRaw,
+  [rehypeSanitize, htmlSanitizeSchema],
+  rehypeSanitizeInlineStyles,
+  rehypeKatex,
+  rehypeHighlight,
+] as any;
+
+const mergeClassName = (...classNames: Array<string | undefined>) =>
+  classNames.filter(Boolean).join(" ") || undefined;
+
+const nodeContainsTable = (node: any): boolean => {
+  if (!node || typeof node !== "object") return false;
+  if (node.tagName === "table") return true;
+  if (!Array.isArray(node.children)) return false;
+  return node.children.some(nodeContainsTable);
+};
+
+const getSafeHtmlProps = (
+  { style, className, ...props }: any,
+  sanitizeStyle = sanitizeHtmlStyle,
+) => {
+  delete props.node;
+  return {
+    ...props,
+    className,
+    style: sanitizeStyle(style),
+  };
+};
+
+const getSafeVisualHtmlProps = ({ className, node, ...props }: any) => {
+  const sanitizeStyle = nodeContainsTable(node)
+    ? sanitizeHtmlTableContainerStyle
+    : sanitizeHtmlStyle;
+  return {
+    ...getSafeHtmlProps({ ...props, node }, sanitizeStyle),
+    className: mergeClassName("markdown-html-visual", className),
+  };
+};
+
+const HtmlDiv = (props: any) => <div {...getSafeVisualHtmlProps(props)} />;
+
+const HtmlSection = (props: any) => (
+  <section {...getSafeVisualHtmlProps(props)} />
+);
+
+const HtmlArticle = (props: any) => (
+  <article {...getSafeVisualHtmlProps(props)} />
+);
+
+const HtmlAside = (props: any) => <aside {...getSafeVisualHtmlProps(props)} />;
+
+const HtmlMain = (props: any) => <main {...getSafeVisualHtmlProps(props)} />;
+
+const HtmlSpan = (props: any) => <span {...getSafeVisualHtmlProps(props)} />;
+
+const HtmlHeading = ({
+  as: Tag,
+  ...props
+}: any & { as: keyof React.JSX.IntrinsicElements }) =>
+  React.createElement(Tag, getSafeHtmlProps(props));
+
+type DiagramTheme = "light" | "dark";
+type DiagramDisplayMode = "inline" | "fullscreen";
+type ExportMindMapToSVG = (options: ExportMindMapToSVGOptions) => string;
+
+const getSafeReactId = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "");
+
+function useResolvedDiagramTheme(): DiagramTheme {
+  const [theme, setTheme] = useState<DiagramTheme>("light");
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    const updateTheme = () => {
+      setTheme(root.classList.contains("dark") ? "dark" : "light");
+    };
+
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
+}
+
+function buildMermaidThemeVariables(theme: DiagramTheme, enhanced: boolean) {
+  const dark = theme === "dark";
+  if (!enhanced) {
+    return {
+      background: "transparent",
+      primaryColor: dark ? "#27272a" : "#f8fafc",
+      primaryTextColor: dark ? "#f4f4f5" : "#18181b",
+      primaryBorderColor: dark ? "#52525b" : "#d4d4d8",
+      lineColor: dark ? "#a1a1aa" : "#71717a",
+      secondaryColor: dark ? "#18181b" : "#ffffff",
+      tertiaryColor: "transparent",
+      textColor: dark ? "#f4f4f5" : "#18181b",
+      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    };
+  }
+
+  return {
+    background: "transparent",
+    primaryColor: dark ? "#450a0a" : "#fef2f2",
+    primaryTextColor: dark ? "#fee2e2" : "#7f1d1d",
+    primaryBorderColor: dark ? "#991b1b" : "#fecaca",
+    lineColor: dark ? "#f87171" : "#dc2626",
+    secondaryColor: dark ? "#18181b" : "#fff1f2",
+    tertiaryColor: dark ? "#27272a" : "#f8fafc",
+    textColor: dark ? "#f8fafc" : "#0f172a",
+    nodeBorder: dark ? "#991b1b" : "#fecaca",
+    mainBkg: dark ? "#450a0a" : "#fef2f2",
+    clusterBkg: dark ? "#18181b" : "#f8fafc",
+    clusterBorder: dark ? "#3f3f46" : "#e2e8f0",
+    fontFamily: "ui-sans-serif, system-ui, sans-serif",
+  };
+}
+
+const DiagramStatus = ({
+  label,
+  tone = "muted",
+}: {
+  label: string;
+  tone?: "muted" | "error";
+}) => (
+  <div
+    className={`markdown-diagram-status ${
+      tone === "error" ? "markdown-diagram-status-error" : ""
+    }`}
+  >
+    {label}
+  </div>
+);
+
+const SVG_ROOT_RE = /<svg\b([^>]*)>/i;
+const SVG_VIEWBOX_RE = /\sviewBox=(["'])(.*?)\1/i;
+
+const formatSvgSize = (value: number) =>
+  Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
+
+function getSvgViewBoxSize(svg: string) {
+  const match = svg.match(SVG_VIEWBOX_RE);
+  if (!match) return null;
+  const values = (match[2] || "")
+    .trim()
+    .split(/[\s,]+/u)
+    .map((value) => Number.parseFloat(value));
+  const width = values[2];
+  const height = values[3];
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0) return null;
+  return { width: formatSvgSize(width), height: formatSvgSize(height) };
+}
+
+function hasSvgAttribute(attributes: string, name: string) {
+  return new RegExp(`\\s${name}=`, "iu").test(attributes);
+}
+
+function mergeSvgClass(attributes: string, className: string) {
+  if (!hasSvgAttribute(attributes, "class")) {
+    return `${attributes} class="${className}"`;
+  }
+
+  return attributes.replace(
+    /\sclass=(["'])(.*?)\1/iu,
+    (match, quote: string, value: string) => {
+      const classNames = value.split(/\s+/u).filter(Boolean);
+      if (classNames.includes(className)) return match;
+      return ` class=${quote}${[...classNames, className].join(" ")}${quote}`;
+    },
+  );
+}
+
+function ensureSvgAttribute(attributes: string, name: string, value: string) {
+  return hasSvgAttribute(attributes, name)
+    ? attributes
+    : `${attributes} ${name}="${value}"`;
+}
+
+function removeSvgMaxWidthStyle(attributes: string) {
+  return attributes.replace(
+    /\sstyle=(["'])(.*?)\1/iu,
+    (_match, quote: string, value: string) => {
+      const cleaned = value
+        .split(";")
+        .map((item) => item.trim())
+        .filter((item) => item && !/^max-width\s*:/iu.test(item))
+        .join("; ");
+      return cleaned ? ` style=${quote}${cleaned}${quote}` : "";
+    },
+  );
+}
+
+function stabilizeMermaidSvgSize(attributes: string, svg: string) {
+  const size = getSvgViewBoxSize(svg);
+  if (!size) return attributes;
+
+  let nextAttributes = attributes.replace(
+    /\swidth=(["'])100%\1/iu,
+    ` width="${size.width}"`,
+  );
+  if (!hasSvgAttribute(nextAttributes, "width")) {
+    nextAttributes = `${nextAttributes} width="${size.width}"`;
+  }
+  if (!hasSvgAttribute(nextAttributes, "height")) {
+    nextAttributes = `${nextAttributes} height="${size.height}"`;
+  }
+  return removeSvgMaxWidthStyle(nextAttributes);
+}
+
+function normalizeSvgRoot(
+  svg: string,
+  {
+    className,
+    exportType,
+    stabilizeSize = false,
+  }: { className: string; exportType: string; stabilizeSize?: boolean },
+) {
+  return svg.replace(SVG_ROOT_RE, (_match, attributes: string) => {
+    let nextAttributes = mergeSvgClass(attributes, className);
+    nextAttributes = ensureSvgAttribute(
+      nextAttributes,
+      "data-diagram-export",
+      exportType,
+    );
+    nextAttributes = ensureSvgAttribute(
+      nextAttributes,
+      "preserveAspectRatio",
+      "xMidYMid meet",
+    );
+    if (stabilizeSize) {
+      nextAttributes = stabilizeMermaidSvgSize(nextAttributes, svg);
+    }
+    return `<svg${nextAttributes}>`;
+  });
+}
+
+const normalizeMermaidSvg = (svg: string) =>
+  normalizeSvgRoot(svg, {
+    className: "markdown-mermaid-svg-snapshot",
+    exportType: "mermaid",
+    stabilizeSize: true,
+  });
+
+const normalizeMindMapSvg = (svg: string) =>
+  normalizeSvgRoot(
+    svg.replace(
+      /<rect width="100%" height="100%" fill="[^"]*"\/>/,
+      '<rect width="100%" height="100%" fill="transparent"/>',
+    ),
+    {
+      className: "markdown-mindmap-svg-snapshot",
+      exportType: "mindmap",
+    },
+  );
+
+const DiagramSvgView = ({
+  svg,
+  kind,
+  mode,
+}: {
+  svg: string;
+  kind: MarkdownDiagramBlock["type"];
+  mode: DiagramDisplayMode;
+}) => {
+  const tMedia = useTranslations("Media");
+
+  if (mode === "fullscreen") {
+    return (
+      <TransformWrapper
+        initialScale={1}
+        minScale={0.25}
+        maxScale={8}
+        centerOnInit={true}
+        wheel={{ step: 0.16 }}
+        doubleClick={{ step: 0.75 }}
+        centerZoomedOut={true}
+        limitToBounds={false}
+        panning={{ velocityDisabled: true }}
+        onInit={(ref) => {
+          const center = () => ref.centerView(1, 0);
+          if (typeof window === "undefined") {
+            center();
+            return;
+          }
+          window.requestAnimationFrame(center);
+        }}
+      >
+        {({ zoomIn, zoomOut, resetTransform }) => (
+          <div className="markdown-diagram-viewport">
+            <div className="markdown-diagram-zoom-controls">
+              <button
+                type="button"
+                onClick={() => zoomOut()}
+                aria-label={tMedia("zoomOut")}
+                title={tMedia("zoomOut")}
+              >
+                <ZoomOut size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => resetTransform()}
+                aria-label={tMedia("resetZoom")}
+                title={tMedia("resetZoom")}
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => zoomIn()}
+                aria-label={tMedia("zoomIn")}
+                title={tMedia("zoomIn")}
+              >
+                <ZoomIn size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <TransformComponent
+              wrapperClass="markdown-diagram-transform-wrapper"
+              contentClass="markdown-diagram-transform-content"
+            >
+              <div
+                className="markdown-diagram-svg markdown-diagram-svg-interactive"
+                data-diagram-svg-kind={kind}
+                data-diagram-display-mode={mode}
+                dangerouslySetInnerHTML={{ __html: svg }}
+              />
+            </TransformComponent>
+          </div>
+        )}
+      </TransformWrapper>
+    );
+  }
+
+  return (
+    <div
+      className="markdown-diagram-svg markdown-diagram-svg-static"
+      data-diagram-svg-kind={kind}
+      data-diagram-display-mode={mode}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+};
+
+const MermaidDiagram = ({
+  source,
+  incomplete,
+  theme,
+  enhanced,
+  mode,
+}: {
+  source: string;
+  incomplete: boolean;
+  theme: DiagramTheme;
+  enhanced: boolean;
+  mode: DiagramDisplayMode;
+}) => {
+  const t = useTranslations("Content");
+  const reactId = React.useId();
+  const renderId = React.useMemo(
+    () => `neo-mermaid-${getSafeReactId(reactId) || "diagram"}`,
+    [reactId],
+  );
+  const [state, setState] = React.useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    svg: string;
+    error: string;
+  }>({ status: "idle", svg: "", error: "" });
+  const trimmedSource = source.trim();
+
+  useEffect(() => {
+    if (!trimmedSource) {
+      setState({ status: "idle", svg: "", error: "" });
+      return;
+    }
+
+    let cancelled = false;
+    setState((current) => ({ ...current, status: "loading", error: "" }));
+
+    void import("mermaid")
+      .then(async (module) => {
+        const mermaid = module.default;
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: "base",
+          flowchart: { htmlLabels: false },
+          sequence: { useMaxWidth: true },
+          themeVariables: buildMermaidThemeVariables(theme, enhanced),
+        });
+        const result = await mermaid.render(
+          `${renderId}-${theme}-${enhanced ? "enhanced" : "plain"}`,
+          trimmedSource,
+        );
+        if (!cancelled) {
+          setState({
+            status: "ready",
+            svg: normalizeMermaidSvg(result.svg),
+            error: "",
+          });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setState({
+            status: "error",
+            svg: "",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enhanced, renderId, theme, trimmedSource]);
+
+  if (!trimmedSource) {
+    return <DiagramStatus label={t("diagramEmpty")} />;
+  }
+
+  if (state.status === "ready") {
+    return (
+      <DiagramSvgView svg={state.svg} kind="mermaid" mode={mode} />
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <DiagramStatus
+        tone={incomplete ? "muted" : "error"}
+        label={incomplete ? t("diagramStreaming") : t("diagramRenderFailed")}
+      />
+    );
+  }
+
+  return (
+    <DiagramStatus
+      label={incomplete ? t("diagramStreaming") : t("diagramLoading")}
+    />
+  );
+};
+
+const MindMapDiagram = ({
+  source,
+  incomplete,
+  theme,
+  mode,
+}: {
+  source: string;
+  incomplete: boolean;
+  theme: DiagramTheme;
+  mode: DiagramDisplayMode;
+}) => {
+  const t = useTranslations("Content");
+  const [exportSvg, setExportSvg] = React.useState<ExportMindMapToSVG | null>(
+    null,
+  );
+  const [state, setState] = React.useState<{
+    status: "idle" | "loading" | "ready" | "error";
+    svg: string;
+  }>({ status: "idle", svg: "" });
+  const trimmedSource = source.trim();
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("@xiangfa/mindmap")
+      .then((module) => {
+        if (!cancelled) {
+          setExportSvg(() => module.exportMindMapToSVG as ExportMindMapToSVG);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExportSvg(null);
+          setState({ status: "error", svg: "" });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!trimmedSource) {
+      setState({ status: "idle", svg: "" });
+      return;
+    }
+
+    if (!exportSvg) {
+      setState((current) => ({ ...current, status: "loading" }));
+      return;
+    }
+
+    let cancelled = false;
+    setState((current) => ({ ...current, status: "loading" }));
+
+    try {
+      const exportedSvg = exportSvg({
+        markdown: trimmedSource,
+        defaultDirection: "both",
+        theme,
+        readonly: true,
+        padding: 40,
+        background: "transparent",
+      });
+      if (!cancelled) {
+        setState({
+          status: "ready",
+          svg: normalizeMindMapSvg(exportedSvg),
+        });
+      }
+    } catch {
+      if (!cancelled) {
+        setState({ status: "error", svg: "" });
+      }
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [exportSvg, theme, trimmedSource]);
+
+  if (!trimmedSource) {
+    return <DiagramStatus label={t("diagramEmpty")} />;
+  }
+
+  return (
+    <>
+      {state.status === "ready" ? (
+        <DiagramSvgView svg={state.svg} kind="mindmap" mode={mode} />
+      ) : state.status === "error" ? (
+        <DiagramStatus
+          tone={incomplete ? "muted" : "error"}
+          label={incomplete ? t("diagramStreaming") : t("diagramRenderFailed")}
+        />
+      ) : (
+        <DiagramStatus
+          label={incomplete ? t("diagramStreaming") : t("diagramLoading")}
+        />
+      )}
+    </>
+  );
+};
+
+const DiagramRenderer = ({
+  diagram,
+  theme,
+  enhanced,
+  mode,
+}: {
+  diagram: MarkdownDiagramBlock;
+  theme: DiagramTheme;
+  enhanced: boolean;
+  mode: DiagramDisplayMode;
+}) => {
+  if (diagram.type === "mermaid") {
+    return (
+      <MermaidDiagram
+        source={diagram.content}
+        incomplete={diagram.incomplete}
+        theme={theme}
+        enhanced={enhanced}
+        mode={mode}
+      />
+    );
+  }
+
+  return (
+    <MindMapDiagram
+      source={diagram.content}
+      incomplete={diagram.incomplete}
+      theme={theme}
+      mode={mode}
+    />
+  );
+};
+
+const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
+  const t = useTranslations("Content");
+  const { system } = useSettingsStore();
+  const theme = useResolvedDiagramTheme();
+  const enhanced = Boolean(system.enableHtmlVisualPrompt);
+  const [copyStatus, setCopyStatus] = React.useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const copyResetTimerRef = React.useRef<TimeoutHandle | null>(null);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const titleId = React.useId();
+  const label =
+    diagram.type === "mermaid" ? t("diagramMermaid") : t("diagramMindmap");
+
+  React.useEffect(() => {
+    return () => clearTimeoutRef(copyResetTimerRef);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isFullscreen) return;
+    closeButtonRef.current?.focus({ preventScroll: true });
+  }, [isFullscreen]);
+
+  const scheduleCopyReset = () => {
+    clearTimeoutRef(copyResetTimerRef);
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopyStatus("idle");
+      copyResetTimerRef.current = null;
+    }, 2000);
+  };
+
+  const handleCopy = async () => {
+    const didCopy = await copyTextToClipboard(diagram.content);
+    setCopyStatus(didCopy ? "copied" : "error");
+    scheduleCopyReset();
+  };
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setIsFullscreen(false);
+    }
+  };
+
+  const controls = (
+    <div className="flex items-center gap-1.5">
+      {diagram.incomplete ? (
+        <span className="markdown-status-badge rounded-full px-2 py-0.5 text-[10px] font-medium">
+          {t("diagramStreaming")}
+        </span>
+      ) : null}
+      <Tooltip
+        content={
+          copyStatus === "copied"
+            ? t("copied")
+            : copyStatus === "error"
+              ? t("copyFailed")
+              : t("copyDiagramSource")
+        }
+        position="bottom"
+      >
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label={
+            copyStatus === "copied"
+              ? t("diagramSourceCopiedAria")
+              : t("copyDiagramSourceAria")
+          }
+          className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
+        >
+          {copyStatus === "copied" ? (
+            <Check
+              size={14}
+              className="markdown-icon-success"
+              aria-hidden="true"
+            />
+          ) : copyStatus === "error" ? (
+            <X
+              size={14}
+              className="markdown-icon-danger"
+              aria-hidden="true"
+            />
+          ) : (
+            <Copy size={14} aria-hidden="true" />
+          )}
+        </button>
+      </Tooltip>
+      <Tooltip content={t("fullscreenDiagram")} position="bottom">
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(true)}
+          aria-label={t("fullscreenDiagramAria", { type: label })}
+          className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
+        >
+          <Maximize2 size={14} aria-hidden="true" />
+        </button>
+      </Tooltip>
+    </div>
+  );
+
+  const fullscreenView =
+    isFullscreen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
+            onKeyDown={handleDialogKeyDown}
+            className="markdown-preview-dialog fixed inset-0 z-2000 flex flex-col animate-in fade-in duration-200"
+          >
+            <div className="markdown-preview-header flex items-center justify-between gap-3 px-4 py-3">
+              <h2
+                id={titleId}
+                className="markdown-strong-text min-w-0 truncate text-sm font-semibold"
+              >
+                {t("diagramFullscreenTitle", { type: label })}
+              </h2>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={() => setIsFullscreen(false)}
+                aria-label={t("closeDiagramFullscreenAria")}
+                className="markdown-icon-button markdown-focus-ring rounded-lg p-1.5"
+              >
+                <X size={20} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="markdown-diagram-fullscreen flex-1 overflow-auto p-4">
+              <DiagramRenderer
+                diagram={diagram}
+                theme={theme}
+                enhanced={enhanced}
+                mode="fullscreen"
+              />
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      <div
+        className={`markdown-diagram ${enhanced ? "markdown-diagram-enhanced" : ""}`}
+        data-markdown-diagram={diagram.type}
+      >
+        <div className="markdown-diagram-header">
+          <div className="flex min-w-0 items-center gap-2">
+            <SquareCode size={14} className="shrink-0" aria-hidden="true" />
+            <span className="truncate">{label}</span>
+          </div>
+          {controls}
+        </div>
+        <div className="markdown-diagram-body">
+          <DiagramRenderer
+            diagram={diagram}
+            theme={theme}
+            enhanced={enhanced}
+            mode="inline"
+          />
+        </div>
+      </div>
+      {fullscreenView}
+    </>
+  );
 };
 
 type TimeoutHandle = ReturnType<typeof setTimeout>;
@@ -96,9 +975,9 @@ const CitationHoverCard = ({
       className="fixed z-9999 pointer-events-none animate-in fade-in zoom-in-95 duration-200"
       style={{ left: position.x, top: position.y }}
     >
-      <div className="bg-white dark:bg-muted rounded-xl shadow-xl border border-gray-200 dark:border-border p-3 flex flex-col gap-2 text-left w-64 transform -translate-x-1/2 -translate-y-full -mt-2">
+      <div className="markdown-citation-card">
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded-sm bg-gray-100 dark:bg-accent shrink-0 overflow-hidden">
+          <div className="markdown-citation-favicon">
             {faviconUrl && (
               <img
                 src={faviconUrl}
@@ -115,22 +994,20 @@ const CitationHoverCard = ({
               />
             )}
           </div>
-          <span className="font-semibold text-xs text-gray-800 dark:text-foreground truncate">
+          <span className="markdown-citation-title truncate">
             {source.title}
           </span>
         </div>
         {safeSourceUrl && (
-          <div className="text-[10px] text-gray-400 font-mono truncate">
+          <div className="markdown-citation-url truncate">
             {safeSourceUrl}
           </div>
         )}
         {source.content && (
-          <div className="text-[10px] text-gray-500 dark:text-muted-foreground line-clamp-3 leading-relaxed">
+          <div className="markdown-citation-content line-clamp-3">
             {source.content}
           </div>
         )}
-        {/* Arrow */}
-        <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-white dark:border-t-popover drop-shadow-sm"></div>
       </div>
     </div>,
     document.body,
@@ -155,7 +1032,7 @@ const CitationLink = ({
   if (!href || !href.includes("#citation-")) {
     if (!safeHref) {
       return (
-        <span className="text-gray-600 dark:text-foreground/85 break-all">
+        <span className="markdown-muted-text break-all">
           {children}
         </span>
       );
@@ -166,7 +1043,7 @@ const CitationLink = ({
         href={safeHref}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+        className="markdown-link-text hover:underline break-all"
       >
         {children}
       </a>
@@ -181,7 +1058,7 @@ const CitationLink = ({
     // Fallback if source not found but format matches
     if (!safeHref) {
       return (
-        <span className="text-blue-600 dark:text-blue-400">{children}</span>
+        <span className="markdown-link-text">{children}</span>
       );
     }
 
@@ -190,7 +1067,7 @@ const CitationLink = ({
         href={safeHref}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 dark:text-blue-400"
+        className="markdown-link-text"
       >
         {children}
       </a>
@@ -221,10 +1098,10 @@ const CitationLink = ({
         onClick={(event) => {
           if (!safeSourceUrl) event.preventDefault();
         }}
-        className={`inline-flex items-center justify-center min-w-4 h-4 px-0.5 text-[10px] font-bold text-gray-500 bg-gray-200 dark:text-foreground/85 dark:bg-accent rounded-full no-underline transition-colors transform -translate-y-0.5 ${
+        className={`markdown-citation-badge ${
           safeSourceUrl
-            ? "hover:bg-gray-300 dark:hover:bg-accent/80 cursor-pointer"
-            : "cursor-default opacity-70"
+            ? "cursor-pointer"
+            : "markdown-citation-badge-disabled"
         }`}
       >
         {children}
@@ -248,29 +1125,29 @@ const FileCard = ({
   const isInteractive = Boolean(onClick);
   const cardBody = (
     <>
-      <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+      <div className="markdown-file-card-icon">
         <FileText size={20} aria-hidden="true" />
       </div>
       <div className="flex flex-col flex-1 min-w-0">
-        <span className="text-sm font-medium text-gray-800 dark:text-foreground truncate">
+        <span className="markdown-strong-text text-sm font-medium truncate">
           {name}
         </span>
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-muted-foreground">
-          <span className="transition-colors group-hover:text-blue-500 dark:group-hover:text-blue-400">
+        <div className="markdown-file-card-meta flex min-w-0 flex-wrap items-center gap-2 text-xs">
+          <span className="markdown-file-card-action">
             {isInteractive ? t("openGeneratedFile") : t("generatedFile")}
           </span>
           {type ? (
-            <span className="max-w-40 truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-500 dark:bg-accent dark:text-foreground/85">
+            <span className="markdown-file-type-badge max-w-40 truncate rounded px-1.5 py-0.5 font-mono text-[10px]">
               {type}
             </span>
           ) : null}
           {truncated ? (
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
+            <span className="markdown-warning-badge rounded px-1.5 py-0.5 text-[10px] font-medium">
               {t("truncated")}
             </span>
           ) : null}
           {incomplete ? (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-accent dark:text-foreground/85">
+            <span className="markdown-muted-badge rounded px-1.5 py-0.5 text-[10px] font-medium">
               {t("incomplete")}
             </span>
           ) : null}
@@ -280,7 +1157,7 @@ const FileCard = ({
   );
 
   const className =
-    "group my-2 inline-flex min-w-50 w-full select-none items-center gap-3 rounded-xl border border-gray-200 bg-white/50 p-3 text-left shadow-sm transition-[border-color,background-color,box-shadow] dark:border-border dark:bg-muted/50 md:w-auto";
+    "group markdown-file-card my-2 inline-flex min-w-50 w-full select-none items-center gap-3 rounded-xl p-3 text-left transition-[border-color,background-color,box-shadow] md:w-auto";
 
   if (!onClick) {
     return (
@@ -298,7 +1175,7 @@ const FileCard = ({
       type="button"
       aria-label={t("openGeneratedFileAria", { name })}
       onClick={() => onClick(file)}
-      className={`${className} cursor-pointer hover:border-blue-200 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:hover:border-blue-800 dark:hover:bg-blue-900/10`}
+      className={`${className} markdown-file-card-interactive markdown-focus-ring cursor-pointer`}
     >
       {cardBody}
     </button>
@@ -608,10 +1485,10 @@ const ArtifactBlock = ({
 
   // Common Header Logic
   const Header = ({ isFullscreenMode = false }) => (
-    <div className="flex items-center justify-between pl-4 pr-2 py-1 bg-gray-100/50 dark:bg-card/50 border-b border-gray-200 dark:border-border select-none transition-colors">
+    <div className="markdown-codeblock-header flex items-center justify-between pl-4 pr-2 py-1 select-none transition-colors">
       {/* Left Side: Language */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center space-x-2 text-xs text-gray-500 dark:text-muted-foreground uppercase font-semibold">
+        <div className="markdown-codeblock-label flex items-center space-x-2 text-xs uppercase font-semibold">
           <Terminal size={14} aria-hidden="true" />
           <span>{language || "code"}</span>
         </div>
@@ -626,7 +1503,7 @@ const ArtifactBlock = ({
               type="button"
               onClick={() => setIsPreviewOpen(true)}
               aria-label={t("previewHtml")}
-              className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground transition-colors rounded hover:bg-gray-200 dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
             >
               <SquareCode size={14} aria-hidden="true" />
             </button>
@@ -650,7 +1527,7 @@ const ArtifactBlock = ({
                   : undefined
               }
               aria-label={isExecuting ? t("runningCodeAria") : t("runCodeAria")}
-              className={`flex items-center justify-center p-1.5 transition-colors rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${isExecuting ? "text-blue-500 bg-blue-50 dark:bg-blue-900/20" : "text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground hover:bg-gray-200 dark:hover:bg-accent"}`}
+              className={`markdown-focus-ring flex items-center justify-center rounded p-1.5 transition-colors ${isExecuting ? "markdown-icon-button-info" : "markdown-icon-button"}`}
             >
               {isExecuting ? (
                 <Loader2
@@ -677,7 +1554,7 @@ const ArtifactBlock = ({
               isFullscreenMode ? t("exitFullscreenAria") : t("fullscreenAria")
             }
             aria-pressed={isFullscreen}
-            className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground transition-colors rounded hover:bg-gray-200 dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+            className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
           >
             {isFullscreenMode ? (
               <Minimize2 size={14} aria-hidden="true" />
@@ -708,18 +1585,18 @@ const ArtifactBlock = ({
                   ? t("copyFailed")
                   : t("copyCodeAria")
             }
-            className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground transition-colors rounded hover:bg-gray-200 dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+            className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
           >
             {copied ? (
               <Check
                 size={14}
-                className="text-green-600 dark:text-green-400"
+                className="markdown-icon-success"
                 aria-hidden="true"
               />
             ) : copyStatus === "error" ? (
               <X
                 size={14}
-                className="text-red-500 dark:text-red-400"
+                className="markdown-icon-danger"
                 aria-hidden="true"
               />
             ) : (
@@ -749,7 +1626,7 @@ const ArtifactBlock = ({
               aria-label={
                 isCollapsed ? t("expandCodeAria") : t("collapseCodeAria")
               }
-              className="flex items-center justify-center p-1.5 text-gray-500 hover:text-gray-700 dark:text-muted-foreground dark:hover:text-foreground transition-colors rounded hover:bg-gray-200 dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
             >
               <ChevronDown
                 size={14}
@@ -777,15 +1654,15 @@ const ArtifactBlock = ({
               setIsFullscreen(false),
             )
           }
-          className="fixed inset-0 z-1000 bg-white dark:bg-background flex flex-col animate-in fade-in duration-200"
+          className="markdown-preview-dialog fixed inset-0 z-1000 flex flex-col animate-in fade-in duration-200"
         >
           <h2 id={fullscreenTitleId} className="sr-only">
             {t("fullscreenCodeView")}
           </h2>
           <div className="container mx-auto h-full flex flex-col p-4">
-            <div className="rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-muted/80 shadow-sm w-full h-full flex flex-col overflow-hidden">
+            <div className="markdown-codeblock w-full h-full flex flex-col overflow-hidden rounded-lg">
               <Header isFullscreenMode={true} />
-              <div className="flex-1 overflow-auto p-4 text-gray-800 dark:text-foreground text-sm font-mono leading-relaxed custom-scrollbar">
+              <div className="markdown-codeblock-content flex-1 overflow-auto p-4 text-sm font-mono leading-relaxed custom-scrollbar">
                 <pre>{children}</pre>
               </div>
             </div>
@@ -809,19 +1686,19 @@ const ArtifactBlock = ({
               setIsPreviewOpen(false),
             )
           }
-          className="fixed inset-0 z-2000 bg-white dark:bg-background flex flex-col animate-in fade-in duration-200"
+          className="markdown-preview-dialog fixed inset-0 z-2000 flex flex-col animate-in fade-in duration-200"
         >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-border bg-white dark:bg-card">
+          <div className="markdown-preview-header flex items-center justify-between px-4 py-3">
             <h2
               id={previewTitleId}
-              className="flex min-w-0 items-center gap-2 font-semibold text-gray-800 dark:text-foreground"
+              className="markdown-strong-text flex min-w-0 items-center gap-2 font-semibold"
             >
               <SquareCode
                 size={18}
-                className="shrink-0 text-blue-500"
+                className="markdown-preview-title-icon shrink-0"
                 aria-hidden="true"
               />
-              <span className="font-semibold text-gray-800 dark:text-foreground">
+              <span className="markdown-strong-text font-semibold">
                 {previewTitle}
               </span>
             </h2>
@@ -830,12 +1707,12 @@ const ArtifactBlock = ({
               type="button"
               onClick={() => setIsPreviewOpen(false)}
               aria-label={t("closePreview")}
-              className="p-1.5 hover:bg-gray-100 dark:hover:bg-muted rounded-lg text-gray-500 dark:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              className="markdown-icon-button markdown-focus-ring rounded-lg p-1.5"
             >
               <X size={20} aria-hidden="true" />
             </button>
           </div>
-          <div className="flex-1 bg-white relative">
+          <div className="markdown-preview-canvas flex-1 relative">
             <iframe
               srcDoc={previewSrcDoc}
               className="w-full h-full border-none"
@@ -852,13 +1729,13 @@ const ArtifactBlock = ({
   return (
     <>
       <div className="group/codeblock my-4">
-        <div className="rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-muted/80 shadow-sm w-full transition-[border-color,background-color,box-shadow] duration-300 flex flex-col overflow-hidden">
+        <div className="markdown-codeblock w-full rounded-lg transition-[border-color,background-color,box-shadow] duration-300 flex flex-col overflow-hidden">
           <Header />
           <div
             id={codeContentId}
             ref={contentRef}
             className={`
-                        w-full overflow-x-auto text-gray-800 dark:text-foreground text-sm font-mono leading-relaxed
+                        markdown-codeblock-content w-full overflow-x-auto text-sm font-mono leading-relaxed
                         transition-[max-height] duration-500 ease-in-out relative
                         ${isCollapsed ? "overflow-y-hidden" : ""}
                     `}
@@ -869,7 +1746,7 @@ const ArtifactBlock = ({
               {/* Gradient Overlay */}
               {canCollapse && (
                 <div
-                  className={`absolute w-full bottom-0 left-0 h-16 bg-linear-to-t from-white dark:from-card to-transparent pointer-events-none transition-opacity duration-500 ${isCollapsed ? "opacity-100" : "opacity-0"}`}
+                  className={`markdown-codeblock-fade absolute w-full bottom-0 left-0 h-16 pointer-events-none transition-opacity duration-500 ${isCollapsed ? "opacity-100" : "opacity-0"}`}
                   aria-hidden="true"
                 />
               )}
@@ -883,12 +1760,12 @@ const ArtifactBlock = ({
               id={consoleOutputId}
               role="status"
               aria-live="polite"
-              className="border-t border-gray-200 dark:border-border bg-gray-800 dark:bg-background p-3 font-mono text-xs overflow-x-auto"
+              className="markdown-console p-3 font-mono text-xs overflow-x-auto"
             >
-              <div className="flex items-center gap-2 mb-2 text-gray-400 font-bold uppercase tracking-wider select-none">
+              <div className="markdown-console-header flex items-center gap-2 mb-2 font-bold uppercase tracking-wider select-none">
                 <SquareTerminal size={12} aria-hidden="true" />
                 <span>{t("consoleOutput")}</span>
-                <span className="normal-case tracking-normal text-gray-500">
+                <span className="markdown-console-mode normal-case tracking-normal">
                   {executionModeLabel}
                 </span>
                 {isExecuting && (
@@ -900,12 +1777,12 @@ const ArtifactBlock = ({
                 )}
               </div>
               {executionNotice && (
-                <div className="mb-2 rounded border border-amber-400/30 bg-amber-400/10 px-2 py-1 text-[11px] font-sans text-amber-200">
+                <div className="markdown-console-notice mb-2 rounded px-2 py-1 text-[11px] font-sans">
                   {executionNotice}
                 </div>
               )}
               <pre
-                className={`whitespace-pre-wrap break-all ${consoleOutput?.startsWith("Error:") ? "text-red-400" : "text-green-400"}`}
+                className={`whitespace-pre-wrap break-all ${consoleOutput?.startsWith("Error:") ? "markdown-console-error" : "markdown-console-success"}`}
               >
                 {consoleOutput || (isExecuting ? t("executing") : "")}
               </pre>
@@ -958,7 +1835,7 @@ const MarkdownImage = ({
 
   if (!resolvedSrc) {
     return (
-      <span className="my-2 block rounded-lg border border-dashed border-gray-300 dark:border-border px-3 py-2 text-xs text-gray-500 dark:text-muted-foreground">
+      <span className="markdown-image-blocked my-2 px-3 py-2 text-xs">
         {t("imageBlocked")}
       </span>
     );
@@ -966,7 +1843,7 @@ const MarkdownImage = ({
 
   const image = (
     <img
-      className="block max-h-[50vh] max-w-full rounded-lg border-gray-200 object-contain dark:border-border"
+      className="markdown-image block max-h-[50vh] max-w-full rounded-lg object-contain"
       src={resolvedSrc}
       alt={alt || ""}
       loading="lazy"
@@ -984,7 +1861,7 @@ const MarkdownImage = ({
     <button
       type="button"
       aria-label={alt ? t("previewImageWithAlt", { alt }) : t("previewImage")}
-      className="my-2 mx-auto block max-w-full cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background"
+      className="markdown-image-button my-2 mx-auto block max-w-full cursor-zoom-in rounded-lg"
       onClick={() => {
         openImagePreview(
           gallery.length > 0
@@ -1007,7 +1884,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   isStreaming,
 }) => {
   // If className is provided, we assume the caller handles text color, otherwise default to gray.
-  const defaultTextColors = "text-gray-800 dark:text-foreground";
+  const defaultTextColors = "markdown-body-default";
   const finalClass = className ? className : defaultTextColors;
   const imageGallery = useMemo(
     () => collectMarkdownImageGallery(content),
@@ -1044,7 +1921,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
         return (
           <code
-            className={`${className} bg-gray-100 dark:bg-muted text-red-500 dark:text-red-400 rounded px-1 py-0.5 text-sm break-all font-mono`}
+            className={mergeClassName(
+              "markdown-inline-code rounded px-1 py-0.5 text-sm break-all font-mono",
+              className,
+            )}
             {...props}
           >
             {children}
@@ -1058,57 +1938,116 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           </CitationLink>
         );
       },
-      p: ({ ...props }: any) => (
-        <p className="mb-2 last:mb-0 leading-6" {...props} />
-      ),
-      img: (props: any) => <MarkdownImage {...props} gallery={imageGallery} />,
-      blockquote: ({ ...props }: any) => (
-        <blockquote
-          className="border-l-4 border-gray-300 dark:border-input pl-4 italic text-gray-500 dark:text-muted-foreground my-4"
-          {...props}
-        />
-      ),
-      table: ({ ...props }: any) => (
-        <div className="overflow-x-auto my-4 w-full block">
-          <table
-            className="min-w-full divide-y divide-gray-200 dark:divide-border border dark:border-border"
-            {...props}
+      div: HtmlDiv,
+      section: HtmlSection,
+      article: HtmlArticle,
+      aside: HtmlAside,
+      main: HtmlMain,
+      span: HtmlSpan,
+      details: (props: any) => <details {...getSafeVisualHtmlProps(props)} />,
+      summary: (props: any) => <summary {...getSafeVisualHtmlProps(props)} />,
+      h1: (props: any) => <HtmlHeading as="h1" {...props} />,
+      h2: (props: any) => <HtmlHeading as="h2" {...props} />,
+      h3: (props: any) => <HtmlHeading as="h3" {...props} />,
+      h4: (props: any) => <HtmlHeading as="h4" {...props} />,
+      h5: (props: any) => <HtmlHeading as="h5" {...props} />,
+      h6: (props: any) => <HtmlHeading as="h6" {...props} />,
+      ul: (props: any) => <ul {...getSafeHtmlProps(props)} />,
+      ol: (props: any) => <ol {...getSafeHtmlProps(props)} />,
+      li: (props: any) => <li {...getSafeHtmlProps(props)} />,
+      p: (props: any) => {
+        const safeProps = getSafeHtmlProps(props);
+        return (
+          <p
+            {...safeProps}
+            className={mergeClassName("markdown-paragraph", safeProps.className)}
           />
-        </div>
-      ),
-      th: ({ ...props }: any) => (
-        <th
-          className="bg-gray-50 dark:bg-muted px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-muted-foreground uppercase tracking-wider border-b dark:border-border whitespace-nowrap"
-          {...props}
-        />
-      ),
-      td: ({ ...props }: any) => (
-        <td
-          className="px-3 py-2 text-sm text-gray-600 dark:text-foreground/85 border-b dark:border-border min-w-20"
-          {...props}
-        />
-      ),
+        );
+      },
+      img: (props: any) => <MarkdownImage {...props} gallery={imageGallery} />,
+      blockquote: (props: any) => {
+        const safeProps = getSafeHtmlProps(props);
+        return (
+          <blockquote
+            {...safeProps}
+            className={mergeClassName(
+              "markdown-blockquote",
+              safeProps.className,
+            )}
+          />
+        );
+      },
+      table: (props: any) => {
+        const safeProps = getSafeHtmlProps(props);
+        return (
+          <div className="markdown-table-wrap">
+            <table
+              {...safeProps}
+              className={mergeClassName("markdown-table", safeProps.className)}
+            />
+          </div>
+        );
+      },
+      thead: (props: any) => <thead {...getSafeHtmlProps(props)} />,
+      tbody: (props: any) => <tbody {...getSafeHtmlProps(props)} />,
+      tfoot: (props: any) => <tfoot {...getSafeHtmlProps(props)} />,
+      tr: (props: any) => <tr {...getSafeHtmlProps(props)} />,
+      th: (props: any) => {
+        const safeProps = getSafeHtmlProps(props);
+        return (
+          <th
+            {...safeProps}
+            className={mergeClassName("markdown-table-head", safeProps.className)}
+          />
+        );
+      },
+      td: (props: any) => {
+        const safeProps = getSafeHtmlProps(props);
+        return (
+          <td
+            {...safeProps}
+            className={mergeClassName("markdown-table-cell", safeProps.className)}
+          />
+        );
+      },
     }),
     [imageGallery, searchSources, isStreaming],
   );
 
   // Process content line by line for <file> tags
   const renderContent = useMemo(() => {
+    const normalizedContent = normalizeHtmlVisualMarkdown(content);
     // 1. Handle Citations Globally First
-    const textWithCitations = linkifyCitationReferences(content, searchSources);
+    const textWithCitations = linkifyCitationReferences(
+      normalizedContent,
+      searchSources,
+    );
 
     // 2. Split bounded model-generated file blocks from normal Markdown.
     return parseMarkdownFileBlocks(textWithCitations).map((segment, index) => {
       if (segment.kind === "markdown") {
-        return (
-          <ReactMarkdown
-            key={`md-chunk-${index}`}
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex, rehypeHighlight]}
-            components={markdownComponents}
-          >
-            {segment.content}
-          </ReactMarkdown>
+        return parseMarkdownDiagramBlocks(segment.content).map(
+          (diagramSegment, segmentIndex) => {
+            if (diagramSegment.kind === "diagram") {
+              return (
+                <DiagramBlock
+                  key={`diagram-${index}-${segmentIndex}`}
+                  diagram={diagramSegment.diagram}
+                />
+              );
+            }
+
+            return (
+              <ReactMarkdown
+                key={`md-chunk-${index}-${segmentIndex}`}
+                remarkPlugins={[remarkGfm, remarkMath]}
+                rehypePlugins={markdownRehypePlugins}
+                components={markdownComponents}
+              >
+                {diagramSegment.content}
+              </ReactMarkdown>
+            );
+          },
         );
       }
 

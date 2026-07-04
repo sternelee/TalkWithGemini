@@ -147,3 +147,4 @@ When `DEFAULT_VOICE_PROVIDER` is set to `elevenlabs` or `mimo`, an empty default
 | `DEFAULT_COMPRESSION_THRESHOLD`    | Number of turns before automatic compression can run.              |
 | `DEFAULT_HISTORY_KEEP_COUNT`       | Number of recent history items retained after compression.         |
 | `DEFAULT_ENABLE_CODE_COLLAPSE`     | Enables collapsible code blocks by default.                        |
+| `DEFAULT_ENABLE_HTML_VISUAL_PROMPT` | Guides models to use safe inline HTML for visual structures. Defaults to enabled; set to `false` to disable for new self-hosted defaults. |

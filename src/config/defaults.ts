@@ -65,6 +65,7 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   compressionThreshold: 12, // 12 轮对话
   historyKeepCount: 4, // 保留最近 4 轮
   enableCodeCollapse: false,
+  enableHtmlVisualPrompt: true,
   fontSize: "medium",
 } as const satisfies SystemSettings;
 

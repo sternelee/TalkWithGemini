@@ -21,6 +21,7 @@ import {
   Globe,
   Lightbulb,
   Blocks,
+  LayoutDashboard,
   Link,
   ChevronDown,
   FileUp,
@@ -157,6 +158,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       voice,
       updateVoiceSettings,
       search,
+      system,
+      updateSystemSettings,
     } = useSettingsStore();
 
     const { providers } = useCoreSettingsStore();
@@ -1029,7 +1032,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           id={messageInputId}
           name="message"
           ref={textareaRef}
-          className="w-full px-4 pt-3 pb-1 bg-transparent focus:outline-0 text-gray-800 dark:text-foreground placeholder-gray-500 dark:placeholder:text-muted-foreground resize-none max-h-32 md:max-h-48 text-[length:var(--neo-font-size-base)] min-h-12"
+          className="w-full px-4 pt-3 pb-1 bg-transparent focus:outline-0 text-gray-800 dark:text-foreground placeholder-gray-500 dark:placeholder:text-muted-foreground resize-none max-h-32 md:max-h-48 text-(length:--neo-font-size-base) min-h-12"
           placeholder={
             isRecording
               ? voice.sttProvider === "browser"
@@ -1342,6 +1345,39 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 </button>
               </Tooltip>
             )}
+
+            {/* HTML Visual Prompt Button */}
+            <Tooltip
+              content={
+                system.enableHtmlVisualPrompt
+                  ? t("htmlVisualPromptEnabled")
+                  : t("htmlVisualPromptDisabled")
+              }
+              position="top"
+            >
+              <button
+                type="button"
+                aria-label={
+                  system.enableHtmlVisualPrompt
+                    ? t("disableHtmlVisualPromptAria")
+                    : t("enableHtmlVisualPromptAria")
+                }
+                aria-pressed={system.enableHtmlVisualPrompt}
+                className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                  system.enableHtmlVisualPrompt
+                    ? "text-brand hover:bg-brand-soft dark:text-brand"
+                    : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
+                }`}
+                onClick={() =>
+                  updateSystemSettings({
+                    enableHtmlVisualPrompt: !system.enableHtmlVisualPrompt,
+                  })
+                }
+                disabled={disabled || isTranscribing}
+              >
+                <LayoutDashboard size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5">

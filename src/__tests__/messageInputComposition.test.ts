@@ -19,6 +19,13 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("MessageInputAttachmentTray");
     expect(messageInput).toContain("isKnowledgeAttachment");
     expect(messageInput).toContain("aria-pressed={hasKnowledgeAttachments}");
+    expect(messageInput).toContain("LayoutDashboard");
+    expect(messageInput).toContain("system.enableHtmlVisualPrompt");
+    expect(messageInput).toContain("updateSystemSettings");
+    expect(messageInput).toContain(
+      "aria-pressed={system.enableHtmlVisualPrompt}",
+    );
+    expect(messageInput).toContain("text-brand hover:bg-brand-soft");
     expect(messageInput).toContain("PencilSparkles");
     expect(messageInput).not.toContain("PencilSparklesIcon");
     expect(messageInput).toContain("handlePolishInput");
@@ -33,6 +40,12 @@ describe("MessageInput composition", () => {
     expect(messageInput.indexOf("{/* Reasoning Button")).toBeLessThan(
       messageInput.indexOf("{/* Search Button */}"),
     );
+    expect(messageInput.indexOf("{/* Search Button */}")).toBeLessThan(
+      messageInput.indexOf("{/* HTML Visual Prompt Button */}"),
+    );
+    expect(
+      messageInput.indexOf("{/* HTML Visual Prompt Button */}"),
+    ).toBeLessThan(messageInput.indexOf("{/* Model Selector */}"));
     expect(messageInput.indexOf("{/* Model Selector */}")).toBeLessThan(
       messageInput.indexOf("{/* Text Polish Button */}"),
     );

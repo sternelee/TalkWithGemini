@@ -111,6 +111,10 @@ export function normalizeSystemSettings(
       typeof raw.enableCodeCollapse === "boolean"
         ? raw.enableCodeCollapse
         : defaults.enableCodeCollapse,
+    enableHtmlVisualPrompt:
+      typeof raw.enableHtmlVisualPrompt === "boolean"
+        ? raw.enableHtmlVisualPrompt
+        : defaults.enableHtmlVisualPrompt,
     fontSize: normalizeFontSize(raw.fontSize, defaults.fontSize),
   };
 }

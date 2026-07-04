@@ -43,6 +43,7 @@ export interface SystemSettings {
   compressionThreshold: number;
   historyKeepCount: number;
   enableCodeCollapse: boolean;
+  enableHtmlVisualPrompt: boolean;
   fontSize: "small" | "medium" | "large";
 }
 

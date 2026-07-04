@@ -1,0 +1,341 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
+    values ? `${key}:${JSON.stringify(values)}` : key,
+}));
+
+vi.mock("@/store/core/uiStore", () => ({
+  useUIStore: () => ({
+    openImagePreview: vi.fn(),
+  }),
+}));
+
+vi.mock("@/store/core/settingsStore", () => ({
+  getTaskModel: () => "test-model",
+  useSettingsStore: () => ({
+    system: { enableCodeCollapse: false },
+  }),
+}));
+
+vi.mock("@/store/core/chatStore", () => ({
+  useChatStore: () => ({
+    selectedModel: "test-model",
+  }),
+}));
+
+vi.mock("@/store/core/coreSettingsStore", () => ({
+  useCoreSettingsStore: () => ({
+    providers: [],
+  }),
+}));
+
+vi.mock("@/services/api/chatService", () => ({
+  executeCode: vi.fn(),
+}));
+
+vi.mock("@/utils/sandbox", () => ({
+  runInSandbox: vi.fn(),
+}));
+
+vi.mock("@/utils/opfs", () => ({
+  isOPFSUrl: () => false,
+  resolveOPFSUrl: vi.fn(),
+}));
+
+vi.mock("@/lib/providers/providerTypes", () => ({
+  isOpenAIProviderType: () => false,
+}));
+
+vi.mock("@/lib/security/clientUrl", () => ({
+  getSafeExternalHref: (href?: string) =>
+    href && /^(https?:|#)/i.test(href) ? href : undefined,
+  getSafeFaviconProxyUrl: () => undefined,
+  getSafeMarkdownImageSrc: (src?: string) =>
+    src && /^(https?:|data:image\/|blob:)/i.test(src) ? src : undefined,
+  getSafeWebHref: (href?: string) =>
+    href && /^https?:/i.test(href) ? href : undefined,
+}));
+
+vi.mock("@/lib/utils/htmlPreview", () => ({
+  createSandboxedHtmlPreviewSrcDoc: (html: string) => html,
+}));
+
+vi.mock("@/lib/utils/htmlStyle", async () =>
+  vi.importActual("../lib/utils/htmlStyle"),
+);
+
+vi.mock("@/lib/utils/htmlVisualMarkdown", async () =>
+  vi.importActual("../lib/utils/htmlVisualMarkdown"),
+);
+
+vi.mock("@/lib/utils/markdownFiles", () => ({
+  parseMarkdownFileBlocks: (content: string) => [
+    { kind: "markdown", content },
+  ],
+}));
+
+vi.mock("@/lib/utils/markdownDiagrams", async () =>
+  vi.importActual("../lib/utils/markdownDiagrams"),
+);
+
+vi.mock("@/lib/utils/markdownImages", () => ({
+  collectMarkdownImageGallery: () => [],
+  getMarkdownImageGalleryIndex: () => 0,
+}));
+
+vi.mock("@/lib/utils/clipboard", () => ({
+  copyTextToClipboard: vi.fn(),
+}));
+
+vi.mock("@/lib/utils/citations", () => ({
+  linkifyCitationReferences: (content: string) => content,
+}));
+
+vi.mock("@/lib/utils/objectUrlLifecycle", () => ({
+  resolveObjectUrlWithLifecycle: () => ({ cancel: vi.fn() }),
+}));
+
+vi.mock("@/lib/utils/model", () => ({
+  parseModelString: () => ({ modelName: "test-model" }),
+}));
+
+describe("MarkdownRenderer HTML support", () => {
+  it("renders safe inline HTML while preserving allowed layout styles", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '<section style="display:grid; grid-template-columns:1fr 1fr; gap:12px; color:#2563eb"><span>Hello</span><span>HTML</span></section>'
+        }
+      />,
+    );
+
+    expect(html).toContain("<section");
+    expect(html).toContain("display:grid");
+    expect(html).toContain("grid-template-columns:1fr 1fr");
+    expect(html).toContain("gap:12px");
+    expect(html).toContain("Hello");
+    expect(html).toContain("HTML");
+  });
+
+  it("wraps inline HTML in a theme scope and corrects low-contrast colors", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '<section style="background:#edf8ff; color:#ffffff; border:1px solid #ffffff"><span>Readable</span></section>'
+        }
+      />,
+    );
+
+    expect(html).toContain("markdown-html-visual");
+    expect(html).toContain("background:#edf8ff");
+    expect(html).toContain("color:var(--html-visual-on-light)");
+    expect(html).toContain("border:1px solid var(--html-visual-subtle-border)");
+    expect(html).toContain("Readable");
+    expect(html).not.toContain("color:#ffffff");
+  });
+
+  it("removes decorative styling from HTML visual containers that wrap tables", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '<section style="display:block; overflow-x:auto; background:#fff1f2; border:1px solid #fecaca; box-shadow:0 8px 24px rgba(0,0,0,0.12); padding:32px; border-radius:16px; color:#0f172a"><table><thead><tr><th>地区</th><th>影响</th></tr></thead><tbody><tr><td>南美洲</td><td>暴雨、洪水</td></tr></tbody></table></section>'
+        }
+      />,
+    );
+
+    expect(html).toContain("markdown-html-visual");
+    expect(html).toContain("markdown-table-wrap");
+    expect(html).toContain("地区");
+    expect(html).toContain("南美洲");
+    expect(html).toContain("display:block");
+    expect(html).toContain("overflow-x:auto");
+    expect(html).toContain("color:#0f172a");
+    expect(html).not.toContain("background:#fff1f2");
+    expect(html).not.toContain("border:1px solid #fecaca");
+    expect(html).not.toContain("box-shadow");
+    expect(html).not.toContain("padding:32px");
+    expect(html).not.toContain("border-radius:16px");
+  });
+
+  it("renders safe visual HTML from markdown fences but preserves explicit html code blocks", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const visualHtml = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '```markdown\n<section style="display:grid; gap:8px"><span>Visual</span></section>\n```'
+        }
+      />,
+    );
+
+    expect(visualHtml).toContain("<section");
+    expect(visualHtml).toContain("display:grid");
+    expect(visualHtml).toContain("Visual");
+
+    const unlabeledVisualHtml = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '```\n<section style="display:flex; gap:8px"><span>Unlabeled</span></section>\n```'
+        }
+      />,
+    );
+
+    expect(unlabeledVisualHtml).toContain("<section");
+    expect(unlabeledVisualHtml).toContain("display:flex");
+    expect(unlabeledVisualHtml).toContain("Unlabeled");
+
+    const codeHtml = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '```html\n<section style="display:grid; gap:8px"><span>Code</span></section>\n```'
+        }
+      />,
+    );
+
+    expect(codeHtml).not.toContain('<section style="display:grid');
+    expect(codeHtml).toContain("<span>html</span>");
+    expect(codeHtml).toContain("previewHtml");
+    expect(codeHtml).toContain("hljs-name");
+  });
+
+  it("normalizes escaped HTML attribute quotes before rendering", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '<section style=\\"display:grid; gap:8px\\"><span>Escaped</span></section>'
+        }
+      />,
+    );
+
+    expect(html).toContain("<section");
+    expect(html).toContain("display:grid");
+    expect(html).toContain("gap:8px");
+    expect(html).toContain("Escaped");
+  });
+
+  it("removes unsafe inline HTML tags, attributes, links, and page-covering styles", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '<section onclick="alert(1)" style="position:fixed; inset:0; z-index:9999; background:url(javascript:alert(1)); display:flex"><script>alert(1)</script><style>.bad{color:red}</style><iframe>bad frame</iframe><a href="javascript:alert(1)">bad</a><span style="color:#16a34a">safe</span></section>'
+        }
+      />,
+    );
+
+    expect(html).toContain("<section");
+    expect(html).toContain("display:flex");
+    expect(html).toContain("safe");
+    expect(html).toContain("color:var(--html-visual-success-accent)");
+    expect(html).not.toContain("onclick");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("<style");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("alert(1)");
+    expect(html).not.toContain(".bad");
+    expect(html).not.toContain("bad frame");
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("position:fixed");
+    expect(html).not.toContain("z-index");
+    expect(html).not.toContain("url(");
+  });
+
+  it("routes mermaid and mindmap fences to diagram blocks", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={[
+          "Before",
+          "```mermaid",
+          "graph TD",
+          "  A --> B",
+          "```",
+          "```mindmap",
+          "Root",
+          "  - Branch",
+          "```",
+          "After",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toContain('data-markdown-diagram="mermaid"');
+    expect(html).toContain('data-markdown-diagram="mindmap"');
+    expect(html).toContain("diagramMermaid");
+    expect(html).toContain("diagramMindmap");
+    expect(html).toContain("copyDiagramSource");
+    expect(html).toContain("fullscreenDiagram");
+    expect(html).not.toContain("<span>mermaid</span>");
+    expect(html).not.toContain("<span>mindmap</span>");
+  });
+
+  it("shows streaming state for incomplete diagram fences", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        isStreaming
+        content={["```mindmap", "Roadmap", "  - Phase 1"].join("\n")}
+      />,
+    );
+
+    expect(html).toContain('data-markdown-diagram="mindmap"');
+    expect(html).toContain("diagramStreaming");
+    expect(html).toContain("diagramMindmap");
+  });
+
+  it("renders tables and blockquotes without legacy heavy borders", async () => {
+    const { default: MarkdownRenderer } = await import(
+      "../components/content/MarkdownRenderer"
+    );
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={[
+          "> A quiet note",
+          "",
+          "| Metric | Value |",
+          "| --- | --- |",
+          "| Alpha | 42 |",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toContain("markdown-table-wrap");
+    expect(html).not.toContain("border-l-4");
+    expect(html).not.toContain("divide-y");
+    expect(html).not.toContain("border dark:border-border");
+    expect(html).not.toContain("bg-gray-50");
+    expect(html).toContain("A quiet note");
+    expect(html).toContain("Alpha");
+  });
+});

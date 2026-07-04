@@ -266,6 +266,28 @@ const SystemSettings = () => {
             />
           </div>
 
+          {/* HTML Visual Prompt */}
+          <div className="flex items-center justify-between p-4">
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-foreground">
+                {t("htmlVisualPrompt")}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-muted-foreground">
+                {t("htmlVisualPromptDesc")}
+              </div>
+            </div>
+            <SimpleSwitch
+              ariaLabel={t("htmlVisualPromptAria")}
+              name="enableHtmlVisualPrompt"
+              checked={system.enableHtmlVisualPrompt}
+              onChange={() =>
+                updateSystemSettings({
+                  enableHtmlVisualPrompt: !system.enableHtmlVisualPrompt,
+                })
+              }
+            />
+          </div>
+
           {/* Context Compression */}
           <div className="flex flex-col p-4 gap-4">
             <div className="flex items-center justify-between">
