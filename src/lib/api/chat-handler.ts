@@ -26,6 +26,7 @@ import {
   isOpenAIProviderType,
   OPENAI_COMPATIBLE_PROVIDER_TYPE,
 } from "../providers/providerTypes";
+import { safeServerLogError } from "../utils/safeServerLog";
 
 export interface ChatHandlerOptions {
   provider: ProviderConfig;
@@ -41,6 +42,65 @@ export interface ChatHandlerOptions {
   tools?: any[];
   enableGoogleSearch?: boolean;
   enableOpenAIWebSearch?: boolean;
+}
+
+function getProviderBaseUrlHost(provider: ProviderConfig): string | undefined {
+  const baseUrl = getProviderBaseUrl(provider);
+  if (!baseUrl) return undefined;
+
+  try {
+    return new URL(baseUrl).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function getProviderBaseUrl(provider: ProviderConfig): string | undefined {
+  return ProviderFactory.getEffectiveBaseUrl(provider.baseUrl, provider.type);
+}
+
+function getErrorStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function getErrorNumberField(
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = record[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function getChatStreamErrorDetails(error: unknown) {
+  const record =
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : {};
+
+  return {
+    name: error instanceof Error ? error.name : typeof error,
+    message: error instanceof Error ? error.message : String(error),
+    status:
+      getErrorNumberField(record, "status") ||
+      getErrorNumberField(record, "statusCode"),
+    code: getErrorStringField(record, "code"),
+    type: getErrorStringField(record, "type"),
+  };
+}
+
+function logChatStreamError(error: unknown, options: ChatHandlerOptions): void {
+  safeServerLogError("Chat stream error:", {
+    providerType: options.provider.type,
+    providerBaseUrlHost: getProviderBaseUrlHost(options.provider),
+    modelName: options.modelName,
+    error: getChatStreamErrorDetails(error),
+  });
 }
 
 function convertToolsToOpenAIResponses(tools?: any[]) {
@@ -89,132 +149,137 @@ export async function handleChatStream(options: ChatHandlerOptions) {
   } = options;
 
   const stream = createStreamHandler(async (controller) => {
-    const send = createSSESender(controller);
+    try {
+      const send = createSSESender(controller);
 
-    if (provider.type === "OpenAI") {
-      await ProviderFactory.assertProviderOutboundAllowed(provider);
-      const client = ProviderFactory.createOpenAIClient(provider);
-      const input = prepareOpenAIResponsesInput(history);
+      if (provider.type === "OpenAI") {
+        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        const client = ProviderFactory.createOpenAIClient(provider);
+        const input = prepareOpenAIResponsesInput(history);
 
-      const content: any[] = [{ type: "input_text", text: newMessage }];
-      if (attachments?.length) {
-        content.push(...convertAttachmentsToOpenAIResponses(attachments));
+        const content: any[] = [{ type: "input_text", text: newMessage }];
+        if (attachments?.length) {
+          content.push(...convertAttachmentsToOpenAIResponses(attachments));
+        }
+        input.push({ role: "user", content });
+
+        await streamOpenAIResponses({
+          client,
+          model: modelName,
+          input,
+          instructions: systemInstruction,
+          temperature: config?.temperature,
+          tools: convertToolsToOpenAIResponses(tools),
+          useReasoning: config?.useReasoning,
+          enableWebSearch: enableOpenAIWebSearch,
+          onChunk: send,
+        });
+      } else if (provider.type === OPENAI_COMPATIBLE_PROVIDER_TYPE) {
+        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        const messages = prepareOpenAIHistory(history);
+
+        // 添加新消息
+        const content: any[] = [{ type: "text", text: newMessage }];
+        if (attachments?.length) {
+          // 转换附件格式
+          content.push(...attachments);
+        }
+        messages.push({ role: "user", content });
+
+        // 添加系统指令
+        if (systemInstruction) {
+          messages.unshift({ role: "system", content: systemInstruction });
+        }
+
+        const client = ProviderFactory.createOpenAIClient(provider);
+        await streamOpenAIChatCompletions({
+          client,
+          model: modelName,
+          messages,
+          temperature: config?.temperature,
+          tools,
+          useReasoning: config?.useReasoning,
+          onChunk: send,
+        });
+      } else {
+        // Gemini
+        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        const client = ProviderFactory.createGeminiClient(provider);
+        const contents = prepareGeminiHistory(history);
+
+        // 添加新消息
+        const parts: any[] = [{ text: newMessage }];
+        if (attachments?.length) {
+          // 转换附件为 Gemini 格式
+          const geminiAttachments = attachments
+            .map((att: any) => {
+              // 如果已经是正确的 Gemini 格式
+              if (att.fileData) {
+                return att;
+              }
+              if (att.inlineData) {
+                return att;
+              }
+
+              // 转换原始附件对象
+              if (att.url && !att.data) {
+                // 远程文件
+                return {
+                  fileData: {
+                    mimeType: att.mimeType,
+                    fileUri: att.url,
+                  },
+                };
+              }
+
+              if (att.data) {
+                // Base64 数据
+                return {
+                  inlineData: {
+                    mimeType: att.mimeType,
+                    data: att.data,
+                  },
+                };
+              }
+
+              // 如果既没有 url 也没有 data，跳过这个附件
+              logDevWarn("Skipping invalid attachment:", {
+                fileName: att.fileName,
+                mimeType: att.mimeType,
+              });
+              return null;
+            })
+            .filter(Boolean); // 过滤掉 null 值
+
+          parts.push(...geminiAttachments);
+        }
+        contents.push({ role: "user", parts });
+
+        // 转换工具格式
+        const geminiTools = tools?.map((tool: any) => ({
+          name: tool.function.name,
+          description: tool.function.description,
+          parameters: convertSchemaToGemini(tool.function.parameters),
+        }));
+
+        await streamGeminiResponse({
+          client,
+          model: modelName,
+          contents,
+          systemInstruction,
+          temperature: config?.temperature,
+          tools: geminiTools,
+          enableGoogleSearch,
+          useReasoning: config?.useReasoning,
+          onChunk: send,
+        });
       }
-      input.push({ role: "user", content });
 
-      await streamOpenAIResponses({
-        client,
-        model: modelName,
-        input,
-        instructions: systemInstruction,
-        temperature: config?.temperature,
-        tools: convertToolsToOpenAIResponses(tools),
-        useReasoning: config?.useReasoning,
-        enableWebSearch: enableOpenAIWebSearch,
-        onChunk: send,
-      });
-    } else if (provider.type === OPENAI_COMPATIBLE_PROVIDER_TYPE) {
-      await ProviderFactory.assertProviderOutboundAllowed(provider);
-      const client = ProviderFactory.createOpenAIClient(provider);
-      const messages = prepareOpenAIHistory(history);
-
-      // 添加新消息
-      const content: any[] = [{ type: "text", text: newMessage }];
-      if (attachments?.length) {
-        // 转换附件格式
-        content.push(...attachments);
-      }
-      messages.push({ role: "user", content });
-
-      // 添加系统指令
-      if (systemInstruction) {
-        messages.unshift({ role: "system", content: systemInstruction });
-      }
-
-      await streamOpenAIChatCompletions({
-        client,
-        model: modelName,
-        messages,
-        temperature: config?.temperature,
-        tools,
-        useReasoning: config?.useReasoning,
-        onChunk: send,
-      });
-    } else {
-      // Gemini
-      await ProviderFactory.assertProviderOutboundAllowed(provider);
-      const client = ProviderFactory.createGeminiClient(provider);
-      const contents = prepareGeminiHistory(history);
-
-      // 添加新消息
-      const parts: any[] = [{ text: newMessage }];
-      if (attachments?.length) {
-        // 转换附件为 Gemini 格式
-        const geminiAttachments = attachments
-          .map((att: any) => {
-            // 如果已经是正确的 Gemini 格式
-            if (att.fileData) {
-              return att;
-            }
-            if (att.inlineData) {
-              return att;
-            }
-
-            // 转换原始附件对象
-            if (att.url && !att.data) {
-              // 远程文件
-              return {
-                fileData: {
-                  mimeType: att.mimeType,
-                  fileUri: att.url,
-                },
-              };
-            }
-
-            if (att.data) {
-              // Base64 数据
-              return {
-                inlineData: {
-                  mimeType: att.mimeType,
-                  data: att.data,
-                },
-              };
-            }
-
-            // 如果既没有 url 也没有 data，跳过这个附件
-            logDevWarn("Skipping invalid attachment:", {
-              fileName: att.fileName,
-              mimeType: att.mimeType,
-            });
-            return null;
-          })
-          .filter(Boolean); // 过滤掉 null 值
-
-        parts.push(...geminiAttachments);
-      }
-      contents.push({ role: "user", parts });
-
-      // 转换工具格式
-      const geminiTools = tools?.map((tool: any) => ({
-        name: tool.function.name,
-        description: tool.function.description,
-        parameters: convertSchemaToGemini(tool.function.parameters),
-      }));
-
-      await streamGeminiResponse({
-        client,
-        model: modelName,
-        contents,
-        systemInstruction,
-        temperature: config?.temperature,
-        tools: geminiTools,
-        enableGoogleSearch,
-        useReasoning: config?.useReasoning,
-        onChunk: send,
-      });
+      send({ type: "done" });
+    } catch (error) {
+      logChatStreamError(error, options);
+      throw error;
     }
-
-    send({ type: "done" });
   });
 
   return createStreamResponse(stream);

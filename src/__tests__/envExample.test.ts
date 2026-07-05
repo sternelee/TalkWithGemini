@@ -100,7 +100,10 @@ function scanDirectProcessEnvKeys(): Set<string> {
 function parseWranglerConfig(): Record<string, unknown> {
   const text = readFileSync(resolve(process.cwd(), "wrangler.jsonc"), "utf8");
   const withoutLineComments = text.replace(/^\s*\/\/.*$/gm, "");
-  const withoutTrailingCommas = withoutLineComments.replace(/,\s*([}\]])/g, "$1");
+  const withoutTrailingCommas = withoutLineComments.replace(
+    /,\s*([}\]])/g,
+    "$1",
+  );
   return JSON.parse(withoutTrailingCommas) as Record<string, unknown>;
 }
 

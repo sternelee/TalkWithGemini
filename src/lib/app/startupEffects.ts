@@ -15,12 +15,26 @@ export function shouldApplySessionPluginPreset(
   settingsHydrated: boolean,
   chatHydrated: boolean,
   pluginIds: unknown,
+  appliedPresetSyncKey?: string | null,
+  nextPresetSyncKey?: string | null,
 ): boolean {
   return (
     shouldSyncSessionPlugins(settingsHydrated, chatHydrated) &&
     Array.isArray(pluginIds) &&
-    pluginIds.length > 0
+    pluginIds.length > 0 &&
+    (!nextPresetSyncKey || appliedPresetSyncKey !== nextPresetSyncKey)
   );
+}
+
+export function getSessionPluginPresetSyncKey(
+  sessionId: string | null | undefined,
+  pluginIds: unknown,
+): string | null {
+  if (!sessionId || !Array.isArray(pluginIds) || pluginIds.length === 0) {
+    return null;
+  }
+
+  return `${sessionId}:${JSON.stringify([...pluginIds].sort())}`;
 }
 
 export function shouldResolveSelectedModelAfterBootstrap({

@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
 import { PLUGIN_EXECUTION_LIMITS } from "../config/limits";
 import { streamGeminiResponse } from "../lib/streaming/gemini";
 import {
@@ -300,7 +303,115 @@ describe("streamed tool-call normalization", () => {
     expect(request).not.toHaveProperty("tools");
   });
 
-  it("streams OpenAI Compatible reasoning deltas", async () => {
+  it("uses a conservative OpenAI Compatible chat request shape", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () =>
+            asyncChunks([
+              {
+                choices: [
+                  {
+                    delta: { content: "Compat" },
+                  },
+                ],
+              },
+            ]),
+          ),
+        },
+      },
+    };
+
+    await streamOpenAIChatCompletions({
+      client: client as any,
+      model: "mimo-v2.5-free",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Hello" }],
+        },
+        {
+          role: "assistant",
+          content: "Hi",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Describe this" },
+            {
+              type: "image_url",
+              image_url: { url: "https://example.com/image.png" },
+            },
+          ],
+        },
+      ],
+      onChunk: (message) => messages.push(message),
+    });
+
+    const request = (client.chat.completions.create as any).mock.calls[0][0];
+    expect(request).not.toHaveProperty("stream_options");
+    expect(request.messages[0]).toEqual({
+      role: "user",
+      content: "Hello",
+    });
+    expect(request.messages[1]).toEqual({
+      role: "assistant",
+      content: "Hi",
+    });
+    expect(request.messages[2].content).toEqual(
+      expect.arrayContaining([
+        { type: "text", text: "Describe this" },
+        expect.objectContaining({ type: "image_url" }),
+      ]),
+    );
+  });
+
+  it("suppresses OpenAI Compatible reasoning deltas when reasoning is disabled", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () =>
+            asyncChunks([
+              {
+                choices: [
+                  {
+                    delta: {
+                      reasoning_content: "Hidden chain. ",
+                      content: "Answer",
+                    },
+                  },
+                ],
+              },
+              {
+                choices: [
+                  {
+                    delta: {
+                      reasoning: "More hidden reasoning.",
+                    },
+                  },
+                ],
+              },
+            ]),
+          ),
+        },
+      },
+    };
+
+    await streamOpenAIChatCompletions({
+      client: client as any,
+      model: "compat-model",
+      messages: [],
+      useReasoning: false,
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(reasoningMessages(messages)).toEqual([]);
+    expect(messages).toContainEqual({ type: "content", content: "Answer" });
+  });
+
+  it("streams OpenAI Compatible reasoning deltas when reasoning is enabled", async () => {
     const messages: SSEMessage[] = [];
     const client = {
       chat: {
@@ -336,6 +447,7 @@ describe("streamed tool-call normalization", () => {
       client: client as any,
       model: "compat-model",
       messages: [],
+      useReasoning: true,
       onChunk: (message) => messages.push(message),
     });
 
@@ -343,6 +455,47 @@ describe("streamed tool-call normalization", () => {
       reasoningMessages(messages).map((message) => message.content),
     ).toEqual(["Consider freshness. ", "Check sources."]);
     expect(messages).toContainEqual({ type: "content", content: "Answer" });
+  });
+
+  it("suppresses OpenAI Responses reasoning events when reasoning is disabled", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      responses: {
+        create: vi.fn(async () =>
+          asyncChunks([
+            {
+              type: "response.reasoning_summary_text.delta",
+              delta: "Hidden summary.",
+            },
+            {
+              type: "response.output_item.done",
+              item: {
+                type: "reasoning",
+                summary: [{ type: "summary_text", text: "Hidden item." }],
+              },
+            },
+            {
+              type: "response.output_text.delta",
+              delta: "Visible answer",
+            },
+          ]),
+        ),
+      },
+    };
+
+    await streamOpenAIResponses({
+      client: client as any,
+      model: "gpt-test",
+      input: [],
+      useReasoning: false,
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(reasoningMessages(messages)).toEqual([]);
+    expect(messages).toContainEqual({
+      type: "content",
+      content: "Visible answer",
+    });
   });
 
   it("requests OpenAI Responses reasoning summaries and native web search", async () => {
@@ -495,6 +648,41 @@ describe("streamed tool-call normalization", () => {
     expect(String(calls[1].toolCall.result)).toMatch(/JSON object/i);
   });
 
+  it("suppresses Gemini thought parts when reasoning is disabled", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      models: {
+        generateContentStream: vi.fn(async () =>
+          asyncChunks([
+            {
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      { thought: true, text: "Hidden thought. " },
+                      { text: "Answer" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ]),
+        ),
+      },
+    };
+
+    await streamGeminiResponse({
+      client: client as any,
+      model: "gemini-test",
+      contents: [],
+      useReasoning: false,
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(reasoningMessages(messages)).toEqual([]);
+    expect(messages).toContainEqual({ type: "content", content: "Answer" });
+  });
+
   it("streams Gemini thought parts and grounding metadata as reasoning and search", async () => {
     const messages: SSEMessage[] = [];
     const client = {
@@ -532,6 +720,7 @@ describe("streamed tool-call normalization", () => {
       client: client as any,
       model: "gemini-test",
       contents: [],
+      useReasoning: true,
       onChunk: (message) => messages.push(message),
     });
 

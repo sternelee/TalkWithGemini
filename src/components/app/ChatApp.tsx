@@ -70,6 +70,7 @@ import {
   readJsonResponseOrThrow,
 } from "@/lib/api/client";
 import {
+  getSessionPluginPresetSyncKey,
   shouldApplySessionPluginPreset,
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
@@ -383,6 +384,7 @@ const ChatApp = () => {
   const prevSessionIdRef = useRef(currentSessionId);
   const inputSessionRef = useRef(currentSessionId);
   const workspaceAttachmentHydratedSessionRef = useRef<string | null>(null);
+  const syncedSessionPluginPresetRef = useRef<string | null>(null);
 
   // Sync welcomeState with chat emptiness, handling animations only within the same session
   useEffect(() => {
@@ -417,31 +419,40 @@ const ChatApp = () => {
 
   // Sync Global Plugins from Session Config
   useEffect(() => {
-    if (
-      !shouldApplySessionPluginPreset(
-        _hasHydrated,
-        chatHasHydrated,
-        currentSessionConfig?.activePlugins,
-      )
-    ) {
-      return;
-    }
-
     const sessionPlugins = normalizeActivePluginIds(
       currentSessionConfig?.activePlugins,
       installedPlugins,
       pluginConfigs,
       { unauthenticatedAllowedPluginIds: ["unsplash"] },
     );
+    const presetSyncKey = getSessionPluginPresetSyncKey(
+      currentSessionId,
+      sessionPlugins,
+    );
+
+    if (
+      !shouldApplySessionPluginPreset(
+        _hasHydrated,
+        chatHasHydrated,
+        sessionPlugins,
+        syncedSessionPluginPresetRef.current,
+        presetSyncKey,
+      )
+    ) {
+      return;
+    }
+
     const sortedSession = [...sessionPlugins].sort();
     const sortedActive = [...activePlugins].sort();
 
     if (JSON.stringify(sortedSession) !== JSON.stringify(sortedActive)) {
       setActivePlugins(sessionPlugins);
     }
+    syncedSessionPluginPresetRef.current = presetSyncKey;
   }, [
     activePlugins,
     chatHasHydrated,
+    currentSessionId,
     currentSessionConfig,
     _hasHydrated,
     installedPlugins,

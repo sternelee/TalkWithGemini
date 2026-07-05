@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getSessionPluginPresetSyncKey,
   shouldApplySessionPluginPreset,
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
@@ -28,6 +29,33 @@ describe("app startup effects", () => {
     expect(shouldApplySessionPluginPreset(true, true, ["weather-gpt"])).toBe(
       true,
     );
+  });
+
+  it("does not reapply a session plugin preset already synced for the current session", () => {
+    const syncKey = getSessionPluginPresetSyncKey("session-1", [
+      "reader",
+      "weather",
+    ]);
+
+    expect(syncKey).toBe('session-1:["reader","weather"]');
+    expect(
+      shouldApplySessionPluginPreset(
+        true,
+        true,
+        ["weather", "reader"],
+        syncKey,
+        syncKey,
+      ),
+    ).toBe(false);
+    expect(
+      shouldApplySessionPluginPreset(
+        true,
+        true,
+        ["weather", "reader"],
+        syncKey,
+        getSessionPluginPresetSyncKey("session-2", ["reader", "weather"]),
+      ),
+    ).toBe(true);
   });
 
   it("waits for server model bootstrap before auto-selecting a model", () => {

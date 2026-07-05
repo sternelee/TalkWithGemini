@@ -9,6 +9,21 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS",
   },
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
   "vars": {
     // Keep only non-sensitive deployment defaults here. Set per-deployment
     // secrets and user-specific defaults in the Cloudflare dashboard.

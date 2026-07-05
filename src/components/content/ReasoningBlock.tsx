@@ -28,46 +28,35 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
   if (!reasoning) return null;
 
   return (
-    <div className="mb-3 rounded-lg border border-gray-200 dark:border-border overflow-hidden bg-gray-50/50 dark:bg-muted/30">
-      <div className="w-full flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-muted-foreground transition-colors select-none">
-        <button
-          type="button"
-          aria-expanded={isExpanded}
-          aria-controls={panelId}
-          aria-busy={isThinking || undefined}
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-gray-100/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:hover:bg-accent/30"
-        >
+    <div className="mb-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50/50 transition-[border-color,background-color,box-shadow] duration-300 dark:border-border dark:bg-muted/30">
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        aria-controls={panelId}
+        aria-busy={isThinking || undefined}
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 dark:text-muted-foreground hover:bg-gray-100/50 dark:hover:bg-accent/30 transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
+      >
+        <span className="rounded bg-violet-100 p-1 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
           {isThinking ? (
             <LoaderCircle
-              size={14}
-              className="shrink-0 animate-spin text-violet-500 dark:text-violet-400"
+              size={12}
+              className="animate-spin"
               aria-hidden="true"
             />
           ) : (
-            <Lightbulb
-              size={14}
-              className="shrink-0 text-violet-500 dark:text-violet-400"
-              aria-hidden="true"
-            />
+            <Lightbulb size={12} aria-hidden="true" />
           )}
-          <span className="flex-1 truncate">{reasoningLabel}</span>
-        </button>
+        </span>
 
-        <button
-          type="button"
-          aria-expanded={isExpanded}
-          aria-controls={panelId}
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="mr-2 rounded p-1 transition-colors hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:hover:bg-accent/80"
-        >
-          <ChevronDown
-            size={14}
-            className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
-            aria-hidden="true"
-          />
-        </button>
-      </div>
+        <span className="flex-1 text-left truncate">{reasoningLabel}</span>
+
+        <ChevronDown
+          size={14}
+          className={`transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
 
       <div
         id={panelId}
@@ -76,7 +65,7 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
         className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
       >
         <div className="overflow-hidden">
-          <div className="px-3 py-2 border-t border-gray-200/50 dark:border-border text-gray-600 dark:text-foreground/85 text-sm bg-white/40 dark:bg-card/40 max-h-72 overflow-y-auto custom-scrollbar">
+          <div className="px-3 py-2 border-t border-gray-200/50 dark:border-border bg-white/40 dark:bg-card/40 text-gray-600 dark:text-foreground/85 text-sm max-h-72 overflow-y-auto custom-scrollbar">
             <MarkdownRenderer
               content={reasoning}
               className="text-gray-600 dark:text-foreground/85 text-xs! md:text-sm!"

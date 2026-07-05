@@ -37,6 +37,15 @@ describe("HTML visual prompt helpers", () => {
     expect(instruction).toContain("output the table directly");
     expect(instruction).toContain("Do not wrap tables in styled cards");
     expect(instruction).toContain("avoid hard-coding white-on-white");
+    expect(instruction).toContain(
+      "Do not use pale, low-contrast, or translucent text",
+    );
+    expect(instruction).toContain(
+      "light, pale, transparent, or unset backgrounds",
+    );
+    expect(instruction).toContain(
+      "Pair every hard-coded foreground color with an intentional background",
+    );
     expect(instruction).toContain("script");
     expect(instruction).toContain("style tags");
   });
@@ -64,6 +73,12 @@ describe("HTML visual prompt helpers", () => {
     expect(requestMessage).toContain("very subtle borders");
     expect(requestMessage).toContain("transparent overflow wrapper");
     expect(requestMessage).toContain("avoid styled table container cards");
+    expect(requestMessage).toContain(
+      "Do not use pale text on light, pale, transparent, or unset backgrounds",
+    );
+    expect(requestMessage).toContain(
+      "Prefer semantic foreground variables",
+    );
     expect(requestMessage).toContain(
       "Never place HTML visual fragments inside code fences",
     );

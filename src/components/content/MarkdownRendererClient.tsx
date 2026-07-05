@@ -81,6 +81,8 @@ export interface MarkdownRendererProps {
   searchSources?: Source[];
   onFileClick?: (file: MarkdownGeneratedFile) => void;
   isStreaming?: boolean;
+  forcedTheme?: DiagramTheme;
+  forceExpandCodeBlocks?: boolean;
 }
 
 const extractHtmlTitle = (html: string) => {
@@ -751,10 +753,17 @@ const DiagramRenderer = ({
   );
 };
 
-const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
+const DiagramBlock = ({
+  diagram,
+  forcedTheme,
+}: {
+  diagram: MarkdownDiagramBlock;
+  forcedTheme?: DiagramTheme;
+}) => {
   const t = useTranslations("Content");
   const { system } = useSettingsStore();
-  const theme = useResolvedDiagramTheme();
+  const resolvedTheme = useResolvedDiagramTheme();
+  const theme = forcedTheme || resolvedTheme;
   const enhanced = Boolean(system.enableHtmlVisualPrompt);
   const [copyStatus, setCopyStatus] = React.useState<
     "idle" | "copied" | "error"
@@ -1218,11 +1227,13 @@ const ArtifactBlock = ({
   rawCode,
   children,
   isStreaming,
+  forceExpandCodeBlocks,
 }: {
   language: string;
   rawCode: string;
   children: React.ReactNode;
   isStreaming?: boolean;
+  forceExpandCodeBlocks?: boolean;
 }) => {
   const t = useTranslations("Content");
   const [copyStatus, setCopyStatus] = React.useState<
@@ -1266,7 +1277,8 @@ const ArtifactBlock = ({
   const fullscreenTitleId = `${artifactId}-fullscreen-title`;
   const previewTitleId = `${artifactId}-preview-title`;
 
-  const shouldAutoCollapse = system.enableCodeCollapse ?? true;
+  const shouldAutoCollapse =
+    !forceExpandCodeBlocks && (system.enableCodeCollapse ?? true);
   const isHtml =
     language?.toLowerCase() === "html" || language?.toLowerCase() === "xml";
   const isPython =
@@ -1496,6 +1508,15 @@ const ArtifactBlock = ({
 
   // Initial Check & Streaming Updates
   useEffect(() => {
+    if (forceExpandCodeBlocks) {
+      clearCollapseSchedule();
+      setCanCollapse(false);
+      setIsCollapsed(false);
+      setMaxHeight("none");
+      hasCheckedHeight.current = true;
+      return;
+    }
+
     if (isStreaming) return; // Do not calculate during streaming
 
     if (contentRef.current) {
@@ -1519,7 +1540,13 @@ const ArtifactBlock = ({
         }
       }
     }
-  }, [rawCode, canCollapse, isStreaming, shouldAutoCollapse]);
+  }, [
+    rawCode,
+    canCollapse,
+    isStreaming,
+    shouldAutoCollapse,
+    forceExpandCodeBlocks,
+  ]);
 
   // Common Header Logic
   const Header = ({ isFullscreenMode = false }) => (
@@ -1945,6 +1972,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   searchSources,
   onFileClick,
   isStreaming,
+  forcedTheme,
+  forceExpandCodeBlocks,
 }) => {
   // If className is provided, we assume the caller handles text color, otherwise default to gray.
   const defaultTextColors = "markdown-body-default";
@@ -1976,6 +2005,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               language={language}
               rawCode={rawCode}
               isStreaming={isStreaming}
+              forceExpandCodeBlocks={forceExpandCodeBlocks}
             >
               {children}
             </ArtifactBlock>
@@ -2083,7 +2113,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         );
       },
     }),
-    [imageGallery, searchSources, isStreaming],
+    [imageGallery, searchSources, isStreaming, forceExpandCodeBlocks],
   );
 
   // Process content line by line for <file> tags
@@ -2105,6 +2135,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 <DiagramBlock
                   key={`diagram-${index}-${segmentIndex}`}
                   diagram={diagramSegment.diagram}
+                  forcedTheme={forcedTheme}
                 />
               );
             }
@@ -2129,7 +2160,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         </div>
       );
     });
-  }, [content, searchSources, onFileClick, markdownComponents]);
+  }, [content, searchSources, onFileClick, markdownComponents, forcedTheme]);
 
   return (
     <div

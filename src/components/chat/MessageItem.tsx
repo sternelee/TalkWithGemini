@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
+import { toPng } from "html-to-image";
 import type { Attachment, Message } from "@/types";
 import MarkdownRenderer from "../content/MarkdownRenderer";
 import Tooltip from "../ui/Tooltip";
@@ -22,6 +23,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -48,6 +52,8 @@ import {
   Library,
   PencilSparkles,
   Sparkles,
+  Signature,
+  FileImage,
 } from "lucide-react";
 import { BubblesLoading } from "../ui/Icons";
 import { useChatStore } from "@/store/core/chatStore";
@@ -107,12 +113,38 @@ interface ReadableAttachmentDocument {
   renderAsMarkdown: boolean;
 }
 
+interface PdfPrintJob {
+  id: string;
+  title: string;
+  content: string;
+  searchSources: NonNullable<Message["searchSources"]>;
+}
+
+interface ImageExportJob {
+  id: string;
+  title: string;
+  content: string;
+  searchSources: NonNullable<Message["searchSources"]>;
+  width: number;
+}
+
 const logMessageItemError = logDevError;
 
 const actionButtonFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
 
 const markdownFileNamePattern = /\.(?:md|markdown)$/i;
+const MESSAGE_IMAGE_PROXY_PREFIX = "https://serveproxy.com/?url=";
+const DEFAULT_MESSAGE_IMAGE_EXPORT_WIDTH = 820;
+const MESSAGE_IMAGE_EXPORT_PADDING_PX = 24;
+const MESSAGE_EXPORT_EXCLUDED_SELECTORS = [
+  ".markdown-codeblock-header",
+  ".markdown-diagram-header",
+  ".markdown-codeblock-fade",
+  ".markdown-console",
+  ".markdown-preview-dialog",
+  ".markdown-icon-button",
+];
 
 const getAttachmentDownloadName = (attachment: Attachment) => {
   const baseName = attachment.fileName || "attachment";
@@ -128,6 +160,100 @@ const getAttachmentDownloadName = (attachment: Attachment) => {
 const shouldRenderAttachmentAsMarkdown = (attachment: Attachment) =>
   attachment.mimeType === "text/markdown" ||
   markdownFileNamePattern.test(attachment.fileName || "");
+
+const getMessageImageExportWidth = (element: HTMLElement | null) => {
+  const measuredWidth = element?.getBoundingClientRect().width || 0;
+  const contentWidth = Math.max(
+    1,
+    Math.ceil(measuredWidth || DEFAULT_MESSAGE_IMAGE_EXPORT_WIDTH),
+  );
+  return contentWidth + MESSAGE_IMAGE_EXPORT_PADDING_PX * 2;
+};
+
+const shouldIncludeMessageExportNode = (node: HTMLElement) =>
+  !MESSAGE_EXPORT_EXCLUDED_SELECTORS.some((selector) =>
+    node.matches?.(selector),
+  );
+
+const isTransparentColor = (color: string) =>
+  !color ||
+  color === "transparent" ||
+  color === "rgba(0, 0, 0, 0)" ||
+  color === "rgb(0 0 0 / 0)";
+
+const getImageExportBackgroundColor = (element: HTMLElement) => {
+  const elementBackground = window.getComputedStyle(element).backgroundColor;
+  if (!isTransparentColor(elementBackground)) return elementBackground;
+
+  const bodyBackground = window.getComputedStyle(document.body).backgroundColor;
+  if (!isTransparentColor(bodyBackground)) return bodyBackground;
+
+  return document.documentElement.classList.contains("dark")
+    ? "#09090b"
+    : "#ffffff";
+};
+
+const getProxiedMessageExportImageUrl = (src: string) => {
+  if (!src || src.startsWith(MESSAGE_IMAGE_PROXY_PREFIX)) return null;
+
+  try {
+    const url = new URL(src, window.location.href);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.origin === window.location.origin) return null;
+    if (url.hostname === "serveproxy.com") return null;
+
+    return `${MESSAGE_IMAGE_PROXY_PREFIX}${encodeURIComponent(url.href)}`;
+  } catch {
+    return null;
+  }
+};
+
+const waitForImageElement = (image: HTMLImageElement, timeoutMs = 5000) => {
+  if (image.complete) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const handleDone = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      image.removeEventListener("load", handleDone);
+      image.removeEventListener("error", handleDone);
+    };
+    const timer = window.setTimeout(() => {
+      handleDone();
+    }, timeoutMs);
+
+    image.addEventListener("load", handleDone);
+    image.addEventListener("error", handleDone);
+  });
+};
+
+const waitForMessageExportImages = async (root: HTMLElement) => {
+  const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(images.map((image) => waitForImageElement(image)));
+};
+
+const proxyMessageExportImages = (root: HTMLElement) => {
+  let didProxy = false;
+  const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+
+  for (const image of images) {
+    const src = image.currentSrc || image.src || image.getAttribute("src") || "";
+    const proxiedUrl = getProxiedMessageExportImageUrl(src);
+    if (!proxiedUrl) continue;
+
+    image.crossOrigin = "anonymous";
+    image.src = proxiedUrl;
+    didProxy = true;
+  }
+
+  return didProxy;
+};
 
 interface UserMessageEditorProps {
   initialContent: string;
@@ -316,6 +442,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const [showAddToKnowledgeModal, setShowAddToKnowledgeModal] = useState(false);
+  const [pdfPrintJob, setPdfPrintJob] = useState<PdfPrintJob | null>(null);
+  const [imageExportJob, setImageExportJob] = useState<ImageExportJob | null>(
+    null,
+  );
 
   // Immersive / Reading Mode State
   const [readingMode, setReadingMode] = useState<
@@ -348,9 +478,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
   );
 
   const readingDialogRef = useRef<HTMLDivElement>(null);
+  const imageExportRootRef = useRef<HTMLDivElement>(null);
+  const visibleMessageContentRef = useRef<HTMLDivElement>(null);
   const readingRestoreFocusRef = useRef<HTMLElement | null>(null);
   const readingDialogTitleId = useId();
   const readingDialogDescriptionId = useId();
+  const originalDocumentTitleRef = useRef<string | null>(null);
 
   // Get Store Data
   const { getCurrentSession, selectedModel, activeMessages } = useChatStore();
@@ -492,6 +625,143 @@ const MessageItem: React.FC<MessageItemProps> = ({
     setIsDeleteConfirming(false);
   }, [message.id]);
 
+  useEffect(() => {
+    if (!pdfPrintJob) return;
+
+    const originalTitle =
+      originalDocumentTitleRef.current === null
+        ? document.title
+        : originalDocumentTitleRef.current;
+    originalDocumentTitleRef.current = originalTitle;
+    document.title = pdfPrintJob.title;
+
+    let firstFrame: number | null = null;
+    let secondFrame: number | null = null;
+    let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
+    let cleanedUp = false;
+
+    const restoreDocumentTitle = () => {
+      document.title = originalTitle;
+      originalDocumentTitleRef.current = null;
+    };
+
+    const cleanupPrintJob = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      if (cleanupTimer) {
+        clearTimeout(cleanupTimer);
+        cleanupTimer = null;
+      }
+      restoreDocumentTitle();
+      setPdfPrintJob((current) =>
+        current?.id === pdfPrintJob.id ? null : current,
+      );
+    };
+
+    window.addEventListener("afterprint", cleanupPrintJob, { once: true });
+
+    firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        window.print();
+        cleanupTimer = setTimeout(cleanupPrintJob, 30000);
+      });
+    });
+
+    return () => {
+      if (firstFrame !== null) cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) cancelAnimationFrame(secondFrame);
+      window.removeEventListener("afterprint", cleanupPrintJob);
+      if (cleanupTimer) clearTimeout(cleanupTimer);
+      if (!cleanedUp) {
+        cleanedUp = true;
+        restoreDocumentTitle();
+      }
+    };
+  }, [pdfPrintJob]);
+
+  useEffect(() => {
+    if (!imageExportJob) return;
+
+    let firstFrame: number | null = null;
+    let secondFrame: number | null = null;
+    let cancelled = false;
+
+    const downloadImageDataUrl = (dataUrl: string) => {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = imageExportJob.title;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+
+    const cleanupImageExportJob = () => {
+      setImageExportJob((current) =>
+        current?.id === imageExportJob.id ? null : current,
+      );
+    };
+
+    const exportRootToPng = async (root: HTMLElement) => {
+      const backgroundColor = getImageExportBackgroundColor(root);
+      return toPng(root, {
+        cacheBust: true,
+        backgroundColor,
+        width: imageExportJob.width,
+        canvasWidth: imageExportJob.width,
+        style: {
+          width: `${imageExportJob.width}px`,
+        },
+        filter: (node) => shouldIncludeMessageExportNode(node as HTMLElement),
+      });
+    };
+
+    const runExport = async () => {
+      const root = imageExportRootRef.current;
+      if (!root) {
+        cleanupImageExportJob();
+        return;
+      }
+
+      try {
+        await waitForMessageExportImages(root);
+        const dataUrl = await exportRootToPng(root);
+        if (!cancelled) downloadImageDataUrl(dataUrl);
+      } catch (firstError) {
+        if (cancelled) return;
+
+        const didProxy = proxyMessageExportImages(root);
+        if (!didProxy) {
+          logMessageItemError("Failed to export message image", firstError);
+          return;
+        }
+
+        try {
+          await waitForMessageExportImages(root);
+          const dataUrl = await exportRootToPng(root);
+          if (!cancelled) downloadImageDataUrl(dataUrl);
+        } catch (retryError) {
+          if (!cancelled) {
+            logMessageItemError("Failed to export message image", retryError);
+          }
+        }
+      } finally {
+        if (!cancelled) cleanupImageExportJob();
+      }
+    };
+
+    firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        void runExport();
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (firstFrame !== null) cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) cancelAnimationFrame(secondFrame);
+    };
+  }, [imageExportJob]);
+
   // Typewriter Effect Logic using requestAnimationFrame
   useEffect(() => {
     const updateDisplayedContent = (value: string) => {
@@ -542,8 +812,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
     setIsEditing(true);
   };
 
-  const handleDownload = () => {
-    // Find current message index to get the previous user prompt
+  const getMessageDownloadBaseName = () => {
     const msgIndex = activeMessages.findIndex((m) => m.id === message.id);
     let filename = `message_${message.id.slice(0, 8)}`;
 
@@ -562,16 +831,46 @@ const MessageItem: React.FC<MessageItemProps> = ({
       }
     }
 
-    // Create Blob and trigger download
+    return filename;
+  };
+
+  const getMessageDownloadName = (extension: "md" | "pdf" | "png") =>
+    sanitizeDownloadFilename(
+      `${getMessageDownloadBaseName()}.${extension}`,
+      `message.${extension}`,
+    );
+
+  const handleDownloadMarkdown = () => {
     const blob = new Blob([message.content], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = sanitizeDownloadFilename(`${filename}.md`, "message.md");
+    a.download = getMessageDownloadName("md");
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowMoreMenu(false);
+  };
+
+  const handleDownloadPdf = () => {
+    setPdfPrintJob({
+      id: `${message.id}-${Date.now()}`,
+      title: getMessageDownloadName("pdf"),
+      content: message.content,
+      searchSources: message.searchSources || [],
+    });
+    setShowMoreMenu(false);
+  };
+
+  const handleDownloadImage = () => {
+    setImageExportJob({
+      id: `${message.id}-${Date.now()}`,
+      title: getMessageDownloadName("png"),
+      content: message.content,
+      searchSources: message.searchSources || [],
+      width: getMessageImageExportWidth(visibleMessageContentRef.current),
+    });
     setShowMoreMenu(false);
   };
 
@@ -885,6 +1184,46 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   return (
     <>
+      {pdfPrintJob &&
+        createPortal(
+          <div
+            className="message-pdf-print-root"
+            aria-hidden="true"
+            data-print-job-id={pdfPrintJob.id}
+          >
+            <MarkdownRenderer
+              content={pdfPrintJob.content}
+              searchSources={pdfPrintJob.searchSources}
+              forcedTheme="light"
+              forceExpandCodeBlocks
+            />
+          </div>,
+          document.body,
+        )}
+      {imageExportJob &&
+        createPortal(
+          <div
+            className="message-image-export-root"
+            aria-hidden="true"
+            data-image-export-job-id={imageExportJob.id}
+          >
+            <div
+              ref={imageExportRootRef}
+              className="message-image-export-canvas"
+              style={{ width: imageExportJob.width }}
+            >
+              <div className="message-export-content-root">
+                <MarkdownRenderer
+                  content={imageExportJob.content}
+                  searchSources={imageExportJob.searchSources}
+                  forceExpandCodeBlocks
+                />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
       {showAddToKnowledgeModal && (
         <AddToKnowledgeModal
           onClose={() => setShowAddToKnowledgeModal(false)}
@@ -1053,7 +1392,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 min-w-0 pl-1 md:pl-0">
+        <div
+          ref={visibleMessageContentRef}
+          className="flex-1 min-w-0 pl-1 md:pl-0"
+        >
           {/* Attachments */}
           {message.attachments && message.attachments.length > 0 && (
             <div className="flex flex-wrap gap-3 mb-2">
@@ -1376,12 +1718,47 @@ const MessageItem: React.FC<MessageItemProps> = ({
                       onClick={handleAddToKnowledge}
                       containerClass="hidden! md:flex!"
                     />
-                    <ActionButton
-                      icon={<Download size={13} />}
-                      tooltip={t("download")}
-                      onClick={handleDownload}
-                      containerClass="hidden! md:flex!"
-                    />
+                    <div className="hidden! md:flex!">
+                      <DropdownMenu>
+                        <Tooltip content={t("download")} position="top">
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={t("downloadFormat")}
+                              className={`p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-muted hover:text-gray-700 dark:hover:text-foreground/85 transition-[background-color,border-color,color,opacity] relative group/btn border border-transparent hover:border-white/50 dark:hover:border-border flex items-center justify-center ${actionButtonFocusClass}`}
+                            >
+                              <Download size={13} aria-hidden="true" />
+                            </button>
+                          </DropdownMenuTrigger>
+                        </Tooltip>
+                        <DropdownMenuContent side="top" align="end">
+                          <DropdownMenuItem onSelect={handleDownloadMarkdown}>
+                            <FileText
+                              size={14}
+                              className="text-gray-500 dark:text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                            <span>{t("downloadMarkdown")}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={handleDownloadPdf}>
+                            <Signature
+                              size={14}
+                              className="text-gray-500 dark:text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                            <span>{t("downloadPdf")}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={handleDownloadImage}>
+                            <FileImage
+                              size={14}
+                              className="text-gray-500 dark:text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                            <span>{t("downloadImage")}</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </>
                 )}
 
@@ -1460,14 +1837,42 @@ const MessageItem: React.FC<MessageItemProps> = ({
                           <span>{t("addToKnowledge")}</span>
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={handleDownload}>
-                          <Download
-                            size={14}
-                            className="text-gray-500 dark:text-muted-foreground"
-                            aria-hidden="true"
-                          />
-                          <span>{t("download")}</span>
-                        </DropdownMenuItem>
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>
+                            <Download
+                              size={14}
+                              className="text-gray-500 dark:text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                            <span>{t("download")}</span>
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem onSelect={handleDownloadMarkdown}>
+                              <FileText
+                                size={14}
+                                className="text-gray-500 dark:text-muted-foreground"
+                                aria-hidden="true"
+                              />
+                              <span>{t("downloadMarkdown")}</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={handleDownloadPdf}>
+                              <Signature
+                                size={14}
+                                className="text-gray-500 dark:text-muted-foreground"
+                                aria-hidden="true"
+                              />
+                              <span>{t("downloadPdf")}</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={handleDownloadImage}>
+                              <FileImage
+                                size={14}
+                                className="text-gray-500 dark:text-muted-foreground"
+                                aria-hidden="true"
+                              />
+                              <span>{t("downloadImage")}</span>
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
 
                         <DropdownMenuSeparator />
                         <DropdownMenuItem

@@ -70,6 +70,7 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
     temperature = 1,
     tools,
     enableGoogleSearch,
+    useReasoning,
     onChunk,
   } = options;
 
@@ -91,7 +92,7 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
   }
 
   // Enable thinking mode for reasoning
-  if (options.useReasoning) {
+  if (useReasoning) {
     config.thinkingConfig = { includeThoughts: true };
   }
 
@@ -125,8 +126,10 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
       for (const part of parts) {
         // 处理思考过程
         if (part.thought && part.text) {
-          // fullReasoning += part.text;
-          onChunk({ type: "reasoning", content: part.text });
+          if (useReasoning) {
+            // fullReasoning += part.text;
+            onChunk({ type: "reasoning", content: part.text });
+          }
         }
         // 处理工具调用
         else if (part.functionCall) {

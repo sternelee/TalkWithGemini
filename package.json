@@ -26,6 +26,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.19",
     "@xiangfa/mindmap": "^0.7.1",
     "fflate": "^0.8.3",
+    "html-to-image": "^1.11.13",
     "katex": "^0.16.27",
     "localforage": "^1.10.0",
     "lucide-react": "1.23.0",

@@ -132,30 +132,46 @@ export interface OpenAIResponsesStreamOptions {
   onChunk: (message: SSEMessage) => void;
 }
 
-/**
- * 处理 OpenAI Chat Completions 流式响应
- */
-export async function streamOpenAIChatCompletions(
-  options: OpenAIStreamOptions,
-) {
-  const {
-    client,
-    model,
-    messages,
-    temperature = 1,
-    tools,
-    useReasoning,
-    onChunk,
-  } = options;
+interface ChatCompletionRequestOptions {
+  model: string;
+  messages: any[];
+  temperature?: number;
+  tools?: any[];
+  useReasoning?: boolean;
+}
 
-  const startTime = Date.now();
+function normalizeChatCompletionMessages(messages: any[]): any[] {
+  return messages.map((message) => {
+    const content = message?.content;
+    if (!Array.isArray(content) || content.length !== 1) return message;
 
-  // Build request parameters
+    const [onlyPart] = content;
+    if (
+      onlyPart?.type !== "text" ||
+      typeof onlyPart.text !== "string" ||
+      Object.keys(onlyPart).some((key) => key !== "type" && key !== "text")
+    ) {
+      return message;
+    }
+
+    return {
+      ...message,
+      content: onlyPart.text,
+    };
+  });
+}
+
+function createChatCompletionRequestParams({
+  model,
+  messages,
+  temperature = 1,
+  tools,
+  useReasoning,
+}: ChatCompletionRequestOptions): any {
   const requestParams: any = {
     model,
-    messages,
+    messages: normalizeChatCompletionMessages(messages),
     stream: true,
-    stream_options: { include_usage: true },
   };
 
   // O1 models don't support temperature or tools
@@ -173,45 +189,59 @@ export async function streamOpenAIChatCompletions(
     requestParams.reasoning_effort = "high";
   }
 
-  const stream = (await client.chat.completions.create(requestParams)) as any;
+  return requestParams;
+}
 
-  // let fullContent = "";
+function emitChatCompletionChunk(
+  chunk: any,
+  toolCalls: ReturnType<typeof createOpenAIToolCallAccumulator>,
+  emitReasoning: boolean,
+  onChunk: (message: SSEMessage) => void,
+): void {
+  const delta = chunk.choices?.[0]?.delta;
+
+  // 处理文本内容
+  if (delta?.content) {
+    onChunk({ type: "content", content: delta.content });
+  }
+
+  const reasoningContent =
+    extractTextValue(delta?.reasoning_content) ||
+    extractTextValue(delta?.reasoning);
+  if (emitReasoning && reasoningContent) {
+    onChunk({ type: "reasoning", content: reasoningContent });
+  }
+
+  // 处理工具调用
+  if (delta?.tool_calls) {
+    for (const toolCall of delta.tool_calls) {
+      appendOpenAIToolCallDelta(toolCalls, toolCall);
+    }
+  }
+
+  // 处理使用统计
+  if (chunk.usage) {
+    onChunk({
+      type: "usage",
+      usage: {
+        prompt_tokens: chunk.usage.prompt_tokens,
+        completion_tokens: chunk.usage.completion_tokens,
+        total_tokens: chunk.usage.total_tokens,
+      },
+    });
+  }
+}
+
+async function finishChatCompletionStream(
+  chunks: AsyncIterable<any>,
+  startTime: number,
+  emitReasoning: boolean,
+  onChunk: (message: SSEMessage) => void,
+): Promise<void> {
   const toolCalls = createOpenAIToolCallAccumulator();
 
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta;
-
-    // 处理文本内容
-    if (delta?.content) {
-      // fullContent += delta.content;
-      onChunk({ type: "content", content: delta.content });
-    }
-
-    const reasoningContent =
-      extractTextValue(delta?.reasoning_content) ||
-      extractTextValue(delta?.reasoning);
-    if (reasoningContent) {
-      onChunk({ type: "reasoning", content: reasoningContent });
-    }
-
-    // 处理工具调用
-    if (delta?.tool_calls) {
-      for (const toolCall of delta.tool_calls) {
-        appendOpenAIToolCallDelta(toolCalls, toolCall);
-      }
-    }
-
-    // 处理使用统计
-    if (chunk.usage) {
-      onChunk({
-        type: "usage",
-        usage: {
-          prompt_tokens: chunk.usage.prompt_tokens,
-          completion_tokens: chunk.usage.completion_tokens,
-          total_tokens: chunk.usage.total_tokens,
-        },
-      });
-    }
+  for await (const chunk of chunks) {
+    emitChatCompletionChunk(chunk, toolCalls, emitReasoning, onChunk);
   }
 
   // 发送完整的工具调用
@@ -229,6 +259,40 @@ export async function streamOpenAIChatCompletions(
       duration: endTime - startTime,
     },
   });
+}
+
+/**
+ * 处理 OpenAI Chat Completions 流式响应
+ */
+export async function streamOpenAIChatCompletions(
+  options: OpenAIStreamOptions,
+) {
+  const {
+    client,
+    model,
+    messages,
+    temperature = 1,
+    tools,
+    useReasoning,
+    onChunk,
+  } = options;
+
+  const startTime = Date.now();
+  const requestParams = createChatCompletionRequestParams({
+    model,
+    messages,
+    temperature,
+    tools,
+    useReasoning,
+  });
+
+  const stream = (await client.chat.completions.create(requestParams)) as any;
+  await finishChatCompletionStream(
+    stream,
+    startTime,
+    Boolean(useReasoning),
+    onChunk,
+  );
 }
 
 /**
@@ -293,7 +357,7 @@ export async function streamOpenAIResponses(
       case "response.reasoning_summary_text.delta":
       case "response.reasoning_text.delta": {
         const reasoningContent = extractTextValue(event.delta);
-        if (reasoningContent) {
+        if (useReasoning && reasoningContent) {
           hasStreamedReasoning = true;
           onChunk({ type: "reasoning", content: reasoningContent });
         }
@@ -331,7 +395,7 @@ export async function streamOpenAIResponses(
         if (item?.type === "reasoning") {
           if (!hasStreamedReasoning) {
             const reasoningContent = extractReasoningSummary(item);
-            if (reasoningContent) {
+            if (useReasoning && reasoningContent) {
               onChunk({ type: "reasoning", content: reasoningContent });
             }
           }

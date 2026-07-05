@@ -1288,15 +1288,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     }}
                     disabled={isInputBusy}
                   >
-                    <Library
-                      size={14}
-                      className={
-                        hasKnowledgeAttachments
-                          ? "text-purple-500"
-                          : "text-muted-foreground"
-                      }
-                      aria-hidden="true"
-                    />
+                    <Library size={14} className="text-purple-500 dark:text-purple-400" aria-hidden="true" />
                     <span>{t("knowledgeBase")}</span>
                   </DropdownMenuItem>
 

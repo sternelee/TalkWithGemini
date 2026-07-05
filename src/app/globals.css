@@ -37,7 +37,7 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  --brand: #1d88e1;
+  --brand: #1D88E1;
   --brand-foreground: oklch(0.985 0 0);
   --brand-soft: color-mix(in srgb, var(--brand) 10%, transparent);
   --success: oklch(0.53 0.125 158);
@@ -127,13 +127,13 @@ html.dark {
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: #1d88e1;
+  --sidebar-primary: #1D88E1;
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-  --brand: #1d88e1;
+  --brand: #1D88E1;
   --brand-foreground: oklch(0.985 0 0);
   --brand-soft: color-mix(in srgb, var(--brand) 16%, transparent);
   --success: oklch(0.696 0.17 162.48);
@@ -1144,6 +1144,162 @@ samp {
   background: color-mix(in srgb, var(--popover) 88%, transparent);
   border-color: var(--border);
   box-shadow: 0 24px 70px rgb(0 0 0 / 0.38);
+}
+
+.message-pdf-print-root {
+  display: none;
+}
+
+.message-image-export-root {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.message-image-export-canvas {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  background: var(--background);
+  color: var(--markdown-foreground);
+  padding: 24px;
+}
+
+.message-export-content-root {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  color: inherit;
+}
+
+.message-export-content-root .markdown-body {
+  overflow: visible !important;
+}
+
+.message-export-content-root .markdown-codeblock-header,
+.message-export-content-root .markdown-diagram-header,
+.message-export-content-root .markdown-codeblock-fade,
+.message-export-content-root .markdown-console,
+.message-export-content-root .markdown-preview-dialog,
+.message-export-content-root .markdown-icon-button {
+  display: none !important;
+}
+
+.message-export-content-root .markdown-codeblock-content {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.message-export-content-root .markdown-table-wrap {
+  overflow: visible !important;
+}
+
+@page {
+  size: A4;
+  margin: 16mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  body > :not(.message-pdf-print-root) {
+    display: none !important;
+  }
+
+  .message-pdf-print-root {
+    --background: #ffffff;
+    --foreground: #111827;
+    --card: #ffffff;
+    --card-foreground: #111827;
+    --popover: #ffffff;
+    --popover-foreground: #111827;
+    --border: #d1d5db;
+    --muted: #f3f4f6;
+    --muted-foreground: #4b5563;
+    --accent: #f3f4f6;
+    --accent-foreground: #111827;
+    --html-visual-surface: #ffffff;
+    --html-visual-foreground: #111827;
+    --html-visual-border: #d1d5db;
+    --html-visual-subtle-border: #e5e7eb;
+    --html-visual-shadow: none;
+    --markdown-foreground: #1f2937;
+    --markdown-muted: #4b5563;
+    --markdown-link: #0e7490;
+    --markdown-link-hover: #0e7490;
+    --markdown-citation-link: #374151;
+    --markdown-citation-link-hover: #111827;
+    --markdown-citation-surface: #f3f4f6;
+    --markdown-soft-surface: #f9fafb;
+    --markdown-code-bg: #f3f4f6;
+    --markdown-code-text: #374151;
+    --markdown-table-head: #f9fafb;
+    --markdown-table-head-text: #111827;
+    --markdown-codeblock-surface: #f9fafb;
+    --markdown-codeblock-header: #f3f4f6;
+    --markdown-codeblock-foreground: #111827;
+    --markdown-codeblock-border: #d1d5db;
+    --markdown-surface: #ffffff;
+    --markdown-surface-muted: #f9fafb;
+    --markdown-surface-hover: #f3f4f6;
+    display: block !important;
+    width: 100% !important;
+    min-height: auto !important;
+    background: #ffffff !important;
+    color: var(--markdown-foreground) !important;
+  }
+
+  .message-pdf-print-root .markdown-body {
+    overflow: visible !important;
+    color: var(--markdown-foreground) !important;
+    font-size: 11pt;
+    line-height: 1.62;
+  }
+
+  .message-pdf-print-root .markdown-codeblock-header,
+  .message-pdf-print-root .markdown-diagram-header,
+  .message-pdf-print-root .markdown-codeblock-fade,
+  .message-pdf-print-root .markdown-console,
+  .message-pdf-print-root .markdown-preview-dialog,
+  .message-pdf-print-root .markdown-icon-button {
+    display: none !important;
+  }
+
+  .message-pdf-print-root .markdown-codeblock {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  .message-pdf-print-root .markdown-codeblock-content {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .message-pdf-print-root .markdown-codeblock-content > div {
+    padding: 0.85rem !important;
+  }
+
+  .message-pdf-print-root pre,
+  .message-pdf-print-root code {
+    white-space: pre-wrap !important;
+    overflow: visible !important;
+  }
+
+  .message-pdf-print-root .markdown-table-wrap {
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
+
+  .message-pdf-print-root a {
+    color: var(--markdown-link) !important;
+    text-decoration: underline;
+  }
 }
 
 /* Responsive Math Blocks */

@@ -14,6 +14,8 @@ Use only inline style attributes for layout, spacing, borders, color, and typogr
 Prefer the app's semantic neon diagram palette: cyan for UI and links, mint for agent logic and success, violet for context or code, amber for tool or warning states, and rose for policy or danger states. Use semantic variables such as var(--html-visual-surface), var(--html-visual-foreground), var(--html-visual-subtle-border), var(--html-visual-info-surface), var(--html-visual-knowledge-surface), var(--html-visual-success-surface), var(--html-visual-warning-surface), var(--html-visual-danger-surface), var(--diagram-line), and var(--markdown-soft-surface) so visual blocks remain readable in light and dark themes.
 You may use the same cyan, mint, violet, amber, and rose hue families for badges, borders, and soft callouts, but prefer the semantic variables over raw hex values and keep strong foreground/background contrast.
 Prefer pale surfaces in light mode, near-navy translucent surfaces in dark mode, transparent or very subtle borders, soft separation, and subtle neon accents only where they clarify hierarchy.
+Do not use pale, low-contrast, or translucent text on light, pale, transparent, or unset backgrounds. Prefer semantic foreground variables such as var(--html-visual-foreground), var(--markdown-foreground), and the tone-specific foreground variables for body text, labels, and table cells.
+Pair every hard-coded foreground color with an intentional background; if a background is transparent or inherited, use a high-contrast semantic foreground instead of white, off-white, light gray, or pastel text.
 When presenting a table, output the table directly or place it only inside a transparent overflow wrapper. Do not wrap tables in styled cards, panels, or section backgrounds.
 Avoid dark, heavy, high-saturation, or strongly framed blocks unless the user explicitly asks for that visual direction.
 When hard-coded colors are necessary, keep strong foreground/background contrast and avoid hard-coding white-on-white, black-on-black, very pale text on pale cards, or very dark text on dark cards.
@@ -27,6 +29,7 @@ const HTML_VISUAL_REQUEST_INSTRUCTIONS = `<format_instructions data-html-visual=
 For this request, apply the html-visual rules from the system instructions when structure is complex.
 Use safe raw HTML fragments directly in the Markdown body for visual layout when helpful.
 Prefer the app's semantic neon palette variables and other semantic variables, pale light surfaces, near-navy dark surfaces, very subtle borders, soft separation, and strong foreground/background contrast so the fragment works in light and dark themes.
+Do not use pale text on light, pale, transparent, or unset backgrounds. Prefer semantic foreground variables for body text, labels, and table cells, and only hard-code text colors when the paired background is explicit and high-contrast.
 Use cyan, mint, violet, amber, and rose accents restrainedly instead of large saturated fills.
 For tables, use the table directly or a transparent overflow wrapper; avoid styled table container cards.
 Never place HTML visual fragments inside code fences. Do not use class attributes, style tags, scripts, iframes, event handlers, url(...) styles, JavaScript URLs, or full HTML documents.

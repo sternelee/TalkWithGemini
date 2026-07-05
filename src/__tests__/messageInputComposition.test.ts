@@ -82,6 +82,9 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain(
       "dark:text-amber-300 dark:hover:bg-amber-900/20",
     );
+    expect(messageInput).toContain(
+      '<Library size={14} className="text-purple-500 dark:text-purple-400"',
+    );
     expect(messageInput).toContain('<span>{t("knowledgeBase")}</span>');
     expect(messageInput).toContain("open={showAttachMenu}");
     expect(messageInput).not.toContain("showAttachMenu && hasAttachmentMenu");
