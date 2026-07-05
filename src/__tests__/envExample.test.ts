@@ -97,6 +97,13 @@ function scanDirectProcessEnvKeys(): Set<string> {
   return keys;
 }
 
+function parseWranglerConfig(): Record<string, unknown> {
+  const text = readFileSync(resolve(process.cwd(), "wrangler.jsonc"), "utf8");
+  const withoutLineComments = text.replace(/^\s*\/\/.*$/gm, "");
+  const withoutTrailingCommas = withoutLineComments.replace(/,\s*([}\]])/g, "$1");
+  return JSON.parse(withoutTrailingCommas) as Record<string, unknown>;
+}
+
 describe(".env.example", () => {
   it("documents every maintained application environment variable", () => {
     const exampleKeys = parseEnvExampleKeys();
@@ -134,5 +141,13 @@ describe(".env.example", () => {
     ]) {
       expect(compose).toContain(`${key}:`);
     }
+  });
+
+  it("keeps Cloudflare dashboard variables during Worker deploys", () => {
+    const config = parseWranglerConfig();
+    const vars = config.vars as Record<string, unknown> | undefined;
+
+    expect(config.keep_vars).toBe(true);
+    expect(vars?.keep_vars).toBeUndefined();
   });
 });
