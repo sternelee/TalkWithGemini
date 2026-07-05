@@ -1,0 +1,18 @@
+{
+  "title": "远程文件",
+  "close": "关闭远程文件对话框",
+  "fileTypeAria": "远程文件类型：{type}",
+  "typeMenuLabel": "远程文件类型",
+  "fileUrl": "文件 URL",
+  "placeholderImage": "https://example.com/image.png…",
+  "placeholderAudio": "https://example.com/audio.mp3…",
+  "placeholderText": "https://example.com/file.txt…",
+  "typeText": "文本",
+  "typeImage": "图片",
+  "typeAudio": "音频",
+  "warnNoExtension": "无法检测到文件扩展名。请确保链接直接指向文件。",
+  "warnUnsupported": "该链接看起来不是受支持的{type}文件，可能会失败。",
+  "invalidUrl": "URL 格式无效。",
+  "cancel": "取消",
+  "attach": "附加"
+}

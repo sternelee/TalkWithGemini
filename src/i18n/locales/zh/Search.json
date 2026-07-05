@@ -1,0 +1,9 @@
+{
+  "title": "搜索服务",
+  "defaultService": "默认服务",
+  "defaultServiceDesc": "使用服务端配置的搜索服务，无需输入参数。",
+  "modelBuiltIn": "模型内置",
+  "modelBuiltInDesc": "使用当前模型的内置搜索：Gemini 模型使用 Google Search，OpenAI Responses 模型使用 OpenAI Web Search。OpenAI 兼容模型应选择外部搜索服务。",
+  "searxngDesc": "自托管、注重隐私的元搜索引擎",
+  "resultLimit": "结果数量上限"
+}

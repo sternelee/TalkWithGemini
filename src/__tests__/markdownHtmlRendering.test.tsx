@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -104,10 +106,28 @@ vi.mock("@/lib/utils/model", () => ({
   parseModelString: () => ({ modelName: "test-model" }),
 }));
 
+describe("MarkdownRenderer bundle boundary", () => {
+  it("keeps the public MarkdownRenderer entry as a lightweight client-only dynamic wrapper", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/content/MarkdownRenderer.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("next/dynamic");
+    expect(source).toContain("ssr: false");
+    expect(source).toContain("./MarkdownRendererClient");
+    expect(source).not.toContain("react-markdown");
+    expect(source).not.toContain("rehype-highlight");
+    expect(source).not.toContain("rehype-katex");
+    expect(source).not.toContain("mermaid");
+    expect(source).not.toContain("@xiangfa/mindmap");
+  });
+});
+
 describe("MarkdownRenderer HTML support", () => {
   it("renders safe inline HTML while preserving allowed layout styles", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -127,7 +147,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("wraps inline HTML in a theme scope and corrects low-contrast colors", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -147,7 +167,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("removes decorative styling from HTML visual containers that wrap tables", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -173,7 +193,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("renders safe visual HTML from markdown fences but preserves explicit html code blocks", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const visualHtml = renderToStaticMarkup(
       <MarkdownRenderer
@@ -215,7 +235,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("normalizes escaped HTML attribute quotes before rendering", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -233,7 +253,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("removes unsafe inline HTML tags, attributes, links, and page-covering styles", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -262,7 +282,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("routes mermaid and mindmap fences to diagram blocks", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -291,9 +311,30 @@ describe("MarkdownRenderer HTML support", () => {
     expect(html).not.toContain("<span>mindmap</span>");
   });
 
+  it("contains Mermaid render errors inside the renderer-owned host", () => {
+    const source = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/content/MarkdownRendererClient.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(source).toContain("suppressErrorRendering: true");
+    expect(source).toContain(
+      "const mermaidRenderHostRef = useRef<HTMLDivElement | null>(null)",
+    );
+    expect(source).toContain(
+      "const mermaidRenderHost = mermaidRenderHostRef.current",
+    );
+    expect(source).toMatch(
+      /mermaid\.render\(\s*`\$\{renderId\}-\$\{hashDiagramKey\(cacheKey\)\}`,\s*trimmedSource,\s*mermaidRenderHost/u,
+    );
+  });
+
   it("shows streaming state for incomplete diagram fences", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -309,7 +350,7 @@ describe("MarkdownRenderer HTML support", () => {
 
   it("renders tables and blockquotes without legacy heavy borders", async () => {
     const { default: MarkdownRenderer } =
-      await import("../components/content/MarkdownRenderer");
+      await import("../components/content/MarkdownRendererClient");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer

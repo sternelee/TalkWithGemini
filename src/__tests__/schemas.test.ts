@@ -96,6 +96,32 @@ describe("api schemas", () => {
     expect(message.toolCalls?.[0]?.status).toBe("success");
   });
 
+  it("accepts skill invocation descriptions in chat history", () => {
+    expect(() =>
+      ChatRequestSchema.parse({
+        provider: { type: "Gemini", apiKeySecret: encryptedSecret },
+        modelName: "gemini-test",
+        history: [
+          {
+            role: "model",
+            content: "Translated text",
+            skillInvocations: [
+              {
+                id: "translation-localization",
+                title: "Translation & Localization",
+                description:
+                  "Translate and localize text between Chinese and English.",
+                category: "writing",
+                mode: "manual",
+              },
+            ],
+          },
+        ],
+        newMessage: "regenerate",
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects native search in the external search route schema", () => {
     expect(() =>
       SearchRequestSchema.parse({

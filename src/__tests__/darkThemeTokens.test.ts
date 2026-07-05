@@ -27,6 +27,9 @@ describe("dark theme token contract", () => {
     expect(globals).toContain("--brand:");
     expect(globals).toContain("--brand-foreground:");
     expect(globals).toContain("--brand-soft:");
+    expect(globals).toContain("--brand: #1D88E1;");
+    expect(globals).not.toContain("#d23f31");
+    expect(globals).not.toContain("--brand: oklch(0.637 0.237 25.331);");
     expect(globals).toContain("--html-visual-surface:");
     expect(globals).toContain("--html-visual-foreground:");
     expect(globals).toContain("--html-visual-on-light:");
@@ -84,7 +87,7 @@ describe("dark theme token contract", () => {
 
   it("uses direct mindmap SVG export and the shared SVG diagram viewer", () => {
     const renderer = readProjectFile(
-      "src/components/content/MarkdownRenderer.tsx",
+      "src/components/content/MarkdownRendererClient.tsx",
     );
     const diagramSvg = readProjectFile("src/lib/utils/diagramSvg.ts");
 
@@ -126,7 +129,7 @@ describe("dark theme token contract", () => {
   it("anchors Markdown, diagram, and HTML visual colors to the neon diagram palette", () => {
     const globals = readProjectFile("src/app/globals.css");
     const renderer = readProjectFile(
-      "src/components/content/MarkdownRenderer.tsx",
+      "src/components/content/MarkdownRendererClient.tsx",
     );
 
     for (const token of [
@@ -203,7 +206,7 @@ describe("dark theme token contract", () => {
 
   it("keeps MarkdownRenderer color styling on semantic CSS classes", () => {
     const renderer = readProjectFile(
-      "src/components/content/MarkdownRenderer.tsx",
+      "src/components/content/MarkdownRendererClient.tsx",
     );
 
     expect(renderer).not.toContain("highlight.js/styles/github-dark.min.css");

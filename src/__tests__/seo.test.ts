@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -50,17 +50,15 @@ describe("SEO screenshot assets", () => {
     });
   });
 
-  it("keeps the Open Graph image route serverless-safe", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "src/app/opengraph-image.tsx"),
-      "utf8",
-    );
-
-    expect(source).toContain("getSeoScreenshotUrls");
-    expect(source).toContain('dynamic = "force-dynamic"');
-    expect(source).not.toContain("node:fs");
-    expect(source).not.toContain("node:path");
-    expect(source).not.toContain("process.cwd()");
-    expect(source).not.toContain("readFile(");
+  it("uses static screenshot assets instead of a dynamic Open Graph image route", () => {
+    expect(
+      existsSync(resolve(process.cwd(), "src/app/opengraph-image.tsx")),
+    ).toBe(false);
+    expect(
+      seo.getSeoOpenGraphImages("Neo Chat").map((image) => image.url),
+    ).toEqual([
+      "http://localhost:3000/desktop.png",
+      "http://localhost:3000/mobile.png",
+    ]);
   });
 });

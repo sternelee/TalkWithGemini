@@ -1,0 +1,18 @@
+{
+  "select": "Select…",
+  "noOptions": "No options",
+  "active": "Active",
+  "enable": "Enable",
+  "apiKey": "API Key",
+  "baseUrl": "Base URL",
+  "enterApiKey": "Enter API key…",
+  "apiBaseUrlPlaceholder": "https://api.example.com…",
+  "getKey": "Get Key",
+  "expandSettings": "Expand {name} settings",
+  "collapseSettings": "Collapse {name} settings",
+  "saveSecret": "Save secret",
+  "clearSecret": "Clear saved secret",
+  "secretSaved": "Encrypted key saved locally. Original value cannot be viewed.",
+  "secretNotSaved": "No local key saved.",
+  "replaceSecretPlaceholder": "Enter a new key to replace saved key…"
+}

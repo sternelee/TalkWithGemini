@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import en from "../i18n/locales/en.json";
-import zh from "../i18n/locales/zh.json";
+import en from "../i18n/locales/en";
+import zh from "../i18n/locales/zh";
 
 describe("skill and panel copy", () => {
   it("uses normalized sidebar section titles", () => {

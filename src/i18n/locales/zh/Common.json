@@ -1,0 +1,18 @@
+{
+  "select": "请选择…",
+  "noOptions": "无选项",
+  "active": "已启用",
+  "enable": "启用",
+  "apiKey": "API 密钥",
+  "baseUrl": "基础 URL",
+  "enterApiKey": "请输入 API 密钥…",
+  "apiBaseUrlPlaceholder": "https://api.example.com…",
+  "getKey": "获取密钥",
+  "expandSettings": "展开 {name} 设置",
+  "collapseSettings": "收起 {name} 设置",
+  "saveSecret": "保存密钥",
+  "clearSecret": "清除已保存密钥",
+  "secretSaved": "密钥已加密保存在本地，无法直接查看原文。",
+  "secretNotSaved": "尚未保存本地密钥。",
+  "replaceSecretPlaceholder": "输入新密钥以覆盖已保存密钥…"
+}

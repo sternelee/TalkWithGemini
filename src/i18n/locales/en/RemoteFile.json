@@ -1,0 +1,18 @@
+{
+  "title": "Remote File",
+  "close": "Close remote file dialog",
+  "fileTypeAria": "Remote file type: {type}",
+  "typeMenuLabel": "Remote file type",
+  "fileUrl": "File URL",
+  "placeholderImage": "https://example.com/image.png…",
+  "placeholderAudio": "https://example.com/audio.mp3…",
+  "placeholderText": "https://example.com/file.txt…",
+  "typeText": "Text",
+  "typeImage": "Image",
+  "typeAudio": "Audio",
+  "warnNoExtension": "Unable to detect file extension. Ensure the link points directly to a file.",
+  "warnUnsupported": "The link does not look like a supported {type} file. It might fail.",
+  "invalidUrl": "Invalid URL format.",
+  "cancel": "Cancel",
+  "attach": "Attach"
+}

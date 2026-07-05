@@ -1,0 +1,22 @@
+{
+  "editModel": "编辑模型",
+  "close": "关闭模型编辑器",
+  "modelId": "模型 ID",
+  "modelName": "模型名称",
+  "capabilities": "能力",
+  "saveChanges": "保存更改",
+  "toggleEnableAria": "启用 {label}",
+  "toggleDisableAria": "禁用 {label}",
+  "idCopied": "已复制模型 ID",
+  "idCopyFailed": "复制模型 ID 失败",
+  "copyId": "复制模型 ID",
+  "nameCopied": "已复制模型名称",
+  "nameCopyFailed": "复制模型名称失败",
+  "copyName": "复制模型名称",
+  "closeSuggestions": "关闭模型名称建议",
+  "capAttachment": "附件",
+  "capVision": "视觉",
+  "capAudio": "音频",
+  "capReasoning": "推理",
+  "capToolCall": "工具调用"
+}

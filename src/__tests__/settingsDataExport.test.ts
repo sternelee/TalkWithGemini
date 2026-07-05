@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import en from "../i18n/locales/en.json";
-import zh from "../i18n/locales/zh.json";
+import en from "../i18n/locales/en";
+import zh from "../i18n/locales/zh";
 
 describe("settings data export", () => {
   it("exposes local-first data export from system settings with bilingual copy", () => {

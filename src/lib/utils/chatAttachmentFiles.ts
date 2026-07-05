@@ -13,6 +13,53 @@ export interface ChatAttachmentFileSelection<
   rejectedBySize: T[];
 }
 
+type FileListLike = Iterable<File> | ArrayLike<File>;
+
+interface ClipboardItemLike {
+  kind?: string;
+  getAsFile?: () => File | null;
+}
+
+interface ClipboardDataLike {
+  items?: ArrayLike<ClipboardItemLike> | null;
+  files?: FileListLike | null;
+}
+
+interface DropDataLike {
+  files?: FileListLike | null;
+  items?: ArrayLike<ClipboardItemLike> | null;
+}
+
+function filesFromList(files: FileListLike | null | undefined): File[] {
+  return files ? Array.from(files) : [];
+}
+
+function filesFromItems(
+  items: ArrayLike<ClipboardItemLike> | null | undefined,
+): File[] {
+  if (!items) return [];
+
+  return Array.from(items).flatMap((item) => {
+    if (item.kind && item.kind !== "file") return [];
+    const file = item.getAsFile?.();
+    return file ? [file] : [];
+  });
+}
+
+export function extractChatAttachmentFilesFromDrop(
+  dataTransfer: DropDataLike,
+): File[] {
+  const files = filesFromList(dataTransfer.files);
+  return files.length > 0 ? files : filesFromItems(dataTransfer.items);
+}
+
+export function extractChatAttachmentFilesFromClipboard(
+  clipboardData: ClipboardDataLike,
+): File[] {
+  const itemFiles = filesFromItems(clipboardData.items);
+  return itemFiles.length > 0 ? itemFiles : filesFromList(clipboardData.files);
+}
+
 export function selectChatAttachmentFiles<
   T extends ChatAttachmentFileCandidate,
 >(existingCount: number, candidates: T[]): ChatAttachmentFileSelection<T> {

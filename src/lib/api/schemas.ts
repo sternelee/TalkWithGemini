@@ -120,6 +120,7 @@ export const SkillInvocationSchema = z
       .max(160)
       .regex(/^[A-Za-z0-9_-]+$/),
     title: z.string().min(1).max(160),
+    description: z.string().max(2_048).optional(),
     category: z.string().min(1).max(120),
     mode: z.enum(["manual", "auto"]),
   })

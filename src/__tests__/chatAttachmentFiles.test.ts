@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ATTACHMENT_LIMITS } from "../config/limits";
 import {
+  extractChatAttachmentFilesFromClipboard,
+  extractChatAttachmentFilesFromDrop,
   getChatAttachmentFileSelectionMessage,
   selectChatAttachmentFiles,
 } from "../lib/utils/chatAttachmentFiles";
@@ -46,5 +48,35 @@ describe("chat attachment file selection", () => {
 
     expect(message).toContain("Attachment limit reached");
     expect(message).toContain("Skipped 2 file(s)");
+  });
+
+  it("extracts dropped files from a file list", () => {
+    const first = new File(["a"], "a.txt", { type: "text/plain" });
+    const second = new File(["b"], "b.txt", { type: "text/plain" });
+
+    expect(
+      extractChatAttachmentFilesFromDrop({
+        files: [first, second],
+      }),
+    ).toEqual([first, second]);
+  });
+
+  it("extracts pasted files from clipboard file items", () => {
+    const image = new File(["image"], "image.png", { type: "image/png" });
+
+    expect(
+      extractChatAttachmentFilesFromClipboard({
+        items: [
+          {
+            kind: "string",
+            getAsFile: () => null,
+          },
+          {
+            kind: "file",
+            getAsFile: () => image,
+          },
+        ],
+      }),
+    ).toEqual([image]);
   });
 });

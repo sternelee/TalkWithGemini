@@ -15,28 +15,16 @@ import Sidebar from "@/components/layout/Sidebar";
 import MessageItem from "@/components/chat/MessageItem";
 import MessageInput, { MessageInputRef } from "@/components/chat/MessageInput";
 import AssistantHeader from "@/components/assistant/AssistantHeader";
-import AssistantList from "@/components/assistant/AssistantList";
 import Tooltip from "@/components/ui/Tooltip";
 import FollowUpQuestions from "@/components/chat/FollowUpQuestions";
-import {
-  ModelInfo,
-  generateChatTitle,
-  generateRelatedQuestions,
-  streamChatResponse,
-  prepareHistoryForLLM,
-  performBackgroundCompression,
-  performBackgroundMemoryExtraction,
-} from "@/services/api/chatService";
+import { Logo } from "@/components/ui/Icons";
+import type { ModelInfo } from "@/services/api/chatService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
 import {
   buildProviderRuntimeConfig,
   fetchWithByokRetry,
 } from "@/lib/byok/client";
-import {
-  getAgents,
-  getRandomAgents,
-  getAgentDetail,
-} from "@/services/api/agentService";
+import { getAgentDetail } from "@/services/api/agentService";
 import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
@@ -124,6 +112,7 @@ const SettingsPage = dynamic(
 
 const logChatAppError = logDevError;
 const EMPTY_MESSAGES: Message[] = [];
+const loadChatService = () => import("@/services/api/chatService");
 
 const ChatApp = () => {
   // --- Global Store ---
@@ -208,13 +197,17 @@ const ChatApp = () => {
       userMessage: Pick<Message, "id" | "content">,
       assistantMessage: Pick<Message, "id" | "content">,
     ) => {
-      performBackgroundMemoryExtraction({
-        sessionId,
-        userMessage,
-        assistantMessage,
-      }).catch((err) => {
-        logChatAppError("Memory extraction failed:", err);
-      });
+      loadChatService()
+        .then(({ performBackgroundMemoryExtraction }) =>
+          performBackgroundMemoryExtraction({
+            sessionId,
+            userMessage,
+            assistantMessage,
+          }),
+        )
+        .catch((err) => {
+          logChatAppError("Memory extraction failed:", err);
+        });
     },
     [],
   );
@@ -222,10 +215,6 @@ const ChatApp = () => {
   const [viewMode, setViewMode] = useState<ChatPanel>("chat");
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>("providers");
 
-  // Agents State
-  const [allAgents, setAllAgents] = useState<LobeAgent[]>([]);
-  const [recommendedAgents, setRecommendedAgents] = useState<LobeAgent[]>([]);
-  const [isRefreshingAgents, setIsRefreshingAgents] = useState(false);
   const [serverConfigResolved, setServerConfigResolved] = useState(false);
   const [serverModelBootstrapReady, setServerModelBootstrapReady] =
     useState(false);
@@ -251,9 +240,6 @@ const ChatApp = () => {
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const isNearMessageBottomRef = useRef(true);
   const messageInputRef = useRef<MessageInputRef>(null);
-  const refreshAgentsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const actionErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -392,6 +378,8 @@ const ChatApp = () => {
   const [welcomeState, setWelcomeState] = useState<
     "visible" | "exiting" | "hidden"
   >("hidden");
+  const messageInputVariant = welcomeState === "visible" ? "hero" : "default";
+  const shouldShowChatTitleBar = welcomeState === "hidden";
   const prevSessionIdRef = useRef(currentSessionId);
   const inputSessionRef = useRef(currentSessionId);
   const workspaceAttachmentHydratedSessionRef = useRef<string | null>(null);
@@ -680,29 +668,9 @@ const ChatApp = () => {
     }
   }, []);
 
-  // Load Agents
-  useEffect(() => {
-    let active = true;
-    const initAgents = async () => {
-      const agents = await getAgents(false, locale);
-      if (!active) return;
-      setAllAgents(agents);
-      setRecommendedAgents(getRandomAgents(agents, 4));
-    };
-    initAgents();
-
-    return () => {
-      active = false;
-    };
-  }, [locale]);
-
   useEffect(() => {
     return () => {
       assistantSelectRequestRef.current += 1;
-      if (refreshAgentsTimerRef.current) {
-        clearTimeout(refreshAgentsTimerRef.current);
-        refreshAgentsTimerRef.current = null;
-      }
       if (actionErrorTimerRef.current) {
         clearTimeout(actionErrorTimerRef.current);
         actionErrorTimerRef.current = null;
@@ -992,6 +960,8 @@ const ChatApp = () => {
         (m) => m.id !== userMessage.id,
       );
 
+      const { prepareHistoryForLLM, streamChatResponse } =
+        await loadChatService();
       const historyForLLM = await prepareHistoryForLLM(
         historyWithoutCurrentUser,
         freshSession.compression,
@@ -1141,7 +1111,10 @@ const ChatApp = () => {
 
       // 1. Follow-up Questions
       if (system.enableRelatedQuestions && updatedHistory.length > 0) {
-        generateRelatedQuestions(updatedHistory)
+        loadChatService()
+          .then(({ generateRelatedQuestions }) =>
+            generateRelatedQuestions(updatedHistory),
+          )
           .then((questions) => {
             const state = useChatStore.getState();
             const currentMessage =
@@ -1172,7 +1145,8 @@ const ChatApp = () => {
 
       // 2. Auto-Rename
       if (shouldAutoRename && updatedHistory.length > 0) {
-        generateChatTitle(updatedHistory)
+        loadChatService()
+          .then(({ generateChatTitle }) => generateChatTitle(updatedHistory))
           .then((newTitle) => {
             const currentSession = useChatStore
               .getState()
@@ -1195,11 +1169,14 @@ const ChatApp = () => {
         postGenerationSession &&
         updatedHistory.length > 0
       ) {
-        performBackgroundCompression(
-          updatedHistory,
-          postGenerationSession.compression,
-          selectedModel,
-        )
+        loadChatService()
+          .then(({ performBackgroundCompression }) =>
+            performBackgroundCompression(
+              updatedHistory,
+              postGenerationSession.compression,
+              selectedModel,
+            ),
+          )
           .then((newCompression) => {
             const currentSession = useChatStore
               .getState()
@@ -1362,6 +1339,8 @@ const ChatApp = () => {
         });
       }
       const historyBeforeUser = historyContext.slice(0, -1);
+      const { prepareHistoryForLLM, streamChatResponse } =
+        await loadChatService();
       const historyForApi = await prepareHistoryForLLM(
         historyBeforeUser,
         sessionMeta?.compression,
@@ -1554,18 +1533,6 @@ const ChatApp = () => {
     createSession(instruction, agent.meta.title);
   };
 
-  const handleRefreshAgents = () => {
-    if (refreshAgentsTimerRef.current) {
-      clearTimeout(refreshAgentsTimerRef.current);
-    }
-    setIsRefreshingAgents(true);
-    refreshAgentsTimerRef.current = setTimeout(() => {
-      refreshAgentsTimerRef.current = null;
-      setRecommendedAgents(getRandomAgents(allAgents, 4));
-      setIsRefreshingAgents(false);
-    }, 600);
-  };
-
   const handleEditMessage = (msgId: string, newContent: string) => {
     if (currentSessionId) {
       updateMessageContent(currentSessionId, msgId, newContent);
@@ -1657,6 +1624,8 @@ const ChatApp = () => {
       }
 
       const historyBeforeUser = sessionMessages.slice(0, msgIndex);
+      const { prepareHistoryForLLM, streamChatResponse } =
+        await loadChatService();
       const historyForApi = await prepareHistoryForLLM(
         historyBeforeUser,
         sessionMeta?.compression,
@@ -1893,6 +1862,7 @@ const ChatApp = () => {
 
     if (msgs.length === 0) return;
 
+    const { generateChatTitle } = await loadChatService();
     const newTitle = await generateChatTitle(msgs);
     const currentSession = useChatStore
       .getState()
@@ -2030,9 +2000,11 @@ const ChatApp = () => {
                 </Tooltip>
               </div>
 
-              <div className="absolute left-1/2 top-1/2 max-w-[50%] -translate-x-1/2 -translate-y-1/2 truncate text-center font-bold text-foreground">
-                {currentSession?.title || t("newChat")}
-              </div>
+              {shouldShowChatTitleBar && (
+                <div className="absolute left-1/2 top-1/2 max-w-[50%] -translate-x-1/2 -translate-y-1/2 truncate text-center font-bold text-foreground">
+                  {currentSession?.title || t("newChat")}
+                </div>
+              )}
 
               <div className="flex items-center justify-end min-w-10">
                 {!isSidebarOpen && (
@@ -2078,19 +2050,12 @@ const ChatApp = () => {
                 {/* Empty State */}
                 {(welcomeState === "visible" || welcomeState === "exiting") && (
                   <div
-                    className={`flex-1 flex flex-col justify-center items-center motion-safe:transition-[opacity,transform] motion-safe:duration-300 motion-safe:transform origin-center ${
+                    className={`emptyChatSurface flex-1 motion-safe:transition-[opacity,transform] motion-safe:duration-300 motion-safe:transform origin-center ${
                       welcomeState === "exiting"
                         ? "opacity-0 scale-95 pointer-events-none"
                         : "opacity-100 scale-100"
                     }`}
-                  >
-                    <AssistantList
-                      agents={recommendedAgents}
-                      onSelect={handleAssistantSelect}
-                      onRefresh={handleRefreshAgents}
-                      isRefreshing={isRefreshingAgents}
-                    />
-                  </div>
+                  />
                 )}
 
                 {/* Message Stream */}
@@ -2151,10 +2116,37 @@ const ChatApp = () => {
             <div className="w-full h-4 md:h-6"></div>
 
             {/* Input Area */}
-            <div className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pointer-events-none md:px-8 md:pb-6">
-              <div className="w-full max-w-3xl mx-auto pointer-events-auto">
+            <div
+              className={`absolute left-0 right-0 z-20 px-4 pointer-events-none md:px-8 motion-safe:transition-[bottom,padding-bottom] motion-safe:duration-300 ${
+                welcomeState === "visible"
+                  ? "bottom-[40vh] pb-0 md:bottom-[32vh] md:pb-0"
+                  : "bottom-0 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-6"
+              }`}
+            >
+              <div
+                className={`flex w-full mx-auto pointer-events-auto flex-col items-center motion-safe:transition-[max-width] motion-safe:duration-300 ${
+                  welcomeState === "visible" ? "max-w-2xl" : "max-w-3xl"
+                }`}
+              >
+                {(welcomeState === "visible" || welcomeState === "exiting") && (
+                  <div
+                    className={`mb-3 md:mb-5 flex items-center gap-3 text-center motion-safe:transition-[opacity,transform] motion-safe:duration-300 ${
+                      welcomeState === "exiting"
+                        ? "pointer-events-none opacity-0 scale-95"
+                        : "opacity-100 scale-100"
+                    }`}
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center md:h-11 md:w-11">
+                      <Logo className="h-10 w-10 md:h-11 md:w-11" />
+                    </div>
+                    <h1 className="neoChatWordmark bg-clip-text text-[1.75rem] font-bold leading-none tracking-[0.01em] text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)]">
+                      {t("productName")}
+                    </h1>
+                  </div>
+                )}
                 <MessageInput
                   ref={messageInputRef}
+                  variant={messageInputVariant}
                   onSend={handleSendMessage}
                   onStop={isGenerating ? handleStopGeneration : undefined}
                   disabled={isGenerating || availableModels.length === 0}

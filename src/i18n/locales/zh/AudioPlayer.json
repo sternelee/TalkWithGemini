@@ -1,0 +1,9 @@
+{
+  "audioAttachmentNamed": "音频附件 {fileName}",
+  "audioAttachment": "音频附件",
+  "playbackFailed": "音频播放失败，请重试。",
+  "pause": "暂停音频",
+  "play": "播放音频",
+  "seekNamed": "拖动 {fileName}",
+  "seek": "拖动音频"
+}

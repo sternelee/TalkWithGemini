@@ -1,0 +1,9 @@
+{
+  "audioAttachmentNamed": "Audio attachment {fileName}",
+  "audioAttachment": "Audio attachment",
+  "playbackFailed": "Audio playback failed. Try again.",
+  "pause": "Pause audio",
+  "play": "Play audio",
+  "seekNamed": "Seek {fileName}",
+  "seek": "Seek audio"
+}

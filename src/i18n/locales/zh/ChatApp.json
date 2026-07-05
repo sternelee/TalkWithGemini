@@ -1,0 +1,19 @@
+{
+  "errSaveChanges": "无法保存最新的对话更改，请重试。",
+  "errSaveStopped": "无法保存已停止的回复，请重试。",
+  "errRegenerate": "无法重新生成此回复，缺少之前的提问。",
+  "errDeleteMessage": "无法删除该消息，对话已恢复。",
+  "errDeleteChat": "无法删除该对话，请重试。",
+  "errDuplicateChat": "无法复制该对话，请重试。",
+  "errRetractMessage": "无法撤回该消息，对话已恢复。",
+  "errEditUserMessage": "无法编辑该消息，请重试。",
+  "errRenameChat": "无法重命名该对话，请重试。",
+  "skipToChat": "跳到对话区",
+  "closeSidebar": "关闭侧边栏",
+  "openSidebar": "打开侧边栏",
+  "closeSidebarAria": "关闭侧边栏",
+  "openSidebarAria": "打开侧边栏",
+  "productName": "Neo Chat",
+  "newChat": "新建对话",
+  "newChatAria": "新建对话"
+}

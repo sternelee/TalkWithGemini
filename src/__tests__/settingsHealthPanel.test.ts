@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import en from "../i18n/locales/en.json";
-import zh from "../i18n/locales/zh.json";
+import en from "../i18n/locales/en";
+import zh from "../i18n/locales/zh";
 import { describe, expect, it } from "vitest";
 
 describe("settings deployment health panel", () => {

@@ -11,6 +11,11 @@ export const LOCALE_COOKIE = "NEXT_LOCALE";
 const isSupported = (value: string): value is Locale =>
   (SUPPORTED_LOCALES as readonly string[]).includes(value);
 
+const localeLoaders: Record<Locale, () => Promise<Record<string, unknown>>> = {
+  en: async () => (await import("./locales/en")).default,
+  zh: async () => (await import("./locales/zh")).default,
+};
+
 /**
  * Resolve the active locale from a persisted cookie value, falling back to the
  * browser's `Accept-Language` header when the cookie is missing or set to
@@ -56,6 +61,6 @@ export default getRequestConfig(async () => {
 
   return {
     locale,
-    messages: (await import(`./locales/${locale}.json`)).default,
+    messages: await localeLoaders[locale](),
   };
 });

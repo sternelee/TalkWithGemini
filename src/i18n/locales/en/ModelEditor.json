@@ -1,0 +1,22 @@
+{
+  "editModel": "Edit Model",
+  "close": "Close model editor",
+  "modelId": "Model ID",
+  "modelName": "Model Name",
+  "capabilities": "Capabilities",
+  "saveChanges": "Save Changes",
+  "toggleEnableAria": "Enable {label}",
+  "toggleDisableAria": "Disable {label}",
+  "idCopied": "Model ID copied",
+  "idCopyFailed": "Copy model ID failed",
+  "copyId": "Copy model ID",
+  "nameCopied": "Model name copied",
+  "nameCopyFailed": "Copy model name failed",
+  "copyName": "Copy model name",
+  "closeSuggestions": "Close model name suggestions",
+  "capAttachment": "Attachment",
+  "capVision": "Vision",
+  "capAudio": "Audio",
+  "capReasoning": "Reasoning",
+  "capToolCall": "Tool Call"
+}

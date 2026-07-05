@@ -21,7 +21,6 @@ import {
   Globe,
   Lightbulb,
   Blocks,
-  LayoutDashboard,
   Link,
   ChevronDown,
   FileUp,
@@ -34,7 +33,7 @@ import {
 import { useTranslations } from "next-intl";
 import { Attachment } from "@/types";
 import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
-import { ModelInfo, streamGenerateContent } from "@/services/api/chatService";
+import type { ModelInfo } from "@/services/api/chatService";
 import Tooltip from "../ui/Tooltip";
 import RemoteFileModal from "../modals/RemoteFileModal";
 import KnowledgeSelectionModal from "../knowledge/KnowledgeSelectionModal";
@@ -68,6 +67,8 @@ import { parseModelString } from "@/lib/utils/model";
 import { stopMediaStreamTracks } from "@/lib/utils/mediaRecording";
 import { logDevError } from "@/lib/utils/devLogger";
 import {
+  extractChatAttachmentFilesFromClipboard,
+  extractChatAttachmentFilesFromDrop,
   getChatAttachmentFileSelectionMessage,
   selectChatAttachmentFiles,
 } from "@/lib/utils/chatAttachmentFiles";
@@ -89,6 +90,8 @@ import {
   truncateMiddle,
 } from "@/lib/utils/messageInputHelpers";
 
+type MessageInputVariant = "default" | "hero";
+
 interface MessageInputProps {
   onSend: (text: string, attachments: Attachment[]) => void;
   onStop?: () => void;
@@ -98,6 +101,7 @@ interface MessageInputProps {
   onSelectModel?: (model: string) => void;
   isSearchEnabled?: boolean;
   onToggleSearch?: () => void;
+  variant?: MessageInputVariant;
 }
 
 export interface MessageInputRef {
@@ -109,10 +113,12 @@ export interface MessageInputRef {
 const logInputError = logDevError;
 
 const iconButtonFocusClass =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
 
 const iconButtonBaseClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
+
+const loadChatService = () => import("@/services/api/chatService");
 
 const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   (
@@ -125,6 +131,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onSelectModel,
       isSearchEnabled = false,
       onToggleSearch,
+      variant = "default",
     },
     ref,
   ) => {
@@ -140,6 +147,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [isDragUploadActive, setIsDragUploadActive] = useState(false);
     const [isPolishingInput, setIsPolishingInput] = useState(false);
     const [isParsingAttachments, setIsParsingAttachments] = useState(false);
 
@@ -164,8 +172,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       updateVoiceSettings,
       search,
       rag,
-      system,
-      updateSystemSettings,
     } = useSettingsStore();
 
     const { providers } = useCoreSettingsStore();
@@ -174,13 +180,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const fileInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const textFallbackInputRef = useRef<HTMLInputElement>(null);
-    const knowledgeButtonRef = useRef<HTMLDivElement>(null);
     const messageInputId = useId();
     const errorMessageId = useId();
     const attachFileInputId = useId();
     const attachImageInputId = useId();
     const attachTextFallbackInputId = useId();
-    const knowledgeButtonId = useId();
+    const isHeroVariant = variant === "hero";
 
     // Browser Speech Rec
     const recognitionRef = useRef<any>(null);
@@ -195,6 +200,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const recordingSessionRef = useRef(0);
     const fileSelectionRunRef = useRef(0);
     const polishRunRef = useRef(0);
+    const dragDepthRef = useRef(0);
 
     const clearRecordingTimer = useCallback(() => {
       if (timerRef.current) {
@@ -564,6 +570,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
       try {
         let replacement = "";
+        const { streamGenerateContent } = await loadChatService();
         await streamGenerateContent(
           getTaskModel("promptOptimization"),
           polishTextContent(originalText),
@@ -864,86 +871,117 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     };
 
+    const fileToBase64 = (file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (error) => reject(error);
+      });
+    };
+
+    const canAttachFileNatively = (file: File): boolean => {
+      if (!isNativeMediaFile(file)) return false;
+      if (modelCapabilities.attachment) return true;
+      if (file.type.startsWith("image/")) return modelCapabilities.vision;
+      if (file.type.startsWith("audio/")) return modelCapabilities.audio;
+      return false;
+    };
+
+    const processSelectedFiles = async (
+      files: File[],
+      {
+        documentsOnly = false,
+        closeAttachMenu = false,
+      }: { documentsOnly?: boolean; closeAttachMenu?: boolean } = {},
+    ) => {
+      if (files.length === 0) return;
+
+      const runId = fileSelectionRunRef.current + 1;
+      fileSelectionRunRef.current = runId;
+      const selection = selectChatAttachmentFiles(attachments.length, files);
+      const selectionMessage = getChatAttachmentFileSelectionMessage(selection);
+      if (selectionMessage) setErrorMsg(selectionMessage);
+      const newAttachments: Attachment[] = [];
+
+      setIsParsingAttachments(true);
+      try {
+        for (const file of selection.accepted) {
+          const useNativeAttachment =
+            !documentsOnly && canAttachFileNatively(file);
+          try {
+            if (useNativeAttachment) {
+              const base64 = await fileToBase64(file);
+              if (
+                !isMountedRef.current ||
+                fileSelectionRunRef.current !== runId
+              ) {
+                return;
+              }
+              const base64Data = base64.split(",")[1];
+
+              newAttachments.push({
+                id: uuidv7(),
+                mimeType: file.type || "application/octet-stream",
+                data: base64Data,
+                fileName: file.name,
+              });
+              continue;
+            }
+
+            const result = await createChatDocumentAttachment(file, {
+              id: uuidv7(),
+              rag,
+            });
+            if (
+              !isMountedRef.current ||
+              fileSelectionRunRef.current !== runId
+            ) {
+              return;
+            }
+            newAttachments.push(result.attachment);
+          } catch (err) {
+            if (
+              !isMountedRef.current ||
+              fileSelectionRunRef.current !== runId
+            ) {
+              return;
+            }
+            logInputError(
+              useNativeAttachment
+                ? "Error reading file"
+                : "Error parsing document attachment",
+              err,
+            );
+            setErrorMsg(
+              t(
+                useNativeAttachment
+                  ? "failedToReadFile"
+                  : "failedToParseDocument",
+                { fileName: file.name },
+              ),
+            );
+          }
+        }
+
+        if (isMountedRef.current && fileSelectionRunRef.current === runId) {
+          appendAttachments(newAttachments);
+          if (closeAttachMenu) setShowAttachMenu(false);
+        }
+      } finally {
+        if (isMountedRef.current && fileSelectionRunRef.current === runId) {
+          setIsParsingAttachments(false);
+        }
+      }
+    };
+
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const inputEl = e.currentTarget;
       if (inputEl.files && inputEl.files.length > 0) {
-        const runId = fileSelectionRunRef.current + 1;
-        fileSelectionRunRef.current = runId;
-        const files = Array.from(inputEl.files) as File[];
-        const selection = selectChatAttachmentFiles(attachments.length, files);
-        const selectionMessage =
-          getChatAttachmentFileSelectionMessage(selection);
-        if (selectionMessage) setErrorMsg(selectionMessage);
-        const newAttachments: Attachment[] = [];
-
-        setIsParsingAttachments(true);
-        try {
-          for (const file of selection.accepted) {
-            try {
-              if (isNativeMediaFile(file)) {
-                const base64 = await fileToBase64(file);
-                if (
-                  !isMountedRef.current ||
-                  fileSelectionRunRef.current !== runId
-                ) {
-                  return;
-                }
-                const base64Data = base64.split(",")[1];
-
-                newAttachments.push({
-                  id: uuidv7(),
-                  mimeType: file.type || "application/octet-stream",
-                  data: base64Data,
-                  fileName: file.name,
-                });
-                continue;
-              }
-
-              const result = await createChatDocumentAttachment(file, {
-                id: uuidv7(),
-                rag,
-              });
-              if (
-                !isMountedRef.current ||
-                fileSelectionRunRef.current !== runId
-              ) {
-                return;
-              }
-              newAttachments.push(result.attachment);
-            } catch (err) {
-              if (
-                !isMountedRef.current ||
-                fileSelectionRunRef.current !== runId
-              ) {
-                return;
-              }
-              logInputError(
-                isNativeMediaFile(file)
-                  ? "Error reading file"
-                  : "Error parsing document attachment",
-                err,
-              );
-              setErrorMsg(
-                t(
-                  isNativeMediaFile(file)
-                    ? "failedToReadFile"
-                    : "failedToParseDocument",
-                  { fileName: file.name },
-                ),
-              );
-            }
-          }
-
-          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
-            appendAttachments(newAttachments);
-            if (inputEl.value) inputEl.value = ""; // Reset input
-            setShowAttachMenu(false);
-          }
-        } finally {
-          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
-            setIsParsingAttachments(false);
-          }
-        }
+        await processSelectedFiles(Array.from(inputEl.files) as File[], {
+          closeAttachMenu: true,
+        });
+        if (inputEl.value) inputEl.value = "";
       }
     };
 
@@ -952,71 +990,15 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     ) => {
       const inputEl = e.currentTarget;
       if (inputEl.files && inputEl.files.length > 0) {
-        const runId = fileSelectionRunRef.current + 1;
-        fileSelectionRunRef.current = runId;
-        const files = Array.from(inputEl.files) as File[];
-        const selection = selectChatAttachmentFiles(attachments.length, files);
-        const selectionMessage =
-          getChatAttachmentFileSelectionMessage(selection);
-        if (selectionMessage) setErrorMsg(selectionMessage);
-        const newAttachments: Attachment[] = [];
-
-        setIsParsingAttachments(true);
-        try {
-          for (const file of selection.accepted) {
-            try {
-              const result = await createChatDocumentAttachment(file, {
-                id: uuidv7(),
-                rag,
-              });
-              if (
-                !isMountedRef.current ||
-                fileSelectionRunRef.current !== runId
-              ) {
-                return;
-              }
-              newAttachments.push(result.attachment);
-            } catch (err) {
-              if (
-                !isMountedRef.current ||
-                fileSelectionRunRef.current !== runId
-              ) {
-                return;
-              }
-              logInputError("Error parsing text or document file", err);
-              setErrorMsg(t("failedToParseDocument", { fileName: file.name }));
-            }
-          }
-
-          if (
-            newAttachments.length > 0 &&
-            isMountedRef.current &&
-            fileSelectionRunRef.current === runId
-          ) {
-            appendAttachments(newAttachments);
-          }
-          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
-            if (inputEl.value) inputEl.value = "";
-          }
-        } finally {
-          if (isMountedRef.current && fileSelectionRunRef.current === runId) {
-            setIsParsingAttachments(false);
-          }
-        }
+        await processSelectedFiles(Array.from(inputEl.files) as File[], {
+          documentsOnly: true,
+        });
+        if (inputEl.value) inputEl.value = "";
       }
     };
 
     const removeAttachment = (id: string) => {
       setAttachments((prev) => prev.filter((a) => a.id !== id));
-    };
-
-    const fileToBase64 = (file: File): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (error) => reject(error);
-      });
     };
 
     const handleKBSelect = (selectedAttachments: Attachment[]) => {
@@ -1037,21 +1019,70 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       selectedModel ||
       t("noModelSelected");
     const hasKnowledgeAttachments = attachments.some(isKnowledgeAttachment);
-    const hasAttachmentMenu =
-      modelCapabilities.attachment || modelCapabilities.vision;
     const isInputBusy = disabled || isTranscribing || isParsingAttachments;
+    const textareaMinHeightClass = isHeroVariant
+      ? "min-h-[5em]"
+      : "min-h-[2em]";
+    const composerPaddingClass = isHeroVariant ? "mb-0 md:mb-18" : "";
 
-    const handleAttachClick = () => {
-      if (!hasAttachmentMenu) {
-        // Fallback Mode: Open restricted file picker immediately
-        textFallbackInputRef.current?.click();
+    const eventHasFiles = (types: DOMStringList | readonly string[]) =>
+      Array.from(types).includes("Files");
+
+    const handleComposerDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+      if (isInputBusy || !eventHasFiles(e.dataTransfer.types)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current += 1;
+      setIsDragUploadActive(true);
+    };
+
+    const handleComposerDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+      if (isInputBusy || !eventHasFiles(e.dataTransfer.types)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+      setIsDragUploadActive(true);
+    };
+
+    const handleComposerDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+      if (!eventHasFiles(e.dataTransfer.types)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) {
+        setIsDragUploadActive(false);
       }
+    };
+
+    const handleComposerDrop = (e: React.DragEvent<HTMLDivElement>) => {
+      if (isInputBusy) return;
+      const files = extractChatAttachmentFilesFromDrop(e.dataTransfer);
+      if (files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragDepthRef.current = 0;
+      setIsDragUploadActive(false);
+      void processSelectedFiles(files);
+    };
+
+    const handleComposerPaste = (
+      e: React.ClipboardEvent<HTMLTextAreaElement>,
+    ) => {
+      if (isInputBusy) return;
+      const files = extractChatAttachmentFilesFromClipboard(e.clipboardData);
+      if (files.length === 0) return;
+      e.preventDefault();
+      void processSelectedFiles(files);
     };
 
     return (
       <div
-        className="glass-shell relative flex flex-col rounded-xl border focus-within:ring-2 focus-within:ring-red-100/50 dark:focus-within:ring-red-900/30 focus-within:border-red-400/50 transition-[background-color,border-color,box-shadow] duration-200"
+        className={`glass-shell relative flex w-full flex-col rounded-xl border focus-within:ring-2 focus-within:ring-blue-100/50 dark:focus-within:ring-blue-900/30 focus-within:border-blue-400/50 transition-[background-color,border-color,box-shadow] duration-200 ${composerPaddingClass}`}
         aria-busy={isInputBusy}
+        onDragEnter={handleComposerDragEnter}
+        onDragOver={handleComposerDragOver}
+        onDragLeave={handleComposerDragLeave}
+        onDrop={handleComposerDrop}
       >
         {/* Modals */}
         {showRemoteModal && (
@@ -1104,6 +1135,21 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           </div>
         )}
 
+        {isDragUploadActive && (
+          <div
+            className="absolute inset-1 z-40 flex flex-col items-center justify-center rounded-lg border border-dashed border-brand/60 bg-white/85 text-center shadow-sm backdrop-blur-md dark:bg-background/85"
+            aria-hidden="true"
+          >
+            <FileUp size={20} className="mb-2 text-brand" />
+            <div className="text-sm font-semibold text-foreground">
+              {t("dropFilesTitle")}
+            </div>
+            <div className="mt-1 max-w-60 text-xs text-muted-foreground">
+              {t("dropFilesHint")}
+            </div>
+          </div>
+        )}
+
         {/* Attachments Preview Area */}
         <MessageInputAttachmentTray
           attachments={attachments}
@@ -1119,7 +1165,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           id={messageInputId}
           name="message"
           ref={textareaRef}
-          className="w-full px-4 pt-3 pb-1 bg-transparent focus:outline-0 text-gray-800 dark:text-foreground placeholder-gray-500 dark:placeholder:text-muted-foreground resize-none max-h-32 md:max-h-48 text-(length:--neo-font-size-base) min-h-12 overflow-y-auto overscroll-contain custom-scrollbar"
+          className={`w-full px-4 pt-3 bg-transparent focus:outline-0 text-gray-800 dark:text-foreground placeholder-gray-500 dark:placeholder:text-muted-foreground resize-none max-h-32 md:max-h-48 text-(length:--neo-font-size-base) leading-5 ${textareaMinHeightClass} overflow-y-auto overscroll-contain custom-scrollbar`}
           placeholder={
             isRecording
               ? voice.sttProvider === "browser"
@@ -1132,12 +1178,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handleComposerPaste}
           disabled={isInputBusy}
         />
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-2 p-1 md:p-2">
-          <div className="flex min-w-0 items-center gap-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-1 p-1 md:flex-nowrap md:gap-2 md:p-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
             {/* Attachment Menu */}
             <div className="relative">
               <input
@@ -1176,12 +1223,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
               />
 
               <DropdownMenu
-                open={showAttachMenu && hasAttachmentMenu}
+                open={showAttachMenu}
                 onOpenChange={(open) => {
                   setShowSkillSelect(false);
                   setShowPluginSelect(false);
                   setShowModelSelect(false);
-                  setShowAttachMenu(hasAttachmentMenu ? open : false);
+                  setShowAttachMenu(open);
                 }}
               >
                 <Tooltip content={t("attach")} position="top">
@@ -1189,8 +1236,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                     <button
                       type="button"
                       aria-label={t("attachFiles")}
-                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${showAttachMenu ? "bg-gray-100 dark:bg-accent text-gray-800 dark:text-foreground" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                      onClick={handleAttachClick}
+                      aria-pressed={hasKnowledgeAttachments}
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                        showAttachMenu || hasKnowledgeAttachments
+                          ? "bg-gray-100 dark:bg-accent text-gray-800 dark:text-foreground"
+                          : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
+                      }`}
                       disabled={isInputBusy}
                     >
                       <Paperclip size={16} aria-hidden="true" />
@@ -1198,21 +1249,23 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   </DropdownMenuTrigger>
                 </Tooltip>
 
-                <DropdownMenuContent side="top" align="start" className="w-44">
-                  {modelCapabilities.attachment && (
-                    <DropdownMenuItem
-                      onSelect={() => {
+                <DropdownMenuContent side="top" align="start" className="w-48">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      if (modelCapabilities.attachment) {
                         fileInputRef.current?.click();
-                      }}
-                    >
-                      <FileUp
-                        size={14}
-                        className="text-blue-500"
-                        aria-hidden="true"
-                      />
-                      <span>{t("uploadFile")}</span>
-                    </DropdownMenuItem>
-                  )}
+                      } else {
+                        textFallbackInputRef.current?.click();
+                      }
+                    }}
+                  >
+                    <FileUp
+                      size={14}
+                      className="text-blue-500"
+                      aria-hidden="true"
+                    />
+                    <span>{t("uploadFile")}</span>
+                  </DropdownMenuItem>
                   {modelCapabilities.vision && (
                     <DropdownMenuItem
                       onSelect={() => {
@@ -1227,6 +1280,25 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       <span>{t("uploadImage")}</span>
                     </DropdownMenuItem>
                   )}
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setShowKBModal(true);
+                    }}
+                    disabled={isInputBusy}
+                  >
+                    <Library
+                      size={14}
+                      className={
+                        hasKnowledgeAttachments
+                          ? "text-purple-500"
+                          : "text-muted-foreground"
+                      }
+                      aria-hidden="true"
+                    />
+                    <span>{t("knowledgeBase")}</span>
+                  </DropdownMenuItem>
 
                   {(modelCapabilities.attachment ||
                     modelCapabilities.vision ||
@@ -1249,34 +1321,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            </div>
-
-            {/* Knowledge Base Button */}
-            <div className="relative" ref={knowledgeButtonRef}>
-              <Tooltip content={t("knowledgeBase")} position="top">
-                <button
-                  id={knowledgeButtonId}
-                  type="button"
-                  aria-label={t("knowledgeBase")}
-                  aria-haspopup="dialog"
-                  aria-pressed={hasKnowledgeAttachments}
-                  className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                    hasKnowledgeAttachments
-                      ? "bg-purple-50 text-purple-600 hover:bg-purple-100 dark:bg-purple-900/20 dark:text-purple-300 dark:hover:bg-purple-900/30"
-                      : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
-                  }`}
-                  onClick={() => {
-                    setShowAttachMenu(false);
-                    setShowSkillSelect(false);
-                    setShowPluginSelect(false);
-                    setShowModelSelect(false);
-                    setShowKBModal(true);
-                  }}
-                  disabled={isInputBusy}
-                >
-                  <Library size={16} aria-hidden="true" />
-                </button>
-              </Tooltip>
             </div>
 
             {/* Skill Toggle Button */}
@@ -1391,7 +1435,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                             })
                           : t("plugins")
                       }
-                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePlugins.length > 0 ? "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
+                      className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${activePlugins.length > 0 ? "text-cyan-500 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
                       disabled={isInputBusy}
                     >
                       <Blocks size={16} aria-hidden="true" />
@@ -1421,7 +1465,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                             }
                             indicatorPosition="right"
                             indicator={
-                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-blue-500 bg-blue-500">
+                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-cyan-500 bg-cyan-500">
                                 <span className="h-1.5 w-1.5 rounded-full bg-white" />
                               </span>
                             }
@@ -1463,94 +1507,69 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
             {/* Reasoning Button (Conditional) */}
             {isReasoningSupported && (
-              <Tooltip
-                content={
-                  chatConfig.useReasoning
-                    ? t("disableReasoning")
-                    : t("enableReasoning")
-                }
-                position="top"
-              >
-                <button
-                  type="button"
-                  aria-label={
+              <div>
+                <Tooltip
+                  content={
                     chatConfig.useReasoning
-                      ? t("disableReasoningAria")
-                      : t("enableReasoningAria")
+                      ? t("disableReasoning")
+                      : t("enableReasoning")
                   }
-                  aria-pressed={chatConfig.useReasoning}
-                  className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${chatConfig.useReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                  onClick={() =>
-                    setChatConfig({ useReasoning: !chatConfig.useReasoning })
-                  }
-                  disabled={isInputBusy}
+                  position="top"
                 >
-                  <Lightbulb size={16} aria-hidden="true" />
-                </button>
-              </Tooltip>
+                  <button
+                    type="button"
+                    aria-label={
+                      chatConfig.useReasoning
+                        ? t("disableReasoningAria")
+                        : t("enableReasoningAria")
+                    }
+                    aria-pressed={chatConfig.useReasoning}
+                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${chatConfig.useReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
+                    onClick={() =>
+                      setChatConfig({ useReasoning: !chatConfig.useReasoning })
+                    }
+                    disabled={isInputBusy}
+                  >
+                    <Lightbulb size={16} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              </div>
             )}
 
             {/* Search Button */}
             {onToggleSearch && (
-              <Tooltip content={searchTooltip} position="top">
-                <button
-                  type="button"
-                  aria-label={
-                    !searchCompatibility.enabled
-                      ? getSearchUnavailableMessage(searchCompatibility.reason)
-                      : isSearchEnabled
-                        ? t("disableSearchAria")
-                        : t("enableSearchAria")
-                  }
-                  aria-disabled={!searchCompatibility.enabled || undefined}
-                  aria-pressed={isSearchEnabled && searchCompatibility.enabled}
-                  className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                    isSearchEnabled && searchCompatibility.enabled
-                      ? "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                      : !searchCompatibility.enabled
-                        ? "text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                        : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
-                  }`}
-                  onClick={handleSearchToggle}
-                  disabled={isInputBusy}
-                >
-                  <Globe size={16} aria-hidden="true" />
-                </button>
-              </Tooltip>
+              <div>
+                <Tooltip content={searchTooltip} position="top">
+                  <button
+                    type="button"
+                    aria-label={
+                      !searchCompatibility.enabled
+                        ? getSearchUnavailableMessage(
+                            searchCompatibility.reason,
+                          )
+                        : isSearchEnabled
+                          ? t("disableSearchAria")
+                          : t("enableSearchAria")
+                    }
+                    aria-disabled={!searchCompatibility.enabled || undefined}
+                    aria-pressed={
+                      isSearchEnabled && searchCompatibility.enabled
+                    }
+                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                      isSearchEnabled && searchCompatibility.enabled
+                        ? "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                        : !searchCompatibility.enabled
+                          ? "text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                          : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
+                    }`}
+                    onClick={handleSearchToggle}
+                    disabled={isInputBusy}
+                  >
+                    <Globe size={16} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              </div>
             )}
-
-            {/* HTML Visual Prompt Button */}
-            <Tooltip
-              content={
-                system.enableHtmlVisualPrompt
-                  ? t("htmlVisualPromptEnabled")
-                  : t("htmlVisualPromptDisabled")
-              }
-              position="top"
-            >
-              <button
-                type="button"
-                aria-label={
-                  system.enableHtmlVisualPrompt
-                    ? t("disableHtmlVisualPromptAria")
-                    : t("enableHtmlVisualPromptAria")
-                }
-                aria-pressed={system.enableHtmlVisualPrompt}
-                className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                  system.enableHtmlVisualPrompt
-                    ? "text-brand hover:bg-brand-soft dark:text-brand"
-                    : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
-                }`}
-                onClick={() =>
-                  updateSystemSettings({
-                    enableHtmlVisualPrompt: !system.enableHtmlVisualPrompt,
-                  })
-                }
-                disabled={isInputBusy}
-              >
-                <LayoutDashboard size={16} aria-hidden="true" />
-              </button>
-            </Tooltip>
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5">
@@ -1637,33 +1656,37 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             </div>
 
             {/* Text Polish Button */}
-            <Tooltip
-              content={isPolishingInput ? t("polishingText") : t("polishText")}
-              position="top"
-            >
-              <button
-                type="button"
-                aria-label={t("polishTextAria")}
-                aria-busy={isPolishingInput || undefined}
-                disabled={isInputBusy || isPolishingInput || !input.trim()}
-                className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
-                  input.trim()
-                    ? "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
-                    : "text-gray-300 dark:text-muted-foreground/40"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-                onClick={handlePolishInput}
+            <div>
+              <Tooltip
+                content={
+                  isPolishingInput ? t("polishingText") : t("polishText")
+                }
+                position="top"
               >
-                {isPolishingInput ? (
-                  <Loader2
-                    size={16}
-                    className="animate-spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <PencilSparkles size={16} aria-hidden="true" />
-                )}
-              </button>
-            </Tooltip>
+                <button
+                  type="button"
+                  aria-label={t("polishTextAria")}
+                  aria-busy={isPolishingInput || undefined}
+                  disabled={isInputBusy || isPolishingInput || !input.trim()}
+                  className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                    input.trim()
+                      ? "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
+                      : "text-gray-300 dark:text-muted-foreground/40"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                  onClick={handlePolishInput}
+                >
+                  {isPolishingInput ? (
+                    <Loader2
+                      size={16}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <PencilSparkles size={16} aria-hidden="true" />
+                  )}
+                </button>
+              </Tooltip>
+            </div>
 
             {/* Actions */}
             <div className="flex shrink-0 items-center gap-1">

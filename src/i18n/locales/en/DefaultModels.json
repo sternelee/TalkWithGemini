@@ -1,0 +1,17 @@
+{
+  "title": "Default Models",
+  "subtitle": "Configure the AI models used for background tasks and automated features.",
+  "defaultModelForAria": "Default model for {label}",
+  "conversationTitle": "Conversation Title",
+  "conversationTitleDesc": "Used to generate a concise title after the first exchange in a new chat.",
+  "relatedQuestions": "Related Questions",
+  "relatedQuestionsDesc": "Used to suggest follow-up questions after an AI response.",
+  "contextCompression": "Context Compression",
+  "contextCompressionDesc": "Used to summarize long conversations when token limits are approached.",
+  "promptOptimization": "Text Polishing",
+  "promptOptimizationDesc": "Use AI to improve text content.",
+  "ragQuery": "RAG Query Generation",
+  "ragQueryDesc": "Used to generate optimized search queries for the Knowledge Base.",
+  "memory": "Memory",
+  "memoryDesc": "Used to extract, consolidate, and maintain long-term local memories."
+}

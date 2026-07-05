@@ -1,0 +1,17 @@
+{
+  "title": "默认模型",
+  "subtitle": "配置用于后台任务和自动化功能的 AI 模型。",
+  "defaultModelForAria": "{label} 的默认模型",
+  "conversationTitle": "对话标题",
+  "conversationTitleDesc": "用于在新对话首轮交流后生成简洁标题。",
+  "relatedQuestions": "相关问题",
+  "relatedQuestionsDesc": "用于在 AI 回复后推荐追问问题。",
+  "contextCompression": "上下文压缩",
+  "contextCompressionDesc": "用于在接近 token 上限时概括较长的对话。",
+  "promptOptimization": "文本润色",
+  "promptOptimizationDesc": "使用 AI 对文本内容进行优化",
+  "ragQuery": "RAG 查询生成",
+  "ragQueryDesc": "用于为知识库生成优化后的检索查询。",
+  "memory": "记忆",
+  "memoryDesc": "用于提取、整理并维护长期本地记忆。"
+}

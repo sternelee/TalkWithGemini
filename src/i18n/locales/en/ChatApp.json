@@ -1,0 +1,19 @@
+{
+  "errSaveChanges": "Couldn't save the latest chat changes. Please try again.",
+  "errSaveStopped": "Couldn't save the stopped response. Please try again.",
+  "errRegenerate": "Couldn't regenerate this reply. Previous prompt is missing.",
+  "errDeleteMessage": "Couldn't delete the message. The chat was restored.",
+  "errDeleteChat": "Couldn't delete the chat. Please try again.",
+  "errDuplicateChat": "Couldn't duplicate the chat. Please try again.",
+  "errRetractMessage": "Couldn't retract the message. The chat was restored.",
+  "errEditUserMessage": "Couldn't edit that message. Please try again.",
+  "errRenameChat": "Couldn't rename the chat. Please try again.",
+  "skipToChat": "Skip to chat",
+  "closeSidebar": "Close Sidebar",
+  "openSidebar": "Open Sidebar",
+  "closeSidebarAria": "Close sidebar",
+  "openSidebarAria": "Open sidebar",
+  "productName": "Neo Chat",
+  "newChat": "New Chat",
+  "newChatAria": "New chat"
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Settings",
+  "close": "Close settings",
+  "sections": "Settings sections",
+  "tabProviders": "Model Providers",
+  "tabDefaults": "Default Models",
+  "tabSearch": "Search Service",
+  "tabRag": "RAG Service",
+  "tabVoice": "Voice & Speech",
+  "tabMemory": "Memory",
+  "tabHealth": "Deployment Health",
+  "tabSystem": "System Settings"
+}

@@ -15,6 +15,17 @@ describe("diagram prompt helpers", () => {
     expect(instruction).toContain("```mindmap");
     expect(instruction).toContain("Never use Mermaid to render mind maps");
     expect(instruction).toContain("Markdown list");
+    expect(instruction).toContain("one root topic");
+    expect(instruction).toContain("two-space indented child items");
+    expect(instruction).toContain("blank line");
+    expect(instruction).toContain("frontmatter");
+    expect(instruction).toContain("direction");
+    expect(instruction).toContain("theme");
+    expect(instruction).toContain("- [x]");
+    expect(instruction).toContain("> remark");
+    expect(instruction).toContain("collapsed");
+    expect(instruction).toContain("tags");
+    expect(instruction).toContain("cross-links");
     expect(instruction).not.toContain("<diagram-visual-polish>");
     expect(isDiagramPromptInstructionEnabled(instruction)).toBe(true);
     expect(isEnhancedDiagramPromptInstructionEnabled(instruction)).toBe(false);
@@ -43,6 +54,10 @@ describe("diagram prompt helpers", () => {
     expect(message).toContain("Mermaid");
     expect(message).toContain("mindmap");
     expect(message).toContain("Never use Mermaid for mindmap");
+    expect(message).toContain("Markdown list syntax");
+    expect(message).toContain("root topic");
+    expect(message).toContain("indented");
+    expect(message).toContain("Do not output Mermaid mindmap syntax");
     expect(message).toContain("enhanced visual style");
 
     expect(appendDiagramRequestInstructions(message, systemInstruction)).toBe(
