@@ -58,6 +58,10 @@ import {
   type MarkdownDiagramBlock,
 } from "@/lib/utils/markdownDiagrams";
 import {
+  normalizeMermaidSvg,
+  normalizeMindMapSvg,
+} from "@/lib/utils/diagramSvg";
+import {
   collectMarkdownImageGallery,
   getMarkdownImageGalleryIndex,
 } from "@/lib/utils/markdownImages";
@@ -301,17 +305,17 @@ function buildMermaidThemeVariables(theme: DiagramTheme, enhanced: boolean) {
 
   return {
     background: "transparent",
-    primaryColor: dark ? "#450a0a" : "#fef2f2",
-    primaryTextColor: dark ? "#fee2e2" : "#7f1d1d",
-    primaryBorderColor: dark ? "#991b1b" : "#fecaca",
-    lineColor: dark ? "#f87171" : "#dc2626",
-    secondaryColor: dark ? "#18181b" : "#fff1f2",
-    tertiaryColor: dark ? "#27272a" : "#f8fafc",
-    textColor: dark ? "#f8fafc" : "#0f172a",
-    nodeBorder: dark ? "#991b1b" : "#fecaca",
-    mainBkg: dark ? "#450a0a" : "#fef2f2",
-    clusterBkg: dark ? "#18181b" : "#f8fafc",
-    clusterBorder: dark ? "#3f3f46" : "#e2e8f0",
+    primaryColor: dark ? "#0f2a37" : "#ecfeff",
+    primaryTextColor: dark ? "#cffafe" : "#155e75",
+    primaryBorderColor: dark ? "#22d3ee" : "#67e8f9",
+    lineColor: dark ? "#34d399" : "#10b981",
+    secondaryColor: dark ? "#102b24" : "#ecfdf5",
+    tertiaryColor: dark ? "#221a3a" : "#f5f3ff",
+    textColor: dark ? "#f4f8ff" : "#0b1324",
+    nodeBorder: dark ? "#22d3ee" : "#06b6d4",
+    mainBkg: dark ? "#0f2a37" : "#ecfeff",
+    clusterBkg: dark ? "#0b1220" : "#f8fbff",
+    clusterBorder: dark ? "#2a4763" : "#a5f3fc",
     fontFamily: "ui-sans-serif, system-ui, sans-serif",
   };
 }
@@ -331,128 +335,6 @@ const DiagramStatus = ({
     {label}
   </div>
 );
-
-const SVG_ROOT_RE = /<svg\b([^>]*)>/i;
-const SVG_VIEWBOX_RE = /\sviewBox=(["'])(.*?)\1/i;
-
-const formatSvgSize = (value: number) =>
-  Number.isInteger(value) ? String(value) : String(Math.round(value * 1000) / 1000);
-
-function getSvgViewBoxSize(svg: string) {
-  const match = svg.match(SVG_VIEWBOX_RE);
-  if (!match) return null;
-  const values = (match[2] || "")
-    .trim()
-    .split(/[\s,]+/u)
-    .map((value) => Number.parseFloat(value));
-  const width = values[2];
-  const height = values[3];
-  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
-  if (width <= 0 || height <= 0) return null;
-  return { width: formatSvgSize(width), height: formatSvgSize(height) };
-}
-
-function hasSvgAttribute(attributes: string, name: string) {
-  return new RegExp(`\\s${name}=`, "iu").test(attributes);
-}
-
-function mergeSvgClass(attributes: string, className: string) {
-  if (!hasSvgAttribute(attributes, "class")) {
-    return `${attributes} class="${className}"`;
-  }
-
-  return attributes.replace(
-    /\sclass=(["'])(.*?)\1/iu,
-    (match, quote: string, value: string) => {
-      const classNames = value.split(/\s+/u).filter(Boolean);
-      if (classNames.includes(className)) return match;
-      return ` class=${quote}${[...classNames, className].join(" ")}${quote}`;
-    },
-  );
-}
-
-function ensureSvgAttribute(attributes: string, name: string, value: string) {
-  return hasSvgAttribute(attributes, name)
-    ? attributes
-    : `${attributes} ${name}="${value}"`;
-}
-
-function removeSvgMaxWidthStyle(attributes: string) {
-  return attributes.replace(
-    /\sstyle=(["'])(.*?)\1/iu,
-    (_match, quote: string, value: string) => {
-      const cleaned = value
-        .split(";")
-        .map((item) => item.trim())
-        .filter((item) => item && !/^max-width\s*:/iu.test(item))
-        .join("; ");
-      return cleaned ? ` style=${quote}${cleaned}${quote}` : "";
-    },
-  );
-}
-
-function stabilizeMermaidSvgSize(attributes: string, svg: string) {
-  const size = getSvgViewBoxSize(svg);
-  if (!size) return attributes;
-
-  let nextAttributes = attributes.replace(
-    /\swidth=(["'])100%\1/iu,
-    ` width="${size.width}"`,
-  );
-  if (!hasSvgAttribute(nextAttributes, "width")) {
-    nextAttributes = `${nextAttributes} width="${size.width}"`;
-  }
-  if (!hasSvgAttribute(nextAttributes, "height")) {
-    nextAttributes = `${nextAttributes} height="${size.height}"`;
-  }
-  return removeSvgMaxWidthStyle(nextAttributes);
-}
-
-function normalizeSvgRoot(
-  svg: string,
-  {
-    className,
-    exportType,
-    stabilizeSize = false,
-  }: { className: string; exportType: string; stabilizeSize?: boolean },
-) {
-  return svg.replace(SVG_ROOT_RE, (_match, attributes: string) => {
-    let nextAttributes = mergeSvgClass(attributes, className);
-    nextAttributes = ensureSvgAttribute(
-      nextAttributes,
-      "data-diagram-export",
-      exportType,
-    );
-    nextAttributes = ensureSvgAttribute(
-      nextAttributes,
-      "preserveAspectRatio",
-      "xMidYMid meet",
-    );
-    if (stabilizeSize) {
-      nextAttributes = stabilizeMermaidSvgSize(nextAttributes, svg);
-    }
-    return `<svg${nextAttributes}>`;
-  });
-}
-
-const normalizeMermaidSvg = (svg: string) =>
-  normalizeSvgRoot(svg, {
-    className: "markdown-mermaid-svg-snapshot",
-    exportType: "mermaid",
-    stabilizeSize: true,
-  });
-
-const normalizeMindMapSvg = (svg: string) =>
-  normalizeSvgRoot(
-    svg.replace(
-      /<rect width="100%" height="100%" fill="[^"]*"\/>/,
-      '<rect width="100%" height="100%" fill="transparent"/>',
-    ),
-    {
-      className: "markdown-mindmap-svg-snapshot",
-      exportType: "mindmap",
-    },
-  );
 
 const DiagramSvgView = ({
   svg,
@@ -668,9 +550,7 @@ const MermaidDiagram = ({
   }
 
   if (state.status === "ready") {
-    return (
-      <DiagramSvgView svg={state.svg} kind="mermaid" mode={mode} />
-    );
+    return <DiagramSvgView svg={state.svg} kind="mermaid" mode={mode} />;
   }
 
   if (state.status === "error") {
@@ -840,6 +720,7 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
     );
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const previousDialogFocusRef = React.useRef<HTMLElement | null>(null);
   const titleId = React.useId();
   const label =
     diagram.type === "mermaid" ? t("diagramMermaid") : t("diagramMindmap");
@@ -848,10 +729,7 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
     return () => clearTimeoutRef(copyResetTimerRef);
   }, []);
 
-  const renderableDiagram = getRenderableDiagram(
-    diagram,
-    lastRenderedDiagram,
-  );
+  const renderableDiagram = getRenderableDiagram(diagram, lastRenderedDiagram);
 
   React.useEffect(() => {
     if (!diagram.incomplete && diagram.content.trim()) {
@@ -864,7 +742,21 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
 
   React.useEffect(() => {
     if (!isFullscreen) return;
+    previousDialogFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus({ preventScroll: true });
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      if (previousDialogFocusRef.current?.isConnected) {
+        previousDialogFocusRef.current.focus({ preventScroll: true });
+      }
+      previousDialogFocusRef.current = null;
+    };
   }, [isFullscreen]);
 
   const scheduleCopyReset = () => {
@@ -885,6 +777,35 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
     if (event.key === "Escape") {
       event.preventDefault();
       setIsFullscreen(false);
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusableElements = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => element.getClientRects().length > 0);
+
+    if (focusableElements.length === 0) {
+      event.preventDefault();
+      dialog.focus({ preventScroll: true });
+      return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+      event.preventDefault();
+      lastElement.focus({ preventScroll: true });
+    } else if (!event.shiftKey && document.activeElement === lastElement) {
+      event.preventDefault();
+      firstElement.focus({ preventScroll: true });
     }
   };
 
@@ -922,11 +843,7 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
               aria-hidden="true"
             />
           ) : copyStatus === "error" ? (
-            <X
-              size={14}
-              className="markdown-icon-danger"
-              aria-hidden="true"
-            />
+            <X size={14} className="markdown-icon-danger" aria-hidden="true" />
           ) : (
             <Copy size={14} aria-hidden="true" />
           )}
@@ -955,9 +872,9 @@ const DiagramBlock = ({ diagram }: { diagram: MarkdownDiagramBlock }) => {
             aria-labelledby={titleId}
             tabIndex={-1}
             onKeyDown={handleDialogKeyDown}
-            className="markdown-preview-dialog fixed inset-0 z-2000 flex flex-col animate-in fade-in duration-200"
+            className="markdown-preview-dialog fixed inset-0 z-2000 flex flex-col motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
           >
-            <div className="markdown-preview-header flex items-center justify-between gap-3 px-4 py-3">
+            <div className="markdown-preview-header flex items-center justify-between gap-3 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
               <h2
                 id={titleId}
                 className="markdown-strong-text min-w-0 truncate text-sm font-semibold"
@@ -1067,9 +984,7 @@ const CitationHoverCard = ({
           </span>
         </div>
         {safeSourceUrl && (
-          <div className="markdown-citation-url truncate">
-            {safeSourceUrl}
-          </div>
+          <div className="markdown-citation-url truncate">{safeSourceUrl}</div>
         )}
         {source.content && (
           <div className="markdown-citation-content line-clamp-3">
@@ -1099,11 +1014,7 @@ const CitationLink = ({
 
   if (!href || !href.includes("#citation-")) {
     if (!safeHref) {
-      return (
-        <span className="markdown-muted-text break-all">
-          {children}
-        </span>
-      );
+      return <span className="markdown-muted-text break-all">{children}</span>;
     }
 
     return (
@@ -1125,9 +1036,7 @@ const CitationLink = ({
   if (!source) {
     // Fallback if source not found but format matches
     if (!safeHref) {
-      return (
-        <span className="markdown-link-text">{children}</span>
-      );
+      return <span className="markdown-link-text">{children}</span>;
     }
 
     return (
@@ -1142,12 +1051,13 @@ const CitationLink = ({
     );
   }
 
-  const handleMouseEnter = () => {
+  const showPreview = () => {
     if (ref.current) {
       const rect = ref.current.getBoundingClientRect();
       setHoverPos({ x: rect.left + rect.width / 2, y: rect.top });
     }
   };
+  const hidePreview = () => setHoverPos(null);
 
   const safeSourceUrl = getSafeWebHref(source.url);
 
@@ -1155,21 +1065,27 @@ const CitationLink = ({
     <span
       ref={ref}
       className="relative inline-block align-top ml-0.5 select-none"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setHoverPos(null)}
+      onMouseEnter={showPreview}
+      onMouseLeave={hidePreview}
+      onTouchStart={showPreview}
     >
       <a
         href={safeSourceUrl || undefined}
         target="_blank"
         rel="noopener noreferrer"
         aria-disabled={!safeSourceUrl}
+        onFocus={showPreview}
+        onBlur={hidePreview}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            hidePreview();
+          }
+        }}
         onClick={(event) => {
           if (!safeSourceUrl) event.preventDefault();
         }}
         className={`markdown-citation-badge ${
-          safeSourceUrl
-            ? "cursor-pointer"
-            : "markdown-citation-badge-disabled"
+          safeSourceUrl ? "cursor-pointer" : "markdown-citation-badge-disabled"
         }`}
       >
         {children}
@@ -1368,8 +1284,11 @@ const ArtifactBlock = ({
     clearTimeoutRef(scrollTimerRef);
     scrollTimerRef.current = setTimeout(() => {
       if (isMountedRef.current) {
+        const reduceMotion =
+          typeof window !== "undefined" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         consoleRef.current?.scrollIntoView({
-          behavior: "smooth",
+          behavior: reduceMotion ? "auto" : "smooth",
           block: "center",
         });
       }
@@ -1516,7 +1435,11 @@ const ArtifactBlock = ({
       fullscreenDialogRef.current?.focus({ preventScroll: true });
     }
 
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     return () => {
+      document.body.style.overflow = previousBodyOverflow;
       if (previousDialogFocusRef.current?.isConnected) {
         previousDialogFocusRef.current.focus({ preventScroll: true });
       }
@@ -1722,7 +1645,7 @@ const ArtifactBlock = ({
               setIsFullscreen(false),
             )
           }
-          className="markdown-preview-dialog fixed inset-0 z-1000 flex flex-col animate-in fade-in duration-200"
+          className="markdown-preview-dialog fixed inset-0 z-1000 flex flex-col motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
         >
           <h2 id={fullscreenTitleId} className="sr-only">
             {t("fullscreenCodeView")}
@@ -1754,7 +1677,7 @@ const ArtifactBlock = ({
               setIsPreviewOpen(false),
             )
           }
-          className="markdown-preview-dialog fixed inset-0 z-2000 flex flex-col animate-in fade-in duration-200"
+          className="markdown-preview-dialog fixed inset-0 z-2000 flex flex-col motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
         >
           <div className="markdown-preview-header flex items-center justify-between px-4 py-3">
             <h2
@@ -1868,6 +1791,9 @@ const MarkdownImage = ({
   src,
   alt,
   gallery = [],
+  width,
+  height,
+  style,
   ...props
 }: any & { gallery?: PreviewImageInput[] }) => {
   const t = useTranslations("Content");
@@ -1900,6 +1826,25 @@ const MarkdownImage = ({
         : null
       : safeSrc;
   const previewSrc = safeSrc && isOPFSUrl(safeSrc) ? safeSrc : resolvedSrc;
+  const numericWidth = Number(width);
+  const numericHeight = Number(height);
+  const hasExplicitAspectRatio =
+    Number.isFinite(numericWidth) &&
+    numericWidth > 0 &&
+    Number.isFinite(numericHeight) &&
+    numericHeight > 0;
+  const inputStyle =
+    style && typeof style === "object"
+      ? (style as React.CSSProperties)
+      : undefined;
+  const imageStyle: React.CSSProperties = {
+    ...(inputStyle || {}),
+    aspectRatio:
+      inputStyle?.aspectRatio ||
+      (hasExplicitAspectRatio
+        ? `${numericWidth} / ${numericHeight}`
+        : "auto 16 / 9"),
+  };
 
   if (!resolvedSrc) {
     return (
@@ -1911,9 +1856,12 @@ const MarkdownImage = ({
 
   const image = (
     <img
-      className="markdown-image block max-h-[50vh] max-w-full rounded-lg object-contain"
+      className="markdown-image block min-h-20 max-h-[50vh] max-w-full rounded-lg bg-muted/20 object-contain"
       src={resolvedSrc}
       alt={alt || ""}
+      width={hasExplicitAspectRatio ? numericWidth : undefined}
+      height={hasExplicitAspectRatio ? numericHeight : undefined}
+      style={imageStyle}
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
@@ -2028,7 +1976,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         return (
           <p
             {...safeProps}
-            className={mergeClassName("markdown-paragraph", safeProps.className)}
+            className={mergeClassName(
+              "markdown-paragraph",
+              safeProps.className,
+            )}
           />
         );
       },
@@ -2065,7 +2016,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         return (
           <th
             {...safeProps}
-            className={mergeClassName("markdown-table-head", safeProps.className)}
+            className={mergeClassName(
+              "markdown-table-head",
+              safeProps.className,
+            )}
           />
         );
       },
@@ -2074,7 +2028,10 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         return (
           <td
             {...safeProps}
-            className={mergeClassName("markdown-table-cell", safeProps.className)}
+            className={mergeClassName(
+              "markdown-table-cell",
+              safeProps.className,
+            )}
           />
         );
       },

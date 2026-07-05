@@ -13,3 +13,13 @@ link to GitHub releases when available.
   plugin development, and privacy/data handling.
 - Added required Prettier format checking to CI after a one-time repository
   formatting pass.
+- Added text-only Skills with localized public catalogs, install/uninstall,
+  local edits, custom skills, auto-selection, and workspace presets.
+- Expanded message rendering with safe inline HTML visual blocks, Mermaid and
+  mind map fullscreen rendering, richer source blocks, and visible search
+  failure states.
+- Hardened hosted and multi-instance deployment behavior with shared plugin
+  registry storage, document parse job secrets, deployment health checks,
+  trusted proxy guidance, and safer sandbox/document parsing limits.
+- Added local memory documentation and Mimo voice defaults alongside existing
+  search, RAG, document parsing, and BYOK configuration guidance.

@@ -996,6 +996,10 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
         p.description.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   }, [localizedInstalledPlugins, searchTerm]);
+  const installedPluginIdSet = useMemo(
+    () => new Set(installedPlugins.map((plugin) => plugin.id)),
+    [installedPlugins],
+  );
 
   // Filtering & Sorting Logic for Available
   const filteredPlugins = useMemo(() => {
@@ -1023,10 +1027,22 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   }, [availablePlugins, searchTerm, selectedCategories]);
 
   // Pagination Logic
-  const totalPages = Math.ceil(filteredPlugins.length / ITEMS_PER_PAGE);
-  const paginatedPlugins = filteredPlugins
-    .filter((p) => !installedPlugins.some((ip) => ip.id === p.id)) // Separate installed from available list
-    .slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const filteredAvailablePlugins = useMemo(
+    () =>
+      filteredPlugins.filter((plugin) => !installedPluginIdSet.has(plugin.id)),
+    [filteredPlugins, installedPluginIdSet],
+  );
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAvailablePlugins.length / ITEMS_PER_PAGE),
+  );
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(Math.max(page, 1), totalPages));
+  }, [totalPages]);
+  const paginatedPlugins = filteredAvailablePlugins.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE,
+  );
 
   const toggleCategory = (cat: string) => {
     setSelectedCategories((prev) =>

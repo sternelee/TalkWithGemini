@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getPluginFunctionNameCollisions,
   getEnabledPluginFunctions,
   resolvePluginFunction,
 } from "../lib/plugin/resolve";
@@ -55,5 +56,24 @@ describe("plugin function resolution", () => {
         (fn) => fn.name,
       ),
     ).toEqual(["search", "lookup"]);
+  });
+
+  it("reports duplicate enabled function names across active plugins", () => {
+    const first = makePlugin("first", ["search", "lookup"]);
+    const second = makePlugin("second", ["search"]);
+    const inactive = makePlugin("inactive", ["lookup"]);
+
+    expect(
+      getPluginFunctionNameCollisions(
+        [first, second, inactive],
+        ["first", "second"],
+        {},
+      ),
+    ).toEqual([
+      {
+        name: "search",
+        pluginIds: ["first", "second"],
+      },
+    ]);
   });
 });

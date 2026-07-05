@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { strToU8, zipSync } from "fflate";
 
 const safeFetchJsonMock = vi.hoisted(() => vi.fn());
 const safeFetchTextMock = vi.hoisted(() => vi.fn());
@@ -112,6 +113,40 @@ function createStoredZip(fileName: string, text: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+function createZipWithManyEntries(entryCount: number): ArrayBuffer {
+  const entries: Record<string, Uint8Array> = {
+    "full.md": strToU8("markdown"),
+  };
+  for (let index = 0; index < entryCount; index += 1) {
+    entries[`extra-${index}.txt`] = strToU8("");
+  }
+  return zipSync(entries).buffer;
+}
+
+function makeDocumentParseRequest(formData: FormData): Request {
+  return new Request("https://neo.test/api/doc-parse", {
+    method: "POST",
+    headers: {
+      "content-length": "2048",
+    },
+    body: formData,
+  });
+}
+
+function makeJobRequest(
+  jobId: string,
+  jobSecret: string | undefined,
+  init: RequestInit = {},
+): Request {
+  return new Request(`https://neo.test/api/doc-parse/jobs/${jobId}`, {
+    ...init,
+    headers: {
+      ...(jobSecret ? { "x-doc-parse-job-secret": jobSecret } : {}),
+      ...init.headers,
+    },
+  });
+}
+
 describe("document parse jobs", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -147,17 +182,13 @@ describe("document parse jobs", () => {
     formData.set("provider", "llamaParse");
 
     const { POST } = await import("../app/api/doc-parse/route");
-    const startResponse = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        body: formData,
-      }) as any,
-    );
+    const startResponse = await POST(makeDocumentParseRequest(formData) as any);
     const started = await startResponse.json();
 
     expect(startResponse.status).toBe(202);
     expect(started).toMatchObject({ status: "pending" });
     expect(started.jobId).toEqual(expect.any(String));
+    expect(started.jobSecret).toEqual(expect.any(String));
 
     const { getDocumentParseJob } = await import("../lib/api/docParseJobs");
     const storedJob = await getDocumentParseJob(started.jobId);
@@ -168,9 +199,7 @@ describe("document parse jobs", () => {
 
     const { GET } = await import("../app/api/doc-parse/jobs/[id]/route");
     const statusResponse = await GET(
-      new Request(
-        `https://neo.test/api/doc-parse/jobs/${started.jobId}`,
-      ) as any,
+      makeJobRequest(started.jobId, started.jobSecret) as any,
       { params: Promise.resolve({ id: started.jobId }) },
     );
 
@@ -198,6 +227,40 @@ describe("document parse jobs", () => {
       ),
     ).rejects.toThrow(/DOCUMENT_PARSE_JOB_STORE=upstash/i);
     expect(safeFetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects multipart document uploads without a trustworthy content length before parsing", async () => {
+    vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "doc.txt", { type: "text/plain" }),
+    );
+    formData.set("useDefault", "true");
+    formData.set("provider", "llamaParse");
+
+    const { POST } = await import("../app/api/doc-parse/route");
+    const response = await POST(
+      new Request("https://neo.test/api/doc-parse", {
+        method: "POST",
+        body: formData,
+      }) as any,
+    );
+
+    expect(response.status).toBe(411);
+    expect(await response.json()).toMatchObject({
+      code: "LENGTH_REQUIRED",
+    });
+    expect(safeFetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects Mineru result ZIP files with too many entries", async () => {
+    const { extractMarkdownFromMineruZip } =
+      await import("../lib/api/docParseJobs");
+
+    expect(() =>
+      extractMarkdownFromMineruZip(createZipWithManyEntries(250)),
+    ).toThrow(/too many files/i);
   });
 
   it("does not fall back to memory when the hosted document job store fails", async () => {
@@ -245,18 +308,13 @@ describe("document parse jobs", () => {
     formData.set("provider", "llamaParse");
 
     const { POST } = await import("../app/api/doc-parse/route");
-    const startResponse = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        body: formData,
-      }) as any,
-    );
+    const startResponse = await POST(makeDocumentParseRequest(formData) as any);
     const started = await startResponse.json();
     const { DELETE, GET } =
       await import("../app/api/doc-parse/jobs/[id]/route");
 
     const deleteResponse = await DELETE(
-      new Request(`https://neo.test/api/doc-parse/jobs/${started.jobId}`, {
+      makeJobRequest(started.jobId, started.jobSecret, {
         method: "DELETE",
       }) as any,
       { params: Promise.resolve({ id: started.jobId }) },
@@ -264,12 +322,89 @@ describe("document parse jobs", () => {
     expect(await deleteResponse.json()).toEqual({ ok: true, deleted: true });
 
     const getResponse = await GET(
-      new Request(
-        `https://neo.test/api/doc-parse/jobs/${started.jobId}`,
-      ) as any,
+      makeJobRequest(started.jobId, started.jobSecret) as any,
       { params: Promise.resolve({ id: started.jobId }) },
     );
     expect(getResponse.status).toBe(404);
+  });
+
+  it("requires the job secret to poll or cancel a parse job", async () => {
+    vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
+    safeFetchJsonMock.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      data: { id: "upstream-job" },
+    });
+
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "doc.txt", { type: "text/plain" }),
+    );
+    formData.set("useDefault", "true");
+    formData.set("provider", "llamaParse");
+
+    const { POST } = await import("../app/api/doc-parse/route");
+    const startResponse = await POST(makeDocumentParseRequest(formData) as any);
+    const started = await startResponse.json();
+    const { DELETE, GET } =
+      await import("../app/api/doc-parse/jobs/[id]/route");
+
+    const unauthorizedStatus = await GET(
+      makeJobRequest(started.jobId, undefined) as any,
+      { params: Promise.resolve({ id: started.jobId }) },
+    );
+    const unauthorizedDelete = await DELETE(
+      makeJobRequest(started.jobId, undefined, { method: "DELETE" }) as any,
+      { params: Promise.resolve({ id: started.jobId }) },
+    );
+
+    expect(unauthorizedStatus.status).toBe(403);
+    expect(await unauthorizedStatus.json()).toMatchObject({
+      code: "DOCUMENT_JOB_FORBIDDEN",
+    });
+    expect(unauthorizedDelete.status).toBe(403);
+    expect(await unauthorizedDelete.json()).toMatchObject({
+      code: "DOCUMENT_JOB_FORBIDDEN",
+    });
+  });
+
+  it("returns a sanitized API error when cancelling a parse job fails", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    const { setDocumentParseJobStoreForTesting } =
+      await import("../lib/api/docParseJobs");
+    setDocumentParseJobStoreForTesting({
+      create: async () => {
+        throw new Error("unused");
+      },
+      get: async () => ({
+        id: "job-1",
+        secret: "job-secret",
+        provider: "llamaParse",
+        mode: "llama-parse",
+        upstreamJobId: "upstream-job",
+        credential: { kind: "none" },
+        createdAt: Date.now(),
+      }),
+      delete: async () => {
+        throw new Error("redis token=secret unavailable");
+      },
+    });
+
+    const { DELETE } = await import("../app/api/doc-parse/jobs/[id]/route");
+    const response = await DELETE(
+      new Request("https://neo.test/api/doc-parse/jobs/job-1", {
+        method: "DELETE",
+        headers: { "x-doc-parse-job-secret": "job-secret" },
+      }) as any,
+      { params: Promise.resolve({ id: "job-1" }) },
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Document parse job cancellation failed",
+      code: "INTERNAL_ERROR",
+      statusCode: 500,
+    });
   });
 
   it("parses files through Mineru agent mode without a token", async () => {
@@ -316,15 +451,11 @@ describe("document parse jobs", () => {
     formData.set("provider", "mineru");
 
     const { POST } = await import("../app/api/doc-parse/route");
-    const startResponse = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        body: formData,
-      }) as any,
-    );
+    const startResponse = await POST(makeDocumentParseRequest(formData) as any);
     const started = await startResponse.json();
 
     expect(startResponse.status).toBe(202);
+    expect(started.jobSecret).toEqual(expect.any(String));
     expect(safeFetchJsonMock).toHaveBeenCalledWith(
       "https://mineru.net/api/v1/agent/parse/file",
       expect.objectContaining({
@@ -345,9 +476,7 @@ describe("document parse jobs", () => {
 
     const { GET } = await import("../app/api/doc-parse/jobs/[id]/route");
     const statusResponse = await GET(
-      new Request(
-        `https://neo.test/api/doc-parse/jobs/${started.jobId}`,
-      ) as any,
+      makeJobRequest(started.jobId, started.jobSecret) as any,
       { params: Promise.resolve({ id: started.jobId }) },
     );
 
@@ -406,13 +535,9 @@ describe("document parse jobs", () => {
     formData.set("provider", "mineru");
 
     const { POST } = await import("../app/api/doc-parse/route");
-    const startResponse = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        body: formData,
-      }) as any,
-    );
+    const startResponse = await POST(makeDocumentParseRequest(formData) as any);
     const started = await startResponse.json();
+    expect(started.jobSecret).toEqual(expect.any(String));
 
     expect(startResponse.status).toBe(202);
     expect(safeFetchJsonMock).toHaveBeenCalledWith(
@@ -428,9 +553,7 @@ describe("document parse jobs", () => {
 
     const { GET } = await import("../app/api/doc-parse/jobs/[id]/route");
     const statusResponse = await GET(
-      new Request(
-        `https://neo.test/api/doc-parse/jobs/${started.jobId}`,
-      ) as any,
+      makeJobRequest(started.jobId, started.jobSecret) as any,
       { params: Promise.resolve({ id: started.jobId }) },
     );
 
@@ -453,12 +576,7 @@ describe("document parse jobs", () => {
     formData.set("provider", "mineru");
 
     const { POST } = await import("../app/api/doc-parse/route");
-    const response = await POST(
-      new Request("https://neo.test/api/doc-parse", {
-        method: "POST",
-        body: formData,
-      }) as any,
-    );
+    const response = await POST(makeDocumentParseRequest(formData) as any);
 
     expect(response.status).toBe(413);
     expect(safeFetchJsonMock).not.toHaveBeenCalled();

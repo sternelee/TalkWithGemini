@@ -34,11 +34,11 @@ Stores frequently needed core settings such as theme, language, provider records
 
 ### `settingsStore`
 
-Stores broader app configuration, including system behavior, model metadata, search, RAG, voice, plugins, custom assistants, and other settings that are better suited to IndexedDB.
+Stores broader app configuration, including system behavior, model metadata, search, RAG, voice, plugins, installed/custom skills, skill catalog and definition caches, custom assistants, and other settings that are better suited to IndexedDB.
 
 ### `chatStore`
 
-Owns chat sessions, messages, workspaces, message branching, session export/import state, and session-level configuration. Message-heavy data is stored separately from session metadata where practical.
+Owns chat sessions, messages, workspaces, message branching, session export/import state, and session-level configuration. Session and workspace config can include active plugin and skill presets. Message-heavy data is stored separately from session metadata where practical.
 
 ### `knowledgeStore`
 
@@ -89,7 +89,7 @@ const theme = useStoreWithSSR(
 ## Persistence Strategy
 
 - Use `localStorage` for small core settings that must be available immediately.
-- Use IndexedDB for larger or structured data such as sessions, messages, plugins, assistants, knowledge metadata, and memories.
+- Use IndexedDB for larger or structured data such as sessions, messages, plugins, skills, assistants, knowledge metadata, and memories.
 - Use OPFS for uploaded file bytes and local file handles.
 - Do not persist transient UI state.
 - Use `partialize` to persist only fields that need to survive reloads.

@@ -16,6 +16,21 @@ describe("browser sandbox hardening", () => {
     expect(html).toContain("frame-src 'none'");
   });
 
+  it("runs user JavaScript in a terminable worker inside the sandbox", () => {
+    const html = createSandboxHtml("run-123", "https://app.example");
+
+    expect(html).toContain("worker-src blob:");
+    expect(html).toContain("new Worker(workerUrl)");
+    expect(html).toContain("worker.terminate()");
+    expect(html).toContain("JavaScript execution timed out.");
+    expect(html).toContain(
+      "Network access is disabled in the browser sandbox.",
+    );
+    expect(html).toContain("fetch");
+    expect(html).toContain("SharedWorker");
+    expect(html).toContain("XMLHttpRequest");
+  });
+
   it("rejects oversized JavaScript before touching the DOM", async () => {
     const result = await runInSandbox(
       "x".repeat(BROWSER_SANDBOX_LIMITS.maxCodeChars + 1),

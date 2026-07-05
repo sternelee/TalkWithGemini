@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  createApiErrorResponse,
+  readJsonRequestBody,
+} from "../../../../lib/api/middleware";
+import {
   ACCESS_ATTEMPTS_COOKIE,
   ACCESS_ERROR_CODES,
   ACCESS_LOCKOUT_SECONDS,
@@ -18,6 +22,7 @@ import {
   incrementRateLimitBucket,
   resetRateLimitBucket,
 } from "../../../../lib/security/rateLimitStore";
+import { getRateLimitClientIp } from "../../../../lib/security/requestGuards";
 
 const cookieOptions = {
   httpOnly: true,
@@ -31,18 +36,8 @@ function noStore(response: NextResponse): NextResponse {
   return response;
 }
 
-function getClientIp(request: NextRequest): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) return forwardedFor.split(",")[0]?.trim() || "unknown";
-  return (
-    request.headers.get("x-real-ip") ||
-    request.headers.get("cf-connecting-ip") ||
-    "unknown"
-  );
-}
-
 function getServerFailureKey(request: NextRequest): string {
-  return `access-password:${getClientIp(request)}`;
+  return `access-password:${getRateLimitClientIp(request)}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -83,9 +78,12 @@ export async function POST(request: NextRequest) {
 
   let password = "";
   try {
-    const body = (await request.json()) as { password?: unknown };
+    const body = (await readJsonRequestBody(request)) as { password?: unknown };
     password = typeof body.password === "string" ? body.password.trim() : "";
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && "statusCode" in error) {
+      return noStore(createApiErrorResponse(error));
+    }
     password = "";
   }
 

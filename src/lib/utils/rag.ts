@@ -19,6 +19,11 @@ import {
   parseKnowledgeFileAttachmentData,
 } from "./knowledgeAttachments";
 
+type IndexedKnowledgeFileSelector = {
+  collectionId: string;
+  fileId: string;
+};
+
 /**
  * Citation instructions for Knowledge Base usage
  */
@@ -41,6 +46,76 @@ If the user asks about a specific topic and the information is found in a source
 [^1]: Title of Source
 `;
 
+function getSourceMetadataString(source: Source, key: string): string {
+  const value = source.metadata?.[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return "";
+}
+
+function getKnowledgeFile(
+  attachment: Attachment,
+  knowledgeCollections: any[],
+): any | null {
+  const fileData = parseKnowledgeFileAttachmentData(attachment);
+  if (!fileData) return null;
+
+  const collection = knowledgeCollections.find(
+    (item) => item.id === fileData.collectionId,
+  );
+  return (
+    collection?.files?.find((item: any) => item.id === fileData.fileId) || null
+  );
+}
+
+export function isIndexedKnowledgeFileAttachment(
+  attachment: Attachment,
+  knowledgeCollections: any[],
+): boolean {
+  const file = getKnowledgeFile(attachment, knowledgeCollections);
+  return file?.status === "indexed" && typeof file.ragId === "string";
+}
+
+function getIndexedKnowledgeFileSelectors(
+  kbAttachments: Attachment[],
+  knowledgeCollections: any[],
+): IndexedKnowledgeFileSelector[] {
+  const selectors: IndexedKnowledgeFileSelector[] = [];
+
+  for (const attachment of kbAttachments) {
+    if (!isKnowledgeFileAttachment(attachment)) continue;
+    const fileData = parseKnowledgeFileAttachmentData(attachment);
+    if (!fileData) continue;
+
+    const file = getKnowledgeFile(attachment, knowledgeCollections);
+    if (file?.status !== "indexed" || typeof file.ragId !== "string") {
+      continue;
+    }
+
+    selectors.push({
+      collectionId: fileData.collectionId,
+      fileId: file.ragId,
+    });
+  }
+
+  return selectors;
+}
+
+function sourceMatchesSelectedRagScope(
+  source: Source,
+  collectionIds: Set<string>,
+  fileIdsByCollectionId: Map<string, Set<string>>,
+): boolean {
+  const collectionId = getSourceMetadataString(source, "collectionId");
+  if (collectionIds.has(collectionId)) return true;
+
+  const selectedFileIds = fileIdsByCollectionId.get(collectionId);
+  if (!selectedFileIds) return false;
+
+  const fileId = getSourceMetadataString(source, "fileId");
+  return selectedFileIds.has(fileId);
+}
+
 /**
  * Process RAG (Retrieval-Augmented Generation) attachments
  */
@@ -56,6 +131,7 @@ export const processRAGAttachments = async (
     serverVectorStoreAvailable?: boolean;
   },
   supportAttachment: boolean,
+  knowledgeCollections: any[] = [],
 ): Promise<{
   convertedContent: string;
   finalAttachments: Attachment[];
@@ -74,29 +150,69 @@ export const processRAGAttachments = async (
 
   if (isRagServiceEnabled) {
     try {
+      const selectedCollectionIds = new Set(
+        kbAttachments
+          .filter(isKnowledgeCollectionAttachment)
+          .map((a) => a.data)
+          .filter((id): id is string => Boolean(id)),
+      );
+      const indexedFileSelectors = getIndexedKnowledgeFileSelectors(
+        kbAttachments,
+        knowledgeCollections,
+      );
+      const indexedFileIdsByCollectionId = new Map<string, Set<string>>();
+      for (const selector of indexedFileSelectors) {
+        if (!indexedFileIdsByCollectionId.has(selector.collectionId)) {
+          indexedFileIdsByCollectionId.set(selector.collectionId, new Set());
+        }
+        indexedFileIdsByCollectionId
+          .get(selector.collectionId)
+          ?.add(selector.fileId);
+      }
+      const queryCollectionIds = new Set([
+        ...selectedCollectionIds,
+        ...indexedFileSelectors.map((selector) => selector.collectionId),
+      ]);
+
+      if (queryCollectionIds.size === 0) {
+        return { convertedContent, finalAttachments, ragSources };
+      }
+
       // 1. Generate search queries based on user input
       const queries = await generateRAGSearchQueries(text);
 
       if (queries && queries.length > 0) {
         // 2. Perform the search across all selected collections
-        const collectionIds = Array.from(
-          new Set(
-            kbAttachments
-              .filter(isKnowledgeCollectionAttachment)
-              .map((a) => a.data)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        );
+        const collectionIds = Array.from(queryCollectionIds);
 
         const searchPromises: Promise<Source[]>[] = [];
         for (const query of queries) {
           for (const id of collectionIds) {
-            searchPromises.push(queryRAG(query, id));
+            searchPromises.push(
+              queryRAG(query, id).then((sources) =>
+                sources.map((source) => ({
+                  ...source,
+                  metadata: {
+                    ...(source.metadata || {}),
+                    collectionId:
+                      getSourceMetadataString(source, "collectionId") || id,
+                  },
+                })),
+              ),
+            );
           }
         }
 
         const resultsParts = await Promise.all(searchPromises);
-        const allResults = resultsParts.flat();
+        const allResults = resultsParts
+          .flat()
+          .filter((source) =>
+            sourceMatchesSelectedRagScope(
+              source,
+              selectedCollectionIds,
+              indexedFileIdsByCollectionId,
+            ),
+          );
 
         // Deduplicate results based on content
         const uniqueResults = new Map<string, Source>();

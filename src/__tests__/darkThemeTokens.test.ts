@@ -48,9 +48,7 @@ describe("dark theme token contract", () => {
   it("keeps diagram render containers borderless in normal and enhanced modes", () => {
     const globals = readProjectFile("src/app/globals.css");
 
-    expect(globals).toMatch(
-      /\.markdown-diagram-body\s*\{[^}]*border:\s*0;/u,
-    );
+    expect(globals).toMatch(/\.markdown-diagram-body\s*\{[^}]*border:\s*0;/u);
     expect(globals).not.toMatch(
       /\.markdown-diagram-body\s*\{[^}]*border:\s*1px/u,
     );
@@ -88,13 +86,14 @@ describe("dark theme token contract", () => {
     const renderer = readProjectFile(
       "src/components/content/MarkdownRenderer.tsx",
     );
+    const diagramSvg = readProjectFile("src/lib/utils/diagramSvg.ts");
 
     expect(renderer).toContain("react-zoom-pan-pinch");
     expect(renderer).toContain("TransformWrapper");
     expect(renderer).toContain("TransformComponent");
     expect(renderer).toContain("DiagramSvgView");
     expect(renderer).toContain("normalizeMermaidSvg");
-    expect(renderer).toContain('preserveAspectRatio",');
+    expect(diagramSvg).toContain('preserveAspectRatio",');
     expect(renderer).toContain("centerView(1, 0)");
     expect(renderer).toContain("limitToBounds={false}");
     expect(renderer).toContain("exportMindMapToSVG");
@@ -124,48 +123,82 @@ describe("dark theme token contract", () => {
     );
   });
 
-  it("anchors Markdown, diagram, and HTML visual colors to fixed Tailwind scales", () => {
+  it("anchors Markdown, diagram, and HTML visual colors to the neon diagram palette", () => {
     const globals = readProjectFile("src/app/globals.css");
     const renderer = readProjectFile(
       "src/components/content/MarkdownRenderer.tsx",
     );
 
     for (const token of [
-      "--html-visual-surface: #f8fafc;",
-      "--html-visual-foreground: #0f172a;",
-      "--html-visual-border: #e2e8f0;",
-      "--html-visual-subtle-border: #e5e7eb;",
-      "--html-visual-info-surface: #eff6ff;",
-      "--html-visual-info-foreground: #1d4ed8;",
-      "--html-visual-info-border: #bfdbfe;",
-      "--html-visual-knowledge-surface: #faf5ff;",
-      "--html-visual-knowledge-foreground: #7e22ce;",
-      "--html-visual-success-surface: #f0fdf4;",
-      "--html-visual-success-foreground: #15803d;",
+      "--html-visual-surface: #f6fbff;",
+      "--html-visual-foreground: #0b1324;",
+      "--html-visual-border: #c7d8ea;",
+      "--html-visual-subtle-border: #dce8f5;",
+      "--html-visual-info-surface: #ecfeff;",
+      "--html-visual-info-foreground: #155e75;",
+      "--html-visual-info-border: #a5f3fc;",
+      "--html-visual-knowledge-surface: #f5f3ff;",
+      "--html-visual-knowledge-foreground: #6d28d9;",
+      "--html-visual-success-surface: #ecfdf5;",
+      "--html-visual-success-foreground: #047857;",
       "--html-visual-warning-surface: #fffbeb;",
-      "--html-visual-warning-foreground: #b45309;",
+      "--html-visual-warning-foreground: #92400e;",
       "--html-visual-danger-surface: #fff1f2;",
       "--html-visual-danger-foreground: #be123c;",
-      "--diagram-root-bg: #fef2f2;",
-      "--diagram-root-text: #7f1d1d;",
-      "--diagram-line: #ef4444;",
-      "--html-visual-surface: #18181b;",
-      "--html-visual-foreground: #f8fafc;",
-      "--html-visual-info-surface: rgb(30 58 138 / 0.24);",
-      "--html-visual-info-foreground: #bfdbfe;",
-      "--html-visual-knowledge-surface: rgb(88 28 135 / 0.24);",
-      "--html-visual-knowledge-foreground: #e9d5ff;",
-      "--html-visual-success-surface: rgb(20 83 45 / 0.22);",
-      "--html-visual-warning-surface: rgb(120 53 15 / 0.24);",
-      "--html-visual-danger-surface: rgb(136 19 55 / 0.26);",
-      "--diagram-root-bg: #450a0a;",
-      "--diagram-root-text: #fee2e2;",
+      "--diagram-accent: #06b6d4;",
+      "--diagram-root-bg: #ecfeff;",
+      "--diagram-root-text: #155e75;",
+      "--diagram-line: #10b981;",
+      "--markdown-link: #0891b2;",
+      "--markdown-code-bg: #f5f3ff;",
+      "--markdown-code-text: #6d28d9;",
+      "--markdown-citation-link: #6b7280;",
+      "--markdown-citation-link-hover: #374151;",
+      "--markdown-citation-surface: #f3f4f6;",
+      "--markdown-soft-surface: rgb(249 250 251 / 0.9);",
+      "--markdown-table-head: #f9fafb;",
+      "--markdown-table-head-text: #374151;",
+      "--markdown-codeblock-surface: #fbfbfc;",
+      "--markdown-codeblock-header: #f9fafb;",
+      "--markdown-surface-muted: #f9fafb;",
+      "--markdown-surface-hover: #f3f4f6;",
+      "--html-visual-surface: #0b1220;",
+      "--html-visual-foreground: #f4f8ff;",
+      "--html-visual-border: #1f3a4d;",
+      "--html-visual-info-surface: rgb(8 145 178 / 0.18);",
+      "--html-visual-info-foreground: #a5f3fc;",
+      "--html-visual-knowledge-surface: rgb(124 58 237 / 0.18);",
+      "--html-visual-knowledge-foreground: #ddd6fe;",
+      "--html-visual-success-surface: rgb(16 185 129 / 0.18);",
+      "--html-visual-warning-surface: rgb(245 158 11 / 0.18);",
+      "--html-visual-danger-surface: rgb(244 63 94 / 0.18);",
+      "--diagram-root-bg: rgb(8 145 178 / 0.24);",
+      "--diagram-root-text: #cffafe;",
+      "--markdown-link: #67e8f9;",
+      "--markdown-code-bg: rgb(124 58 237 / 0.18);",
+      "--markdown-code-text: #ddd6fe;",
+      "--markdown-citation-link: #9ca3af;",
+      "--markdown-citation-link-hover: #d1d5db;",
+      "--markdown-citation-surface: rgb(31 41 55 / 0.72);",
+      "--markdown-soft-surface: rgb(17 24 39 / 0.74);",
+      "--markdown-table-head: rgb(17 24 39 / 0.92);",
+      "--markdown-table-head-text: #cbd5e1;",
+      "--markdown-codeblock-header: #111827;",
+      "--markdown-surface-muted: #111827;",
+      "--markdown-surface-hover: #1f2937;",
     ]) {
       expect(globals).toContain(token);
     }
 
-    expect(renderer).toContain('primaryColor: dark ? "#450a0a" : "#fef2f2"');
-    expect(renderer).toContain('lineColor: dark ? "#f87171" : "#dc2626"');
+    expect(renderer).toContain('primaryColor: dark ? "#0f2a37" : "#ecfeff"');
+    expect(renderer).toContain(
+      'primaryBorderColor: dark ? "#22d3ee" : "#67e8f9"',
+    );
+    expect(renderer).toContain('lineColor: dark ? "#34d399" : "#10b981"');
+    expect(renderer).toContain('tertiaryColor: dark ? "#221a3a" : "#f5f3ff"');
+    expect(globals).toMatch(
+      /\.markdown-body :where\(th\)\s*\{[^}]*color:\s*var\(--markdown-table-head-text\);[^}]*font-weight:\s*700;/u,
+    );
   });
 
   it("keeps MarkdownRenderer color styling on semantic CSS classes", () => {

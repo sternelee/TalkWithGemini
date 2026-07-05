@@ -2,6 +2,7 @@ import "server-only";
 
 import { strFromU8, unzipSync } from "fflate";
 import { v7 as uuidv7 } from "uuid";
+import { DOCUMENT_LIMITS } from "@/config/limits";
 import type { DocumentParseProvider } from "@/types";
 import type { EncryptedSecretEnvelope } from "@/lib/byok/shared";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
@@ -19,11 +20,13 @@ const LLAMA_PARSE_URL = "https://api.cloud.llamaindex.ai/api/v2/parse";
 const MINERU_AGENT_URL = "https://mineru.net/api/v1/agent";
 const MINERU_PRECISE_URL = "https://mineru.net/api/v4";
 const JOB_TTL_MS = 10 * 60 * 1000;
+const MINERU_FULL_MARKDOWN_PATH_RE = /(?:^|\/)full\.md$/u;
 
 export type DocumentParseJobStatus = "pending" | "completed" | "failed";
 
 export interface DocumentParseJob {
   id: string;
+  secret: string;
   provider: DocumentParseProvider;
   mode?: "llama-parse" | "mineru-agent" | "mineru-precise";
   upstreamJobId: string;
@@ -207,6 +210,13 @@ function getJobProvider(job: DocumentParseJob): DocumentParseProvider {
   return job.provider || "llamaParse";
 }
 
+export function isDocumentParseJobSecretValid(
+  job: DocumentParseJob,
+  secret: string | null | undefined,
+): boolean {
+  return Boolean(job.secret && secret && job.secret === secret);
+}
+
 async function resolveJobToken(job: DocumentParseJob): Promise<string> {
   const provider = getJobProvider(job);
   if (job.credential.kind === "none") return "";
@@ -346,6 +356,7 @@ async function createLlamaParseJob(
 
   return {
     id: uuidv7(),
+    secret: uuidv7(),
     provider: "llamaParse",
     mode: "llama-parse",
     upstreamJobId: data.id,
@@ -401,6 +412,7 @@ async function createMineruAgentJob(
 
   return {
     id: uuidv7(),
+    secret: uuidv7(),
     provider: "mineru",
     mode: "mineru-agent",
     upstreamJobId: taskId,
@@ -461,6 +473,7 @@ async function createMineruPreciseJob(
 
   return {
     id: uuidv7(),
+    secret: uuidv7(),
     provider: "mineru",
     mode: "mineru-precise",
     upstreamJobId: batchId,
@@ -712,14 +725,51 @@ async function downloadMarkdown(url: string): Promise<string> {
 }
 
 export function extractMarkdownFromMineruZip(arrayBuffer: ArrayBuffer): string {
-  const files = unzipSync(new Uint8Array(arrayBuffer));
-  const entry = Object.entries(files).find(
-    ([name]) => name === "full.md" || name.endsWith("/full.md"),
+  const zipBytes = new Uint8Array(arrayBuffer);
+  let entryCount = 0;
+  let totalDecompressedBytes = 0;
+  const files = unzipSync(zipBytes, {
+    filter(file) {
+      entryCount += 1;
+      if (entryCount > DOCUMENT_LIMITS.maxMineruZipEntries) {
+        throw new Error("Mineru result ZIP contains too many files");
+      }
+
+      totalDecompressedBytes += file.originalSize;
+      if (
+        totalDecompressedBytes > DOCUMENT_LIMITS.maxMineruZipDecompressedBytes
+      ) {
+        throw new Error("Mineru result ZIP expands to too much data");
+      }
+
+      if (
+        file.originalSize >
+        DOCUMENT_LIMITS.maxMineruZipCompressionRatio * Math.max(1, file.size)
+      ) {
+        throw new Error("Mineru result ZIP compression ratio is too high");
+      }
+
+      if (
+        MINERU_FULL_MARKDOWN_PATH_RE.test(file.name) &&
+        file.originalSize > DOCUMENT_LIMITS.maxMineruFullMarkdownBytes
+      ) {
+        throw new Error("Mineru result markdown is too large");
+      }
+
+      return MINERU_FULL_MARKDOWN_PATH_RE.test(file.name);
+    },
+  });
+  const entry = Object.entries(files).find(([name]) =>
+    MINERU_FULL_MARKDOWN_PATH_RE.test(name),
   );
   if (!entry) {
     throw new Error("Mineru result ZIP did not contain full.md");
   }
-  return strFromU8(entry[1]);
+  const markdown = strFromU8(entry[1]);
+  if (markdown.length > DOCUMENT_LIMITS.maxMineruFullMarkdownChars) {
+    throw new Error("Mineru result markdown is too large");
+  }
+  return markdown;
 }
 
 async function downloadMineruZipMarkdown(url: string): Promise<string> {

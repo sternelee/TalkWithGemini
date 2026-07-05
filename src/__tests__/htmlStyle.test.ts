@@ -65,7 +65,17 @@ describe("HTML style sanitization", () => {
     });
   });
 
-  it("maps recognized Tailwind light palette colors to theme-safe variables", () => {
+  it("maps recognized Tailwind and neon palette colors to theme-safe variables", () => {
+    expect(
+      sanitizeHtmlStyle(
+        "background:#ecfeff; color:#155e75; border:1px solid #a5f3fc",
+      ),
+    ).toMatchObject({
+      background: "var(--html-visual-info-surface)",
+      color: "var(--html-visual-info-foreground)",
+      border: "1px solid var(--html-visual-info-border)",
+    });
+
     expect(
       sanitizeHtmlStyle(
         "background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe",
@@ -78,7 +88,7 @@ describe("HTML style sanitization", () => {
 
     expect(
       sanitizeHtmlStyle(
-        "background:#faf5ff; color:#7e22ce; border-color:#e9d5ff",
+        "background:#f5f3ff; color:#6d28d9; border-color:#ddd6fe",
       ),
     ).toMatchObject({
       background: "var(--html-visual-knowledge-surface)",
@@ -88,7 +98,7 @@ describe("HTML style sanitization", () => {
 
     expect(
       sanitizeHtmlStyle(
-        "background:#f0fdf4; color:#15803d; border-color:#bbf7d0",
+        "background:#ecfdf5; color:#047857; border-color:#a7f3d0",
       ),
     ).toMatchObject({
       background: "var(--html-visual-success-surface)",
@@ -98,7 +108,7 @@ describe("HTML style sanitization", () => {
 
     expect(
       sanitizeHtmlStyle(
-        "background:#fffbeb; color:#b45309; border-color:#fde68a",
+        "background:#fffbeb; color:#92400e; border-color:#fde68a",
       ),
     ).toMatchObject({
       background: "var(--html-visual-warning-surface)",

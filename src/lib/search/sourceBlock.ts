@@ -10,11 +10,13 @@ export function getSourceBlockPresentation({
   sourceCount,
   imageCount,
   isSearching = false,
+  error,
   visibleImagesCount = 4,
 }: {
   sourceCount: number;
   imageCount: number;
   isSearching?: boolean;
+  error?: string;
   visibleImagesCount?: number;
 }): SourceBlockPresentation {
   const safeSourceCount = Math.max(0, Math.floor(sourceCount));
@@ -26,6 +28,8 @@ export function getSourceBlockPresentation({
   let label = "Sources";
   if (isSearching) {
     label = "Searching...";
+  } else if (error) {
+    label = "Search failed";
   } else if (hasSources && hasImages) {
     label = "Sources & Images";
   } else if (hasImages) {
@@ -35,7 +39,7 @@ export function getSourceBlockPresentation({
   return {
     hasSources,
     hasImages,
-    shouldRender: Boolean(isSearching || hasSources || hasImages),
+    shouldRender: Boolean(isSearching || error || hasSources || hasImages),
     label,
     remainingImagesCount: Math.max(0, safeImageCount - safeVisibleImageCount),
   };

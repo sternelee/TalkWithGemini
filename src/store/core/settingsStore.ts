@@ -307,9 +307,7 @@ const normalizeSkillDefinitionCache = (
   return result;
 };
 
-const normalizeTimestampCache = (
-  value: unknown,
-): Record<string, number> => {
+const normalizeTimestampCache = (value: unknown): Record<string, number> => {
   if (!value || typeof value !== "object") return {};
   const result: Record<string, number> = {};
   for (const [cacheKey, timestamp] of Object.entries(value)) {
@@ -1319,6 +1317,7 @@ export const useSettingsStore = create<SettingsState>()(
         if (typeof window === "undefined") return;
         if (error) {
           logDevError("Settings hydration failed:", error);
+          state?.setHasHydrated(true);
         } else if (state) {
           state.setHasHydrated(true);
         }

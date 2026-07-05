@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   deleteDocumentParseJob,
   getDocumentParseJob,
+  isDocumentParseJobSecretValid,
   pollDocumentParseJob,
 } from "../../../../../lib/api/docParseJobs";
 import { createApiErrorResponse } from "@/lib/api/middleware";
@@ -11,7 +12,26 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: NextRequest, { params }: RouteContext) {
+function getJobSecret(request: Request): string {
+  return (
+    request.headers.get("x-doc-parse-job-secret") ||
+    new URL(request.url).searchParams.get("jobSecret") ||
+    ""
+  );
+}
+
+function forbiddenJobResponse() {
+  return NextResponse.json(
+    {
+      error: "Document parse job secret is required",
+      code: "DOCUMENT_JOB_FORBIDDEN",
+      statusCode: 403,
+    },
+    { status: 403 },
+  );
+}
+
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const { id } = await params;
     const job = await getDocumentParseJob(id);
@@ -20,6 +40,9 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
         { error: "Document parse job was not found" },
         { status: 404 },
       );
+    }
+    if (!isDocumentParseJobSecretValid(job, getJobSecret(request))) {
+      return forbiddenJobResponse();
     }
 
     const result = await pollDocumentParseJob(job);
@@ -31,8 +54,22 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
-  const { id } = await params;
-  const deleted = await deleteDocumentParseJob(id);
-  return NextResponse.json({ ok: true, deleted });
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const { id } = await params;
+    const job = await getDocumentParseJob(id);
+    if (!job) {
+      return NextResponse.json({ ok: true, deleted: false });
+    }
+    if (!isDocumentParseJobSecretValid(job, getJobSecret(request))) {
+      return forbiddenJobResponse();
+    }
+    const deleted = await deleteDocumentParseJob(id);
+    return NextResponse.json({ ok: true, deleted });
+  } catch (error) {
+    safeServerLogError("Document parse job cancellation error:", error);
+    return createApiErrorResponse(error, {
+      fallbackError: "Document parse job cancellation failed",
+    });
+  }
 }

@@ -86,7 +86,16 @@ export async function POST(request: NextRequest) {
 
     const legacyBody = ToolExecutionSchema.parse(rawBody);
     const plugin = legacyBody.plugin as Plugin;
-    await registerServerPlugin(plugin);
+    try {
+      await registerServerPlugin(plugin);
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !/reserved built-in plugin id/i.test(error.message)
+      ) {
+        throw error;
+      }
+    }
     return executePluginFunctionRequest({
       plugin,
       functionDef: legacyBody.functionDef as PluginFunction,

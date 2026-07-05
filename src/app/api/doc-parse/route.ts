@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_INPUT_LIMITS, DOCUMENT_LIMITS } from "@/config/limits";
 import {
-  assertRequestContentLengthUnderLimit,
+  assertMultipartRequestContentLengthUnderLimit,
   createApiErrorResponse,
 } from "@/lib/api/middleware";
 import { DocumentParseSchema } from "@/lib/api/schemas";
@@ -14,7 +14,7 @@ import { createDocumentParseJob } from "../../../lib/api/docParseJobs";
 
 export async function POST(request: NextRequest) {
   try {
-    assertRequestContentLengthUnderLimit(
+    assertMultipartRequestContentLengthUnderLimit(
       request,
       DOCUMENT_LIMITS.maxParseFileBytes +
         API_INPUT_LIMITS.maxMultipartOverheadBytes,
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       credential,
     });
     return NextResponse.json(
-      { jobId: job.id, status: "pending" },
+      { jobId: job.id, jobSecret: job.secret, status: "pending" },
       { status: 202 },
     );
   } catch (error) {
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error && error.name === "ZodError") {
       return createApiErrorResponse(error, "File and API key are required");
     }
-    if (error instanceof Error && "statusCode" in error) {
+    if (error instanceof Error && "statusCode" in error && !("code" in error)) {
       return NextResponse.json(
         { error: error.message },
         { status: Number(error.statusCode) || 500 },

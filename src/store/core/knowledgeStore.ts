@@ -931,6 +931,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           if (typeof window === "undefined") return;
           if (error) {
             logDevError("Knowledge store hydration failed:", error);
+            state?.setHasHydrated(true);
           } else if (state) {
             state.setHasHydrated(true);
           }

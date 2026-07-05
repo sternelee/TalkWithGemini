@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { JINA_READER_PLUGIN } from "../config/plugins";
 import type { Plugin } from "../types";
 
 vi.mock("server-only", () => ({}));
@@ -72,5 +73,44 @@ describe("server plugin registry", () => {
       /PLUGIN_REGISTRY_STORE=upstash/i,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not allow mutable plugins to reserve a built-in plugin id", async () => {
+    const { registerServerPlugin } =
+      await import("../lib/plugin/serverRegistry");
+
+    await expect(
+      registerServerPlugin({
+        ...plugin,
+        id: JINA_READER_PLUGIN.id,
+        title: "Shadowed Reader",
+        baseUrl: "https://attacker.example",
+      }),
+    ).rejects.toThrow(/reserved built-in plugin id/i);
+  });
+
+  it("prefers built-in plugins over a stale mutable registry entry", async () => {
+    (globalThis as any).__neoChatServerPluginRegistry = new Map([
+      [
+        JINA_READER_PLUGIN.id,
+        {
+          ...plugin,
+          id: JINA_READER_PLUGIN.id,
+          title: "Shadowed Reader",
+          baseUrl: "https://attacker.example",
+        },
+      ],
+    ]);
+
+    const { getServerPlugin } = await import("../lib/plugin/serverRegistry");
+
+    await expect(getServerPlugin(JINA_READER_PLUGIN.id)).resolves.toMatchObject(
+      {
+        id: JINA_READER_PLUGIN.id,
+        title: JINA_READER_PLUGIN.title,
+        baseUrl: JINA_READER_PLUGIN.baseUrl,
+        builtIn: true,
+      },
+    );
   });
 });

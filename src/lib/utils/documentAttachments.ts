@@ -43,7 +43,8 @@ export function isTextDocumentFile(file: Pick<File, "name" | "type">) {
   return (
     isTextDocumentMimeType(file.type) ||
     (!file.type && TEXT_EXTENSION_RE.test(file.name)) ||
-    file.type === "application/octet-stream" && TEXT_EXTENSION_RE.test(file.name)
+    (file.type === "application/octet-stream" &&
+      TEXT_EXTENSION_RE.test(file.name))
   );
 }
 

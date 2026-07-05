@@ -183,10 +183,12 @@ describe("skill service", () => {
       skillCatalogTimestamps: {},
       skillDefinitions: {},
       skillDefinitionTimestamps: {},
-      setSkillCatalog: vi.fn((locale: "en" | "zh-CN", catalog: SkillCatalog) => {
-        storeMock.state.skillCatalogs[locale] = catalog;
-        storeMock.state.skillCatalogTimestamps[locale] = Date.now();
-      }),
+      setSkillCatalog: vi.fn(
+        (locale: "en" | "zh-CN", catalog: SkillCatalog) => {
+          storeMock.state.skillCatalogs[locale] = catalog;
+          storeMock.state.skillCatalogTimestamps[locale] = Date.now();
+        },
+      ),
       setSkillDefinition: vi.fn((key: string, skill: TextSkill) => {
         storeMock.state.skillDefinitions[key] = skill;
         storeMock.state.skillDefinitionTimestamps[key] = Date.now();
@@ -230,16 +232,7 @@ describe("skill service", () => {
     ]);
   });
 
-  it("uses active skills as candidates and injects only model-selected skills", async () => {
-    chatServiceMock.streamGenerateToolCall.mockResolvedValue({
-      id: "call_candidates",
-      name: "select_text_skills",
-      args: {
-        skill_ids: ["translation-localization", "tone-adapter"],
-        reason: "translation with tone adjustment",
-      },
-      status: "pending",
-    });
+  it("injects all active installed skills without model selection when auto-select is disabled", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input) => {
@@ -273,25 +266,19 @@ describe("skill service", () => {
       autoSelect: false,
     });
 
-    const [, prompt, tools] = chatServiceMock.streamGenerateToolCall.mock
-      .calls[0];
-    expect(prompt).toContain("翻译与本地化");
-    expect(prompt).toContain("Inactive Summary");
-    expect(prompt).toContain("Email Draft");
-    expect(prompt).toContain("Tone Adapter");
-    expect(prompt).toContain("Privacy Redaction");
-    expect(JSON.stringify(tools)).toContain("translation-localization");
-    expect(JSON.stringify(tools)).toContain("tone-adapter");
     expect(result.context).toContain("Text-only skills guidance");
     expect(result.context).toContain("# 翻译与本地化");
     expect(result.context).toContain("保留术语和占位符");
+    expect(result.context).toContain("# Inactive Summary");
+    expect(result.context).toContain("# Email Draft");
     expect(result.context).toContain("# Tone Adapter");
-    expect(result.context).not.toContain("# Inactive Summary");
-    expect(result.context).not.toContain("# Email Draft");
-    expect(result.context).not.toContain("# Privacy Redaction");
+    expect(result.context).toContain("# Privacy Redaction");
     expect(result.appliedSkills).toMatchObject([
-      { mode: "auto", skill: { id: "translation-localization" } },
-      { mode: "auto", skill: { id: "tone-adapter" } },
+      { mode: "manual", skill: { id: "translation-localization" } },
+      { mode: "manual", skill: { id: "inactive-summary" } },
+      { mode: "manual", skill: { id: "email-draft" } },
+      { mode: "manual", skill: { id: "tone-adapter" } },
+      { mode: "manual", skill: { id: "privacy-redaction" } },
     ]);
     expect(result.invocations).toEqual([
       {
@@ -299,18 +286,39 @@ describe("skill service", () => {
         title: "翻译与本地化",
         description: "翻译文本。",
         category: "writing",
-        mode: "auto",
+        mode: "manual",
+      },
+      {
+        id: "inactive-summary",
+        title: "Inactive Summary",
+        description: "Summarize text.",
+        category: "reading",
+        mode: "manual",
+      },
+      {
+        id: "email-draft",
+        title: "Email Draft",
+        description: "Draft email replies.",
+        category: "writing",
+        mode: "manual",
       },
       {
         id: "tone-adapter",
         title: "Tone Adapter",
         description: "Adjust tone.",
         category: "writing",
-        mode: "auto",
+        mode: "manual",
+      },
+      {
+        id: "privacy-redaction",
+        title: "Privacy Redaction",
+        description: "Redact sensitive details.",
+        category: "safety",
+        mode: "manual",
       },
     ]);
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(chatServiceMock.streamGenerateToolCall).toHaveBeenCalledTimes(1);
+    expect(chatServiceMock.streamGenerateToolCall).not.toHaveBeenCalled();
   });
 
   it("skips metadata and tool selection when no skills are active", async () => {
@@ -354,7 +362,7 @@ describe("skill service", () => {
       locale: "zh",
       installedSkills: [zhDefinition],
       activeSkillIds: ["translation-localization"],
-      autoSelect: false,
+      autoSelect: true,
     });
 
     expect(result.context).toBe("");
@@ -385,8 +393,8 @@ describe("skill service", () => {
       autoSelect: true,
     });
 
-    const [, prompt, tools] = chatServiceMock.streamGenerateToolCall.mock
-      .calls[0];
+    const [, prompt, tools] =
+      chatServiceMock.streamGenerateToolCall.mock.calls[0];
     expect(prompt).toContain("翻译与本地化");
     expect(prompt).not.toContain("Inactive Summary");
     expect(JSON.stringify(tools)).toContain("translation-localization");
@@ -407,9 +415,11 @@ describe("skill service", () => {
   it("uses persisted skill catalog cache after the service module reloads", async () => {
     storeMock.state.skillCatalogs["zh-CN"] = zhCatalog as SkillCatalog;
     storeMock.state.skillCatalogTimestamps["zh-CN"] = Date.now();
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(
-      new Error("network should not be used when cache is fresh"),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new Error("network should not be used when cache is fresh"),
+      );
 
     const { fetchSkillCatalog } = await import("../services/api/skillService");
     await expect(fetchSkillCatalog("zh")).resolves.toMatchObject({

@@ -4,6 +4,8 @@ import { CHAT_INPUT_TRUNCATION_NOTICE } from "../lib/utils/chatInput";
 
 const mocks = vi.hoisted(() => ({
   resolveOPFSUrl: vi.fn(),
+  generateRAGSearchQueries: vi.fn(),
+  queryRAG: vi.fn(),
 }));
 
 vi.mock("../utils/opfs", () => ({
@@ -11,11 +13,11 @@ vi.mock("../utils/opfs", () => ({
 }));
 
 vi.mock("../services/api/chatService", () => ({
-  generateRAGSearchQueries: vi.fn(),
+  generateRAGSearchQueries: mocks.generateRAGSearchQueries,
 }));
 
 vi.mock("../services/api/ragService", () => ({
-  queryRAG: vi.fn(() => Promise.resolve([])),
+  queryRAG: mocks.queryRAG,
 }));
 
 import { processMessageForSending } from "../lib/chat/messageProcessor";
@@ -28,7 +30,13 @@ const encodeText = (value: string) => btoa(unescape(encodeURIComponent(value)));
 
 describe("message preprocessing", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    mocks.resolveOPFSUrl.mockReset();
+    mocks.generateRAGSearchQueries.mockReset();
+    mocks.queryRAG.mockReset();
     mocks.resolveOPFSUrl.mockResolvedValue("blob:http://localhost/kb-file");
+    mocks.generateRAGSearchQueries.mockResolvedValue(["knowledge query"]);
+    mocks.queryRAG.mockResolvedValue([]);
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("knowledge file text", { status: 200 }),
     );
@@ -191,5 +199,114 @@ describe("message preprocessing", () => {
     expect(result.userMessage.attachments).toEqual([fileAttachment]);
     expect(result.finalAttachments).toEqual([]);
     expect(result.finalText).toContain("notes.md");
+  });
+
+  it("uses RAG retrieval for indexed knowledge file attachments", async () => {
+    mocks.queryRAG.mockResolvedValue([
+      {
+        title: "notes.md",
+        url: "#",
+        content: "Indexed notes content",
+        metadata: { collectionId: "collection_1", fileId: "file_1" },
+      },
+      {
+        title: "other.md",
+        url: "#",
+        content: "Other file content",
+        metadata: { collectionId: "collection_1", fileId: "file_2" },
+      },
+    ]);
+
+    const fileAttachment = createKnowledgeFileAttachment({
+      collectionId: "collection_1",
+      fileId: "file_1",
+      fileName: "notes.md",
+    });
+
+    const result = await processMessageForSending({
+      text: "Summarize notes",
+      attachments: [fileAttachment],
+      selectedModel: "provider:model",
+      modelMetadata: {
+        model: { attachment: false },
+      },
+      customModelMetadata: {},
+      ragConfig: {
+        enabled: true,
+        useDefaultVectorStore: true,
+        serverVectorStoreAvailable: true,
+      },
+      knowledgeCollections: [
+        {
+          id: "collection_1",
+          name: "Manual KB",
+          files: [
+            {
+              id: "file_1",
+              name: "notes.md",
+              type: "text/plain",
+              status: "indexed",
+              ragId: "file_1",
+              ragChunkCount: 1,
+              uploadedAt: 1,
+              path: "opfs://kb/notes",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(mocks.queryRAG).toHaveBeenCalledWith(
+      "knowledge query",
+      "collection_1",
+    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(result.finalText).toContain("Indexed notes content");
+    expect(result.finalText).not.toContain("Other file content");
+    expect(result.ragSources).toHaveLength(1);
+  });
+
+  it("keeps unindexed knowledge file attachments on the local context path when RAG is enabled", async () => {
+    const fileAttachment = createKnowledgeFileAttachment({
+      collectionId: "collection_1",
+      fileId: "file_1",
+      fileName: "notes.md",
+    });
+
+    const result = await processMessageForSending({
+      text: "Summarize notes",
+      attachments: [fileAttachment],
+      selectedModel: "provider:model",
+      modelMetadata: {
+        model: { attachment: false },
+      },
+      customModelMetadata: {},
+      ragConfig: {
+        enabled: true,
+        useDefaultVectorStore: true,
+        serverVectorStoreAvailable: true,
+      },
+      knowledgeCollections: [
+        {
+          id: "collection_1",
+          name: "Manual KB",
+          files: [
+            {
+              id: "file_1",
+              name: "notes.md",
+              type: "text/plain",
+              status: "saved",
+              uploadedAt: 1,
+              path: "opfs://kb/notes",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(mocks.queryRAG).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalled();
+    expect(result.finalText).toContain("knowledge file text");
+    expect(result.ragSources).toEqual([]);
   });
 });

@@ -39,25 +39,132 @@ function isSandboxReadyMessage(
   return "ready" in message && message.ready === true;
 }
 
+function createSandboxWorkerScript(): string {
+  return `
+    const NETWORK_DISABLED_ERROR = 'Network access is disabled in the browser sandbox.';
+    const stringifyValue = (value) => {
+      if (typeof value !== 'object' || value === null) return String(value);
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    };
+    const blockNetwork = () => {
+      throw new Error(NETWORK_DISABLED_ERROR);
+    };
+    const installBlockedGlobal = (name, value) => {
+      try {
+        Object.defineProperty(self, name, {
+          configurable: false,
+          writable: false,
+          value,
+        });
+      } catch {
+        try {
+          self[name] = value;
+        } catch {}
+      }
+    };
+
+    installBlockedGlobal('fetch', blockNetwork);
+    installBlockedGlobal('importScripts', blockNetwork);
+    installBlockedGlobal('Worker', class Worker {
+      constructor() {
+        blockNetwork();
+      }
+    });
+    installBlockedGlobal('SharedWorker', class SharedWorker {
+      constructor() {
+        blockNetwork();
+      }
+    });
+    installBlockedGlobal('XMLHttpRequest', class XMLHttpRequest {
+      constructor() {
+        blockNetwork();
+      }
+    });
+    installBlockedGlobal('WebSocket', class WebSocket {
+      constructor() {
+        blockNetwork();
+      }
+    });
+    installBlockedGlobal('EventSource', class EventSource {
+      constructor() {
+        blockNetwork();
+      }
+    });
+
+    self.addEventListener('message', (event) => {
+      const data = event.data || {};
+      if (typeof data.runId !== 'string' || typeof data.code !== 'string') return;
+
+      const MAX_LOGS = 200;
+      const MAX_OUTPUT_LENGTH = Number(data.maxOutputChars) || ${BROWSER_SANDBOX_LIMITS.maxOutputChars};
+      let outputLength = 0;
+      const logs = [];
+      const pushLog = (value) => {
+        const text = String(value);
+        outputLength += text.length;
+        if (logs.length < MAX_LOGS && outputLength <= MAX_OUTPUT_LENGTH) {
+          logs.push(text);
+        }
+      };
+      const formatArgs = (args) => args.map(stringifyValue).join(' ');
+      const safeConsole = {
+        log: (...args) => pushLog(formatArgs(args)),
+        warn: (...args) => pushLog('WARN: ' + formatArgs(args)),
+        error: (...args) => pushLog('ERROR: ' + formatArgs(args)),
+        info: (...args) => pushLog('INFO: ' + formatArgs(args)),
+      };
+
+      try {
+        const fn = new Function('console', data.code);
+        const result = fn(safeConsole);
+
+        if (result !== undefined) {
+          pushLog(stringifyValue(result));
+        }
+
+        self.postMessage({
+          runId: data.runId,
+          success: true,
+          output: logs.join('\\n'),
+        });
+      } catch (err) {
+        self.postMessage({
+          runId: data.runId,
+          success: false,
+          error: String(err),
+          output: logs.join('\\n'),
+        });
+      }
+    });
+  `;
+}
+
 export function createSandboxHtml(runId: string, parentOrigin: string): string {
   const serializedRunId = JSON.stringify(runId);
   const serializedParentOrigin = JSON.stringify(parentOrigin);
+  const serializedWorkerScript = JSON.stringify(createSandboxWorkerScript());
 
   return `
       <!DOCTYPE html>
       <html>
       <head>
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; media-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; connect-src 'none'; img-src 'none'; media-src 'none'; worker-src blob:; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
         <script>
           const RUN_ID = ${serializedRunId};
           const PARENT_ORIGIN = ${serializedParentOrigin};
+          const WORKER_SCRIPT = ${serializedWorkerScript};
+          const EXECUTION_TIMEOUT_MS = ${BROWSER_SANDBOX_LIMITS.executionTimeoutMs};
+          const MAX_OUTPUT_CHARS = ${BROWSER_SANDBOX_LIMITS.maxOutputChars};
+          let activeWorker = null;
 
-          const stringifyValue = (value) => {
-            if (typeof value !== 'object' || value === null) return String(value);
-            try {
-              return JSON.stringify(value);
-            } catch {
-              return String(value);
+          const stopActiveWorker = () => {
+            if (activeWorker) {
+              activeWorker.terminate();
+              activeWorker = null;
             }
           };
 
@@ -65,36 +172,69 @@ export function createSandboxHtml(runId: string, parentOrigin: string): string {
             const data = e.data || {};
             if (data.runId !== RUN_ID || typeof data.code !== 'string') return;
 
-            const MAX_LOGS = 200;
-            const MAX_OUTPUT_LENGTH = ${BROWSER_SANDBOX_LIMITS.maxOutputChars};
-            let outputLength = 0;
-            const logs = [];
-            const pushLog = (value) => {
-              const text = String(value);
-              outputLength += text.length;
-              if (logs.length < MAX_LOGS && outputLength <= MAX_OUTPUT_LENGTH) {
-                logs.push(text);
-              }
-            };
-            const formatArgs = (args) => args.map(stringifyValue).join(' ');
-            const safeConsole = {
-              log: (...args) => pushLog(formatArgs(args)),
-              warn: (...args) => pushLog('WARN: ' + formatArgs(args)),
-              error: (...args) => pushLog('ERROR: ' + formatArgs(args)),
-              info: (...args) => pushLog('INFO: ' + formatArgs(args)),
-            };
-
+            stopActiveWorker();
+            let workerUrl = '';
             try {
-              const fn = new Function('console', data.code);
-              const result = fn(safeConsole);
-              
-              if (result !== undefined) {
-                pushLog(stringifyValue(result));
-              }
-              
-              parent.postMessage({ runId: RUN_ID, success: true, output: logs.join('\\n') }, PARENT_ORIGIN);
+              const workerBlob = new Blob([WORKER_SCRIPT], { type: 'text/javascript' });
+              workerUrl = URL.createObjectURL(workerBlob);
+              const worker = new Worker(workerUrl);
+              activeWorker = worker;
+              let settled = false;
+              let timeoutId = 0;
+
+              const finish = (payload) => {
+                if (settled) return;
+                settled = true;
+                window.clearTimeout(timeoutId);
+                worker.terminate();
+                if (activeWorker === worker) {
+                  activeWorker = null;
+                }
+                if (workerUrl) {
+                  URL.revokeObjectURL(workerUrl);
+                }
+                parent.postMessage({ runId: RUN_ID, ...payload }, PARENT_ORIGIN);
+              };
+
+              worker.onmessage = (event) => {
+                const result = event.data || {};
+                if (result.runId !== RUN_ID) return;
+                finish({
+                  success: result.success === true,
+                  output: typeof result.output === 'string' ? result.output : '',
+                  error: typeof result.error === 'string' ? result.error : undefined,
+                });
+              };
+              worker.onerror = (event) => {
+                event.preventDefault();
+                finish({
+                  success: false,
+                  error: event.message || 'Worker execution failed.',
+                  output: '',
+                });
+              };
+              timeoutId = window.setTimeout(() => {
+                finish({
+                  success: false,
+                  error: 'JavaScript execution timed out.',
+                  output: '',
+                });
+              }, EXECUTION_TIMEOUT_MS);
+              worker.postMessage({
+                runId: RUN_ID,
+                code: data.code,
+                maxOutputChars: MAX_OUTPUT_CHARS,
+              });
             } catch (err) {
-              parent.postMessage({ runId: RUN_ID, success: false, error: String(err), output: logs.join('\\n') }, PARENT_ORIGIN);
+              if (workerUrl) {
+                URL.revokeObjectURL(workerUrl);
+              }
+              parent.postMessage({
+                runId: RUN_ID,
+                success: false,
+                error: String(err),
+                output: '',
+              }, PARENT_ORIGIN);
             }
           });
           

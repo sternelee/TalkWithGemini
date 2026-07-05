@@ -45,9 +45,9 @@ describe("diagram prompt helpers", () => {
     expect(message).toContain("Never use Mermaid for mindmap");
     expect(message).toContain("enhanced visual style");
 
-    expect(
-      appendDiagramRequestInstructions(message, systemInstruction),
-    ).toBe(message);
+    expect(appendDiagramRequestInstructions(message, systemInstruction)).toBe(
+      message,
+    );
   });
 
   it("leaves request text unchanged when diagram guidance is absent", () => {

@@ -56,7 +56,7 @@ Agnes video generation is intentionally split into two tools:
 
 ### `defaults.ts`
 
-Defines default model selections, chat behavior, UI options, search/RAG defaults, voice defaults, and system settings. These values are used when neither local settings nor server defaults provide an override.
+Defines default model selections, chat behavior, UI options, search/RAG defaults, voice defaults, memory defaults, HTML visual prompt defaults, and system settings. These values are used when neither local settings nor server defaults provide an override.
 
 ```typescript
 import {
@@ -67,7 +67,7 @@ import {
 
 ### `limits.ts`
 
-Centralizes input and payload limits for chat, attachments, plugins, settings, and API validation. Prefer adding new limits here when the same boundary is enforced in more than one place.
+Centralizes input and payload limits for chat, attachments, plugins, skills, document parsing, settings, and API validation. Prefer adding new limits here when the same boundary is enforced in more than one place.
 
 ### `index.ts`
 

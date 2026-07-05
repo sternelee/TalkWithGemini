@@ -13,6 +13,7 @@ src/services/
 │   ├── pluginService.ts
 │   ├── ragService.ts
 │   ├── searchService.ts
+│   ├── skillService.ts
 │   └── voiceService.ts
 ├── artifactService.ts
 └── README.md
@@ -28,6 +29,7 @@ Handles chat generation workflows from the browser side:
 - Executes model tool calls through plugin utilities.
 - Generates titles, related questions, RAG search queries, and image outputs.
 - Prepares history for model APIs.
+- Adds applied skill context and local memory context when enabled by the chat workflow.
 - Runs background context compression.
 - Updates tool-call status while streaming and while executing tools.
 
@@ -45,15 +47,19 @@ Calls the configured RAG service for vector queries and upserts.
 
 ### `voiceService.ts`
 
-Calls speech-to-text and text-to-speech routes. Browser-native and ElevenLabs-backed flows are selected from user settings.
+Calls speech-to-text and text-to-speech routes. Browser-native, ElevenLabs, and Mimo-backed flows are selected from user settings or server defaults.
 
 ### `pluginService.ts`
 
 Fetches plugin marketplace data and installs plugin manifests.
 
+### `skillService.ts`
+
+Loads localized text-only skill catalogs, fetches full skill definitions on demand, merges built-in and custom skills, and resolves active skills for a message.
+
 ### `docParseService.ts`
 
-Starts document parsing jobs and polls document job status through app API routes.
+Starts document parsing jobs and polls document job status through app API routes. Async job polling includes the job secret returned by the start route.
 
 ## Client-Only Services
 

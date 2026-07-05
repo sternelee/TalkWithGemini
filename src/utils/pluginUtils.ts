@@ -1,6 +1,9 @@
 import { useSettingsStore } from "../store/core/settingsStore";
 import { UNSPLASH_PLUGIN } from "../config/plugins";
-import { resolvePluginFunction } from "../lib/plugin/resolve";
+import {
+  getPluginFunctionNameCollisions,
+  resolvePluginFunction,
+} from "../lib/plugin/resolve";
 import { readJsonResponseOrThrow } from "../lib/api/client";
 import {
   getPluginExecutionArgsError,
@@ -129,6 +132,16 @@ export const executePluginFunction = async (
   const executionArgs = args as Record<string, unknown>;
 
   const { installedPlugins, pluginConfigs } = useSettingsStore.getState();
+  const collision = getPluginFunctionNameCollisions(
+    installedPlugins,
+    allowedPluginIds,
+    pluginConfigs,
+  ).find((item) => item.name === functionName);
+  if (collision) {
+    return {
+      error: `Function ${functionName} is provided by multiple active plugins: ${collision.pluginIds.join(", ")}.`,
+    };
+  }
 
   const resolved = resolvePluginFunction(
     installedPlugins,

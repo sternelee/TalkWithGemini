@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { API_INPUT_LIMITS } from "../../config/limits";
 import {
   handleApiError,
+  LengthRequiredError,
   PayloadTooLargeError,
   toPublicErrorPayload,
   ValidationError,
@@ -85,6 +86,25 @@ export function assertRequestContentLengthUnderLimit(
 
   const contentLengthBytes = Number(contentLength);
   if (!Number.isFinite(contentLengthBytes)) return;
+
+  if (contentLengthBytes > maxBytes) {
+    throw new PayloadTooLargeError();
+  }
+}
+
+export function assertMultipartRequestContentLengthUnderLimit(
+  request: Request,
+  maxBytes: number,
+): void {
+  const contentLength = request.headers.get("content-length");
+  if (!contentLength) {
+    throw new LengthRequiredError();
+  }
+
+  const contentLengthBytes = Number(contentLength);
+  if (!Number.isFinite(contentLengthBytes) || contentLengthBytes <= 0) {
+    throw new LengthRequiredError("Valid Content-Length header is required");
+  }
 
   if (contentLengthBytes > maxBytes) {
     throw new PayloadTooLargeError();

@@ -9,6 +9,32 @@ function trimString(value: unknown, maxChars: number, fallback = ""): string {
   return trimmed || fallback;
 }
 
+function normalizeSourceMetadata(
+  value: unknown,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const normalized: Record<string, unknown> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim().slice(0, 100);
+    if (!key) continue;
+
+    if (typeof rawValue === "string") {
+      normalized[key] = rawValue.slice(0, 1_000);
+    } else if (
+      typeof rawValue === "number" ||
+      typeof rawValue === "boolean" ||
+      rawValue === null
+    ) {
+      normalized[key] = rawValue;
+    }
+
+    if (Object.keys(normalized).length >= 20) break;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
 export function normalizeSearchSource(
   value: unknown,
   { allowPlaceholderUrl = false }: { allowPlaceholderUrl?: boolean } = {},
@@ -33,10 +59,13 @@ export function normalizeSearchSource(
 
   if (!safeUrl || !content) return null;
 
+  const metadata = normalizeSourceMetadata(raw.metadata);
+
   return {
     title,
     content,
     url: safeUrl,
+    ...(metadata ? { metadata } : {}),
   };
 }
 

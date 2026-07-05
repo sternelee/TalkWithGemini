@@ -29,9 +29,7 @@ export function normalizeMessage(message: Message): Message {
     if (block.type !== "tool_group") return block;
     return {
       ...block,
-      toolCalls: block.toolCalls.map((toolCall) =>
-        normalizeToolCall(toolCall),
-      ),
+      toolCalls: block.toolCalls.map((toolCall) => normalizeToolCall(toolCall)),
     } satisfies MessageOutputBlock;
   });
 

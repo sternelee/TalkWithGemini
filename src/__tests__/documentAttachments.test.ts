@@ -75,7 +75,9 @@ describe("chat document attachments", () => {
       fileName: "brief.pdf",
       mimeType: "text/markdown",
     });
-    expect(decodeAttachmentText(result.attachment)).toBe("# Parsed PDF\n\nBody");
+    expect(decodeAttachmentText(result.attachment)).toBe(
+      "# Parsed PDF\n\nBody",
+    );
     expect(mocks.resolveDocumentParseToken).toHaveBeenCalledWith(
       "llamaParse",
       expect.objectContaining({ documentParseProvider: "llamaParse" }),
@@ -89,9 +91,8 @@ describe("chat document attachments", () => {
 
   it("uses default document processing without resolving local parser secrets", async () => {
     mocks.parseDocumentFile.mockResolvedValue("default parsed");
-    const { createChatDocumentAttachment } = await import(
-      "../lib/utils/documentAttachments"
-    );
+    const { createChatDocumentAttachment } =
+      await import("../lib/utils/documentAttachments");
     const file = new File(["pdf"], "default.pdf", {
       type: "application/pdf",
     });

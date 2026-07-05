@@ -82,6 +82,12 @@ import { isKnowledgeAttachment } from "@/lib/utils/knowledgeAttachments";
 import { createChatDocumentAttachment } from "@/lib/utils/documentAttachments";
 import { polishTextContent } from "@/services/artifactService";
 import { normalizeSkillIdRefs } from "@/lib/skills";
+import {
+  formatRecordingTime as formatTime,
+  isNativeMediaFile,
+  shouldSubmitOnEnter,
+  truncateMiddle,
+} from "@/lib/utils/messageInputHelpers";
 
 interface MessageInputProps {
   onSend: (text: string, attachments: Attachment[]) => void;
@@ -100,19 +106,6 @@ export interface MessageInputRef {
   setAttachments: (attachments: Attachment[]) => void;
 }
 
-const truncateMiddle = (text: string, maxLength: number) => {
-  if (!text || text.length <= maxLength) return text;
-  const separator = "…";
-  const charsToShow = maxLength - separator.length;
-  const frontChars = Math.ceil(charsToShow / 2);
-  const backChars = Math.floor(charsToShow / 2);
-  return (
-    text.substring(0, frontChars) +
-    separator +
-    text.substring(text.length - backChars)
-  );
-};
-
 const logInputError = logDevError;
 
 const iconButtonFocusClass =
@@ -120,9 +113,6 @@ const iconButtonFocusClass =
 
 const iconButtonBaseClass =
   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
-
-const isNativeMediaFile = (file: File) =>
-  file.type.startsWith("image/") || file.type.startsWith("audio/");
 
 const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
   (
@@ -398,9 +388,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         ? t("searchModeGeminiGoogle")
         : searchCompatibility.mode === "openai-web"
           ? t("searchModeOpenAIWeb")
-        : t("searchModeExternal", {
-            provider: getSearchProviderLabel(searchCompatibility.provider),
-          });
+          : t("searchModeExternal", {
+              provider: getSearchProviderLabel(searchCompatibility.provider),
+            });
 
     const searchTooltip = !searchCompatibility.enabled
       ? getSearchUnavailableMessage(searchCompatibility.reason)
@@ -525,7 +515,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }, [installedPlugins, pluginConfigs, tConfig]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (
+        shouldSubmitOnEnter({
+          key: e.key,
+          shiftKey: e.shiftKey,
+          isComposing: e.nativeEvent.isComposing,
+        })
+      ) {
         e.preventDefault();
         handleSend();
       }
@@ -1036,12 +1032,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     }, [input]);
 
-    const formatTime = (secs: number) => {
-      const m = Math.floor(secs / 60);
-      const s = secs % 60;
-      return `${m}:${s.toString().padStart(2, "0")}`;
-    };
-
     const currentModelName =
       availableModels.find((m) => m.name === selectedModel)?.displayName ||
       selectedModel ||
@@ -1129,7 +1119,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           id={messageInputId}
           name="message"
           ref={textareaRef}
-          className="w-full px-4 pt-3 pb-1 bg-transparent focus:outline-0 text-gray-800 dark:text-foreground placeholder-gray-500 dark:placeholder:text-muted-foreground resize-none max-h-32 md:max-h-48 text-(length:--neo-font-size-base) min-h-12"
+          className="w-full px-4 pt-3 pb-1 bg-transparent focus:outline-0 text-gray-800 dark:text-foreground placeholder-gray-500 dark:placeholder:text-muted-foreground resize-none max-h-32 md:max-h-48 text-(length:--neo-font-size-base) min-h-12 overflow-y-auto overscroll-contain custom-scrollbar"
           placeholder={
             isRecording
               ? voice.sttProvider === "browser"

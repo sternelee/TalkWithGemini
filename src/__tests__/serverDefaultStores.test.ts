@@ -93,16 +93,38 @@ describe("server default store injection", () => {
     expect(useSettingsStore.getState().search.provider).toBe("google");
   });
 
-  it("forces server defaults to override persisted local model defaults", async () => {
+  it("seeds missing task-model defaults without overwriting persisted user choices", async () => {
     const { useCoreSettingsStore } =
       await import("../store/core/coreSettingsStore");
 
     useCoreSettingsStore.setState((state) => ({
       ...state,
       serverDefaultProviderEnabled: false,
+      providers: [
+        {
+          id: "GEMINI",
+          name: "Google Gemini",
+          type: "Gemini",
+          baseUrl: "https://generativelanguage.googleapis.com",
+          apiKey: "user-key",
+          enabled: true,
+          models: ["gemini-flash-latest"],
+          modelsList: ["gemini-flash-latest"],
+        },
+        {
+          id: "CUSTOM",
+          name: "Custom",
+          type: "OpenAI",
+          baseUrl: "https://api.example.com",
+          apiKey: "user-key",
+          enabled: true,
+          models: ["custom-model"],
+          modelsList: ["custom-model"],
+        },
+      ],
       defaultModels: {
         titleGeneration: "GEMINI:gemini-flash-latest",
-        relatedQuestions: "CUSTOM:custom-model",
+        relatedQuestions: "",
         contextCompression: "GEMINI:gemini-flash-latest",
         promptOptimization: "",
         ragQuery: "CUSTOM:custom-model",
@@ -117,12 +139,12 @@ describe("server default store injection", () => {
       .providers.find((item) => item.id === SERVER_DEFAULT_PROVIDER_ID);
     expect(provider?.enabled).toBe(true);
     expect(useCoreSettingsStore.getState().defaultModels).toEqual({
-      titleGeneration: "SERVER_DEFAULT:gemini-default",
+      titleGeneration: "GEMINI:gemini-flash-latest",
       relatedQuestions: "SERVER_DEFAULT:gemini-default",
-      contextCompression: "",
+      contextCompression: "GEMINI:gemini-flash-latest",
       promptOptimization: "",
-      ragQuery: "",
-      memory: "SERVER_DEFAULT:gemini-default",
+      ragQuery: "CUSTOM:custom-model",
+      memory: "GEMINI:gemini-flash-latest",
     });
   });
 

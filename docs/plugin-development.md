@@ -2,7 +2,9 @@
 
 Neo Chat plugins expose OpenAPI-style tools to compatible model providers.
 Enabled plugin functions are sent to the model as tools, and runtime tool calls
-execute through server routes.
+execute through server routes. Plugins are different from Skills: Skills are
+text-only prompt-context instructions stored locally, while plugins are
+network-capable tools executed by the server-side plugin route.
 
 ## Plugin Shape
 
@@ -22,6 +24,9 @@ Required plugin fields:
 
 Optional fields include `externalDocsUrl`, `baseUrl`, `category`,
 `categories`, `added`, `builtIn`, and `auth`.
+
+Plugin IDs must be stable. Built-in plugin IDs are reserved; a custom plugin or
+manifest import cannot replace a built-in tool definition.
 
 ## Function Shape
 
@@ -84,6 +89,19 @@ UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
 ```
 
+Built-in plugins are always resolvable by ID. Custom plugins should be
+registered before use and stored in the shared registry for hosted or
+multi-instance deployments; otherwise another instance may be unable to resolve
+the function call.
+
+Runtime tool calls execute automatically after a plugin is enabled for the chat.
+There is no per-call confirmation modal, so the plugin market, function toggle,
+auth configuration, and risk metadata are the user's control points.
+
+If two active plugins expose the same function name, execution returns a
+collision error instead of choosing one silently. Keep function names unique
+across plugins that users are likely to enable together.
+
 ## Safety Checklist
 
 - Keep plugin `baseUrl` and OpenAPI server URLs on trusted HTTPS origins for
@@ -94,6 +112,8 @@ UPSTASH_REDIS_REST_TOKEN=...
   metadata.
 - Keep descriptions concise and specific so the model can choose tools
   correctly.
+- Avoid function-name collisions with other built-in or commonly installed
+  plugins.
 - Do not log plugin secrets, provider keys, or raw private user data.
 
 ## Testing

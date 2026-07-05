@@ -116,4 +116,23 @@ describe(".env.example", () => {
 
     expect([...codeKeys].filter((key) => !exampleKeys.has(key))).toEqual([]);
   });
+
+  it("keeps Docker Compose aligned with deployment store and proxy variables", () => {
+    const compose = readFileSync(
+      resolve(process.cwd(), "docker-compose.yml"),
+      "utf8",
+    );
+
+    for (const key of [
+      "ALLOW_LOCAL_NETWORK_PROXY",
+      "TRUST_PROXY_HEADERS",
+      "RATE_LIMIT_STORE",
+      "DOCUMENT_PARSE_JOB_STORE",
+      "PLUGIN_REGISTRY_STORE",
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+    ]) {
+      expect(compose).toContain(`${key}:`);
+    }
+  });
 });

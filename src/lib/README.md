@@ -1,6 +1,6 @@
 # Core Library
 
-The `src/lib` directory contains shared infrastructure for API handling, streaming, provider adapters, security, plugin execution, BYOK encryption, chat processing, search/RAG utilities, and general helpers. Code in this directory should be framework-aware only when necessary and should avoid UI concerns.
+The `src/lib` directory contains shared infrastructure for API handling, streaming, provider adapters, security, plugin execution, text-only skills, BYOK encryption, chat processing, search/RAG utilities, service health, and general helpers. Code in this directory should be framework-aware only when necessary and should avoid UI concerns.
 
 ## Directory Map
 
@@ -19,6 +19,8 @@ src/lib/
 ├── search/
 ├── security/
 ├── settings/
+├── skills/
+├── services/
 ├── streaming/
 ├── utils/
 ├── errors.ts
@@ -50,6 +52,16 @@ Use this layer for server route concerns such as:
 ### Plugin
 
 `src/lib/plugin` contains plugin manifest parsing, OpenAPI conversion, execution payload validation, server plugin registration, localization helpers, and function resolution.
+
+### Skills
+
+`src/lib/skills` contains normalization, catalog handling, text-only safety checks, candidate recall, and prompt-context construction for installed and custom skills.
+
+### Service Health
+
+`src/lib/services` contains non-secret deployment health reporting for BYOK,
+access passwords, shared stores, default model, search, RAG, and voice
+readiness.
 
 ### Providers And Streaming
 

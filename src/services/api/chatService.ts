@@ -85,9 +85,17 @@ function coerceToolDefinition(tool: unknown): ChatToolDefinition {
   return tool as ChatToolDefinition;
 }
 
+function isBrowserMemoryStorePendingHydration(hasHydrated: boolean): boolean {
+  return typeof window !== "undefined" && !hasHydrated;
+}
+
 function isMemorySearchEnabled(): boolean {
-  const { settings } = useMemoryStore.getState();
-  return Boolean(settings.enabled && settings.searchEnabled);
+  const { _hasHydrated, settings } = useMemoryStore.getState();
+  return Boolean(
+    !isBrowserMemoryStorePendingHydration(_hasHydrated) &&
+    settings.enabled &&
+    settings.searchEnabled,
+  );
 }
 
 function addInternalMemoryTools(
@@ -111,8 +119,12 @@ function getNumberArg(value: unknown, fallback: number): number {
 
 async function executeMemorySearchTool(args: unknown): Promise<unknown> {
   const state = useMemoryStore.getState();
-  const { settings, memories } = state;
-  if (!settings.enabled || !settings.searchEnabled) {
+  const { _hasHydrated, settings, memories } = state;
+  if (
+    isBrowserMemoryStorePendingHydration(_hasHydrated) ||
+    !settings.enabled ||
+    !settings.searchEnabled
+  ) {
     return { memories: [] };
   }
 
@@ -578,6 +590,7 @@ export const streamChatResponse = async (
         outputBlockBuilder.upsertSearch({
           isSearching: false,
           results: { sources: [], images: [] },
+          error: "Search provider failed",
         });
         emitOutputBlocks();
       }
@@ -1374,8 +1387,14 @@ export const performBackgroundMemoryExtraction = async ({
   signal?: AbortSignal;
 }) => {
   const state = useMemoryStore.getState();
-  const { settings } = state;
-  if (!settings.enabled || !settings.autoRecordEnabled) return [];
+  const { _hasHydrated, settings } = state;
+  if (
+    isBrowserMemoryStorePendingHydration(_hasHydrated) ||
+    !settings.enabled ||
+    !settings.autoRecordEnabled
+  ) {
+    return [];
+  }
   if (!userMessage.content.trim() || !assistantMessage.content.trim()) {
     return [];
   }
@@ -1420,8 +1439,13 @@ export const performMemoryDream = async ({
   signal?: AbortSignal;
 } = {}) => {
   const state = useMemoryStore.getState();
-  const { settings, memories, dreamStatus } = state;
-  if (!settings.enabled || !settings.dreamEnabled || dreamStatus.isRunning) {
+  const { _hasHydrated, settings, memories, dreamStatus } = state;
+  if (
+    isBrowserMemoryStorePendingHydration(_hasHydrated) ||
+    !settings.enabled ||
+    !settings.dreamEnabled ||
+    dreamStatus.isRunning
+  ) {
     return null;
   }
   if (memories.length <= settings.targetCount) return null;

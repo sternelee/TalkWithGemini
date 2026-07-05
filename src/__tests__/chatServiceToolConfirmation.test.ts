@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PLUGIN_EXECUTION_LIMITS } from "../config/limits";
-import type { Plugin, ToolCall } from "../types";
+import type { MessageOutputBlock, Plugin, ToolCall } from "../types";
 
 const mocks = vi.hoisted(() => ({
   executePluginFunction: vi.fn(),
@@ -377,6 +377,66 @@ describe("chat service tool execution", () => {
         expect.objectContaining({ status: "denied" }),
       ]),
     );
+  });
+
+  it("emits one error output transition when tool execution fails", async () => {
+    mocks.executePluginFunction.mockRejectedValueOnce(new Error("boom"));
+    vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_write",
+              name: "create_record",
+              args: { title: "Draft" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          { type: "content", content: "The tool failed." },
+          { type: "done" },
+        ]),
+      );
+    const outputSnapshots: MessageOutputBlock[][] = [];
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    const result = await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Create a record",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      ["writer"],
+      undefined,
+      (blocks) => outputSnapshots.push(blocks),
+    );
+
+    const statuses = outputSnapshots
+      .map(
+        (blocks) =>
+          blocks
+            .find((block) => block.type === "tool_group")
+            ?.toolCalls.find((toolCall) => toolCall.id === "call_write")
+            ?.status,
+      )
+      .filter(Boolean);
+
+    expect(result).toBe("The tool failed.");
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(1);
+    expect(statuses).toEqual(["pending", "running", "error"]);
   });
 
   it("adds API-only HTML visual request instructions when system prompt enables them", async () => {

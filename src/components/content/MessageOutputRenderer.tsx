@@ -97,6 +97,7 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
                 sources={block.sources}
                 images={block.images}
                 isSearching={block.isSearching}
+                error={block.error}
               />
             );
           case "tool_group": {

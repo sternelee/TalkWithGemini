@@ -71,6 +71,7 @@ export type MessageOutputBlock =
       id: string;
       type: "search";
       isSearching?: boolean;
+      error?: string;
       sources: Source[];
       images: ImageSource[];
     }

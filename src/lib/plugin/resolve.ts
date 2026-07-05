@@ -47,3 +47,33 @@ export function getEnabledPluginFunctions(
 
   return functionsToAdd;
 }
+
+export function getPluginFunctionNameCollisions(
+  installedPlugins: Plugin[],
+  activePluginIds: string[] | undefined,
+  pluginConfigs: Record<
+    string,
+    { enabledFunctions?: string[]; disabledFunctions?: string[] } | undefined
+  > = {},
+): Array<{ name: string; pluginIds: string[] }> {
+  const active = activePluginIds?.length ? new Set(activePluginIds) : null;
+  const names = new Map<string, string[]>();
+
+  for (const plugin of installedPlugins) {
+    if (active && !active.has(plugin.id)) continue;
+    for (const fn of getEnabledPluginFunctions(
+      plugin,
+      pluginConfigs[plugin.id],
+    )) {
+      const pluginIds = names.get(fn.name) || [];
+      if (!pluginIds.includes(plugin.id)) {
+        pluginIds.push(plugin.id);
+      }
+      names.set(fn.name, pluginIds);
+    }
+  }
+
+  return Array.from(names.entries())
+    .filter(([, pluginIds]) => pluginIds.length > 1)
+    .map(([name, pluginIds]) => ({ name, pluginIds }));
+}

@@ -17,6 +17,11 @@ export const VOICE_LIMITS = {
 export const DOCUMENT_LIMITS = {
   maxParseFileBytes: 50 * 1024 * 1024,
   maxMineruAgentParseFileBytes: 10 * 1024 * 1024,
+  maxMineruZipEntries: 100,
+  maxMineruZipDecompressedBytes: 60 * 1024 * 1024,
+  maxMineruZipCompressionRatio: 100,
+  maxMineruFullMarkdownBytes: 20 * 1024 * 1024,
+  maxMineruFullMarkdownChars: 20 * 1024 * 1024,
 } as const;
 
 export const KNOWLEDGE_LIMITS = {

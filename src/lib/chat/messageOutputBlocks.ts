@@ -14,6 +14,7 @@ export interface MessageOutputBlockBuilderOptions {
 
 interface SearchBlockUpdate {
   isSearching?: boolean;
+  error?: string;
   results?: {
     sources?: Source[];
     images?: ImageSource[];
@@ -31,6 +32,7 @@ const cloneBlock = (block: MessageOutputBlock): MessageOutputBlock => {
     case "search":
       return {
         ...block,
+        error: block.error,
         sources: [...block.sources],
         images: [...block.images],
       };
@@ -119,7 +121,8 @@ export function createMessageOutputBlockBuilder(
           )
         : undefined;
       const lastBlock = getLastBlock();
-      const target: Extract<MessageOutputBlock, { type: "search" }> | undefined =
+      const target:
+        Extract<MessageOutputBlock, { type: "search" }> | undefined =
         activeTarget?.type === "search"
           ? activeTarget
           : lastBlock?.type === "search"
@@ -129,9 +132,11 @@ export function createMessageOutputBlockBuilder(
       const sources = update.results?.sources || [];
       const images = update.results?.images || [];
       const isSearching = update.isSearching ?? target?.isSearching ?? false;
+      const error = update.error;
 
       if (target?.type === "search") {
         target.isSearching = isSearching;
+        target.error = error;
         if (update.results) {
           target.sources = sources;
           target.images = images;
@@ -144,6 +149,7 @@ export function createMessageOutputBlockBuilder(
         id: createId(),
         type: "search",
         isSearching,
+        ...(error ? { error } : {}),
         sources,
         images,
       };

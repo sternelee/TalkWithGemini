@@ -209,9 +209,9 @@ const enqueueSessionMessageWrite = async (
   write: () => Promise<void>,
 ) => {
   const previousWrite = sessionMessageWriteQueues.get(sessionId);
-  const queuedWrite = (previousWrite ?? Promise.resolve())
-    .catch(() => undefined)
-    .then(write);
+  const queuedWrite = previousWrite
+    ? previousWrite.catch(() => undefined).then(write)
+    : write();
 
   sessionMessageWriteQueues.set(sessionId, queuedWrite);
 
@@ -462,10 +462,7 @@ export const useChatStore = create<ChatState>()(
           config: normalizedConfig,
         });
 
-        // Initial Messages
         const initialMessageTree = createEmptyMessageTree();
-
-        appDb.setItem(`session_messages_${newSession.id}`, initialMessageTree);
 
         // Apply config to global state if this becomes active
         const sessionConfig = newSession.config;
@@ -857,10 +854,12 @@ export const useChatStore = create<ChatState>()(
         // Save to DB
         // We need to fetch current messages if not active, or use the mutation snapshot if active.
         if (activeTreeToPersist) {
-          await appDb.setItem(
-            `session_messages_${sessionId}`,
-            activeTreeToPersist,
-          );
+          await enqueueSessionMessageWrite(sessionId, async () => {
+            await appDb.setItem(
+              `session_messages_${sessionId}`,
+              activeTreeToPersist,
+            );
+          });
           return;
         }
 
@@ -987,7 +986,12 @@ export const useChatStore = create<ChatState>()(
 
         if (!treeToSave) return;
 
-        await appDb.setItem(`session_messages_${targetSessionId}`, treeToSave);
+        await enqueueSessionMessageWrite(targetSessionId, async () => {
+          await appDb.setItem(
+            `session_messages_${targetSessionId}`,
+            treeToSave,
+          );
+        });
       },
 
       addMessageVersion: (sessionId, messageId, modelName) => {
@@ -1472,6 +1476,7 @@ export const useChatStore = create<ChatState>()(
           if (typeof window === "undefined") return;
           if (error) {
             logDevError("Chat store hydration failed:", error);
+            state?.setHasHydrated(true);
           } else if (state) {
             state.setHasHydrated(true);
             // Post-hydration check: if currentSessionId exists, load its messages

@@ -71,6 +71,31 @@ describe("plugin execution utility", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects ambiguous function execution when multiple active plugins expose the same name", async () => {
+    const duplicatePlugin: Plugin = {
+      ...plugin,
+      id: "duplicate-plugin",
+      title: "Duplicate Plugin",
+    };
+    mockStore.state = {
+      installedPlugins: [plugin, duplicatePlugin],
+      pluginConfigs: {},
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      executePluginFunction("lookup", {}, undefined, [
+        plugin.id,
+        duplicatePlugin.id,
+      ]),
+    ).resolves.toEqual({
+      error:
+        "Function lookup is provided by multiple active plugins: test-plugin, duplicate-plugin.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns Agnes video creation tasks without polling for the final result", async () => {
     mockStore.state = {
       installedPlugins: [AGNES_VIDEO_PLUGIN],

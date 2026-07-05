@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { VoiceTranscribeRequestSchema } from "@/lib/api/schemas";
 import {
-  assertRequestContentLengthUnderLimit,
+  assertMultipartRequestContentLengthUnderLimit,
   createApiErrorResponse,
 } from "@/lib/api/middleware";
 import { safeFetchJson } from "@/lib/security/safeFetch";
@@ -131,7 +131,7 @@ async function transcribeWithMimo(
 
 export async function POST(request: NextRequest) {
   try {
-    assertRequestContentLengthUnderLimit(
+    assertMultipartRequestContentLengthUnderLimit(
       request,
       VOICE_LIMITS.maxTranscriptionAudioBytes +
         API_INPUT_LIMITS.maxMultipartOverheadBytes,

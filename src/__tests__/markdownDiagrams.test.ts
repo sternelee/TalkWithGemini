@@ -80,7 +80,7 @@ describe("markdown diagram block parsing", () => {
   it("can be applied after generated file block parsing without swallowing files", () => {
     const fileSegments = parseMarkdownFileBlocks(
       [
-        "<file name=\"notes.md\" type=\"text/markdown\">",
+        '<file name="notes.md" type="text/markdown">',
         "```mermaid",
         "graph TD",
         "  File --> Content",

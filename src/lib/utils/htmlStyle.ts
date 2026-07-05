@@ -118,29 +118,53 @@ const HEX_COLOR_RE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b/gi;
 const RGB_OR_HSL_COLOR_RE = /\b(?:rgba?|hsla?)\([^)]*\)/gi;
 const NEUTRAL_KEYWORD_RE = /\b(?:black|white)\b/gi;
 const THEME_COLOR_TOKENS = new Map<string, string>([
+  ["#ecfeff", "var(--html-visual-info-surface)"],
+  ["#cffafe", "var(--html-visual-info-surface)"],
   ["#eff6ff", "var(--html-visual-info-surface)"],
   ["#dbeafe", "var(--html-visual-info-surface)"],
+  ["#a5f3fc", "var(--html-visual-info-border)"],
+  ["#67e8f9", "var(--html-visual-info-border)"],
   ["#bfdbfe", "var(--html-visual-info-border)"],
   ["#93c5fd", "var(--html-visual-info-border)"],
+  ["#22d3ee", "var(--html-visual-info-accent)"],
+  ["#06b6d4", "var(--html-visual-info-accent)"],
+  ["#0891b2", "var(--html-visual-info-accent)"],
   ["#60a5fa", "var(--html-visual-info-accent)"],
   ["#3b82f6", "var(--html-visual-info-accent)"],
   ["#2563eb", "var(--html-visual-info-accent)"],
+  ["#155e75", "var(--html-visual-info-foreground)"],
+  ["#0e7490", "var(--html-visual-info-foreground)"],
   ["#1d4ed8", "var(--html-visual-info-foreground)"],
+  ["#f5f3ff", "var(--html-visual-knowledge-surface)"],
+  ["#ede9fe", "var(--html-visual-knowledge-surface)"],
   ["#faf5ff", "var(--html-visual-knowledge-surface)"],
   ["#f3e8ff", "var(--html-visual-knowledge-surface)"],
+  ["#ddd6fe", "var(--html-visual-knowledge-border)"],
+  ["#c4b5fd", "var(--html-visual-knowledge-border)"],
   ["#e9d5ff", "var(--html-visual-knowledge-border)"],
   ["#d8b4fe", "var(--html-visual-knowledge-border)"],
+  ["#a78bfa", "var(--html-visual-knowledge-accent)"],
+  ["#8b5cf6", "var(--html-visual-knowledge-accent)"],
+  ["#7c3aed", "var(--html-visual-knowledge-accent)"],
   ["#c084fc", "var(--html-visual-knowledge-accent)"],
   ["#a855f7", "var(--html-visual-knowledge-accent)"],
   ["#9333ea", "var(--html-visual-knowledge-accent)"],
+  ["#6d28d9", "var(--html-visual-knowledge-foreground)"],
   ["#7e22ce", "var(--html-visual-knowledge-foreground)"],
+  ["#ecfdf5", "var(--html-visual-success-surface)"],
+  ["#d1fae5", "var(--html-visual-success-surface)"],
   ["#f0fdf4", "var(--html-visual-success-surface)"],
   ["#dcfce7", "var(--html-visual-success-surface)"],
+  ["#a7f3d0", "var(--html-visual-success-border)"],
+  ["#6ee7b7", "var(--html-visual-success-border)"],
   ["#bbf7d0", "var(--html-visual-success-border)"],
   ["#86efac", "var(--html-visual-success-border)"],
+  ["#34d399", "var(--html-visual-success-accent)"],
+  ["#10b981", "var(--html-visual-success-accent)"],
   ["#4ade80", "var(--html-visual-success-accent)"],
   ["#22c55e", "var(--html-visual-success-accent)"],
   ["#16a34a", "var(--html-visual-success-accent)"],
+  ["#047857", "var(--html-visual-success-foreground)"],
   ["#15803d", "var(--html-visual-success-foreground)"],
   ["#fffbeb", "var(--html-visual-warning-surface)"],
   ["#fef3c7", "var(--html-visual-warning-surface)"],
@@ -149,6 +173,7 @@ const THEME_COLOR_TOKENS = new Map<string, string>([
   ["#fbbf24", "var(--html-visual-warning-accent)"],
   ["#f59e0b", "var(--html-visual-warning-accent)"],
   ["#d97706", "var(--html-visual-warning-accent)"],
+  ["#92400e", "var(--html-visual-warning-foreground)"],
   ["#b45309", "var(--html-visual-warning-foreground)"],
   ["#fff1f2", "var(--html-visual-danger-surface)"],
   ["#ffe4e6", "var(--html-visual-danger-surface)"],
@@ -259,7 +284,9 @@ function parseRgbChannel(value: string): number | null {
   if (!trimmed) return null;
   if (trimmed.endsWith("%")) {
     const percent = Number.parseFloat(trimmed);
-    return Number.isFinite(percent) ? clamp((percent / 100) * 255, 0, 255) : null;
+    return Number.isFinite(percent)
+      ? clamp((percent / 100) * 255, 0, 255)
+      : null;
   }
   const channel = Number.parseFloat(trimmed);
   return Number.isFinite(channel) ? clamp(channel, 0, 255) : null;
@@ -276,7 +303,10 @@ function parseAlpha(value: string | undefined): number {
   return Number.isFinite(alpha) ? clamp(alpha, 0, 1) : 1;
 }
 
-function splitFunctionArgs(value: string): { channels: string[]; alpha?: string } {
+function splitFunctionArgs(value: string): {
+  channels: string[];
+  alpha?: string;
+} {
   const [channelPart, slashAlpha] = value.split(/\s+\/\s+/u, 2);
   if (channelPart.includes(",")) {
     const parts = channelPart.split(",").map((item) => item.trim());
@@ -366,7 +396,10 @@ function parseCssColor(value: string): ParsedColor | null {
   return null;
 }
 
-function isNearExtremeNeutral(color: ParsedColor, ignoreAlpha = false): boolean {
+function isNearExtremeNeutral(
+  color: ParsedColor,
+  ignoreAlpha = false,
+): boolean {
   if (!ignoreAlpha && color.a < 0.7) return false;
   const channels = [color.r, color.g, color.b];
   const min = Math.min(...channels);
@@ -429,10 +462,7 @@ function containsNeutralColor(value: string, ignoreAlpha = false): boolean {
   });
 }
 
-function normalizeColorStyleValue(
-  property: string,
-  value: string,
-): string {
+function normalizeColorStyleValue(property: string, value: string): string {
   if (property === "boxShadow" && containsNeutralColor(value, true)) {
     return HTML_VISUAL_SHADOW;
   }

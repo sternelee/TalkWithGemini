@@ -69,6 +69,27 @@ function getServerDefaultModels(
   return next;
 }
 
+function mergeServerDefaultModels(
+  currentDefaults: DefaultModels,
+  serverDefaults: Partial<DefaultModels>,
+  providers: ModelProvider[],
+): DefaultModels {
+  const prunedCurrent = pruneUnavailableDefaultModels(
+    currentDefaults,
+    providers,
+  );
+  const seededDefaults = getServerDefaultModels(serverDefaults);
+  return (
+    Object.keys(EMPTY_DEFAULT_MODELS) as Array<keyof DefaultModels>
+  ).reduce<DefaultModels>(
+    (next, task) => ({
+      ...next,
+      [task]: prunedCurrent[task] || seededDefaults[task] || "",
+    }),
+    { ...EMPTY_DEFAULT_MODELS },
+  );
+}
+
 interface CoreSettingsState {
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
@@ -227,14 +248,21 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           if (!defaultProvider) {
             return {
               providers: userProviders,
-              defaultModels: { ...EMPTY_DEFAULT_MODELS },
+              defaultModels: pruneUnavailableDefaultModels(
+                state.defaultModels,
+                userProviders,
+              ),
             };
           }
 
+          const providers = [defaultProvider, ...userProviders];
+
           return {
-            providers: [defaultProvider, ...userProviders],
-            defaultModels: getServerDefaultModels(
+            providers,
+            defaultModels: mergeServerDefaultModels(
+              state.defaultModels,
               config.modelProvider.defaultModels,
+              providers,
             ),
           };
         }),
@@ -283,6 +311,7 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
           if (typeof window === "undefined") return;
           if (error) {
             logDevError("Core settings hydration failed:", error);
+            state?.setHasHydrated(true);
           } else if (state) {
             state.setHasHydrated(true);
           }

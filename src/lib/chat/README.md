@@ -4,17 +4,20 @@ The `src/lib/chat` directory contains chat-domain helpers that are shared by sto
 
 ## Files
 
-- `effectiveChatContext.ts` builds the effective provider/search/RAG/plugin context for a request.
+- `effectiveChatContext.ts` builds the effective provider/search/RAG/plugin/skill context for a request.
 - `entities.ts` normalizes chat-domain entities.
 - `generationLifecycle.ts` coordinates generation state transitions.
+- `htmlVisualPrompt.ts` builds the optional prompt guidance for safe inline HTML visual output.
 - `messageProcessor.ts` prepares user messages and attachments before sending.
+- `messageOutputBlocks.ts` builds streamed output blocks such as search, reasoning, tool, and content sections.
 - `messageTree.ts` manages branched message relationships.
 - `postGenerationGuards.ts` handles post-generation safety checks.
+- `searchUpdate.ts` merges streamed search sources and images without duplicating prior entries.
 - `sessionExport.ts` serializes and imports chat session data.
 
 ## Message Processing
 
-`messageProcessor.ts` prepares outgoing messages by combining plain text, attachments, RAG context, model capability checks, and placeholder model messages.
+`messageProcessor.ts` prepares outgoing messages by combining plain text, attachments, RAG context, selected knowledge scope, model capability checks, and placeholder model messages.
 
 ```typescript
 const processed = await processMessageForSending({

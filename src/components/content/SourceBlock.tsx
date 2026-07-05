@@ -15,12 +15,14 @@ interface SourceBlockProps {
   sources: Source[];
   images: ImageSource[];
   isSearching?: boolean;
+  error?: string;
 }
 
 const SourceBlock: React.FC<SourceBlockProps> = ({
   sources,
   images,
   isSearching,
+  error,
 }) => {
   const t = useTranslations("Content");
   const [isExpanded, setIsExpanded] = useState(false);
@@ -38,6 +40,7 @@ const SourceBlock: React.FC<SourceBlockProps> = ({
     sourceCount: sources.length,
     imageCount: safeImages.length,
     isSearching,
+    error,
     visibleImagesCount,
   });
 
@@ -47,11 +50,13 @@ const SourceBlock: React.FC<SourceBlockProps> = ({
   // which stays English for non-UI consumers).
   const presentationLabel = isSearching
     ? t("labelSearching")
-    : presentation.hasSources && presentation.hasImages
-      ? t("labelSourcesAndImages")
-      : presentation.hasImages
-        ? t("labelImages")
-        : t("labelSources");
+    : error
+      ? t("labelSearchFailed")
+      : presentation.hasSources && presentation.hasImages
+        ? t("labelSourcesAndImages")
+        : presentation.hasImages
+          ? t("labelImages")
+          : t("labelSources");
 
   const handleImageClick = (e: React.MouseEvent, index: number) => {
     e.preventDefault();
@@ -98,12 +103,20 @@ const SourceBlock: React.FC<SourceBlockProps> = ({
         id={panelId}
         role="region"
         aria-label={t("searchSourcesAndImages")}
-        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${isExpanded && !isSearching ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${(isExpanded || error) && !isSearching ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
       >
         <div className="overflow-hidden">
           {/* Lazy Render Content */}
-          {isExpanded && !isSearching && (
+          {(isExpanded || error) && !isSearching && (
             <div className="px-3 py-3 border-t border-gray-200/50 dark:border-border bg-white/40 dark:bg-card/40">
+              {error && (
+                <div
+                  role="status"
+                  className="text-xs text-red-600 dark:text-red-400"
+                >
+                  {error}
+                </div>
+              )}
               {/* Source List */}
               {presentation.hasSources && (
                 <div className="space-y-2">

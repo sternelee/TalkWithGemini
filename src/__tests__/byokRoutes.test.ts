@@ -209,6 +209,7 @@ describe("BYOK route integration", () => {
     const response = await POST(
       new Request("https://neo.test/api/doc-parse", {
         method: "POST",
+        headers: { "content-length": "2048" },
         body: formData,
       }) as any,
     );
@@ -235,6 +236,7 @@ describe("BYOK route integration", () => {
     const response = await POST(
       new Request("https://neo.test/api/doc-parse", {
         method: "POST",
+        headers: { "content-length": "2048" },
         body: formData,
       }) as any,
     );
@@ -264,6 +266,7 @@ describe("BYOK route integration", () => {
     const response = await POST(
       new Request("https://neo.test/api/voice/transcribe", {
         method: "POST",
+        headers: { "content-length": "2048" },
         body: formData,
       }) as any,
     );
@@ -274,5 +277,33 @@ describe("BYOK route integration", () => {
     expect(JSON.stringify(await response.json())).not.toContain(
       "voice-plaintext",
     );
+  });
+
+  it("rejects transcription multipart requests without a trustworthy content length before parsing", async () => {
+    const { POST } = await import("../app/api/voice/transcribe/route");
+    const formData = new FormData();
+    formData.set(
+      "audio",
+      new File(["audio"], "speech.webm", { type: "audio/webm" }),
+    );
+    formData.set("provider", "elevenlabs");
+    formData.set(
+      "apiKeySecret",
+      JSON.stringify({ ...apiKeySecret, context: "voice:elevenlabs" }),
+    );
+
+    const response = await POST(
+      new Request("https://neo.test/api/voice/transcribe", {
+        method: "POST",
+        body: formData,
+      }) as any,
+    );
+
+    expect(response.status).toBe(411);
+    expect(await response.json()).toMatchObject({
+      code: "LENGTH_REQUIRED",
+    });
+    expect(mocks.decryptSecretEnvelope).not.toHaveBeenCalled();
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
   });
 });

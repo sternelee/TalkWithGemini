@@ -62,6 +62,10 @@ pnpm byok:generate
 | `ALLOW_LOCAL_NETWORK_PROXY` | Explicit override for local/private-network proxy access. Keep disabled for hosted internet deployments. |
 | `TRUST_PROXY_HEADERS`       | Trust forwarded proxy headers only when the hosting platform strips spoofed values.                      |
 
+`TRUST_PROXY_HEADERS` affects request identity used by deployment diagnostics
+and rate limiting. Leave it `false` unless Neo Chat is behind a trusted proxy
+that removes client-supplied forwarded headers.
+
 ## Shared Stores
 
 | Variable                   | Purpose                                                                                               |
@@ -71,6 +75,11 @@ pnpm byok:generate
 | `PLUGIN_REGISTRY_STORE`    | Store for server-registered plugin manifests. Use `upstash` for hosted or multi-instance deployments. |
 | `UPSTASH_REDIS_REST_URL`   | Upstash Redis REST endpoint used by shared stores.                                                    |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token used by shared stores.                                                       |
+
+All three stores may use in-memory state for one local process. Hosted,
+Cloudflare Workers, and multi-instance Docker deployments should use `upstash`
+for all three so rate limits, document parse jobs, and plugin execution
+registry lookups survive across instances.
 
 ## Public URLs
 
@@ -137,6 +146,10 @@ pnpm byok:generate
 
 When `DEFAULT_VOICE_PROVIDER` is set to `elevenlabs` or `mimo`, an empty default model disables that single STT or TTS capability. The browser UI falls back to native browser speech for disabled default capabilities.
 
+`DEFAULT_MIMO_*` values configure the Mimo server default only when
+`DEFAULT_VOICE_PROVIDER=mimo` and `DEFAULT_MIMO_API_KEY` is present. Otherwise
+they remain available as documented defaults without exposing a shared provider.
+
 ## Default System Behavior
 
 | Variable                            | Purpose                                                                                                                                   |
@@ -149,3 +162,7 @@ When `DEFAULT_VOICE_PROVIDER` is set to `elevenlabs` or `mimo`, an empty default
 | `DEFAULT_HISTORY_KEEP_COUNT`        | Number of recent history items retained after compression.                                                                                |
 | `DEFAULT_ENABLE_CODE_COLLAPSE`      | Enables collapsible code blocks by default.                                                                                               |
 | `DEFAULT_ENABLE_HTML_VISUAL_PROMPT` | Guides models to use safe inline HTML for visual structures. Defaults to enabled; set to `false` to disable for new self-hosted defaults. |
+
+`DEFAULT_ENABLE_HTML_VISUAL_PROMPT` changes model instructions only. Message
+rendering still sanitizes inline HTML and blocks scripts, event handlers,
+iframes, unsafe URLs, and full HTML documents.

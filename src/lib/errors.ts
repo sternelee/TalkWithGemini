@@ -39,6 +39,13 @@ export class PayloadTooLargeError extends ApiError {
   }
 }
 
+export class LengthRequiredError extends ApiError {
+  constructor(message: string = "Content-Length header is required") {
+    super(message, 411, "LENGTH_REQUIRED");
+    this.name = "LengthRequiredError";
+  }
+}
+
 export class AuthenticationError extends ApiError {
   constructor(message: string = "API key not configured") {
     super(message, 401, "AUTH_ERROR");

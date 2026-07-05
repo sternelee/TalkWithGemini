@@ -6,23 +6,23 @@ deployment issues, or simpler implementation paths.
 
 ## Near Term
 
-- Keep local-first chat, workspace, plugin, assistant, and knowledge flows
+- Keep local-first chat, workspace, skill, plugin, assistant, memory, and knowledge flows
   stable across browser refreshes and storage migrations.
-- Improve public documentation for deployment, plugin development, privacy,
-  and configuration.
+- Keep public documentation current as deployment, skills, plugin execution,
+  privacy, and configuration behavior changes.
 - Tighten CI quality gates with formatting, linting, type checking, tests,
   builds, and dependency audits.
 
 ## Mid Term
 
-- Improve hosted deployment readiness with clearer shared-store setup,
-  operational checks, and safer defaults.
-- Expand plugin registry documentation and examples for OpenAPI-compatible
-  tools.
+- Continue improving hosted deployment readiness with operational checks,
+  shared-store diagnostics, and safer defaults.
+- Expand plugin and skills workflow examples for OpenAPI-compatible tools and
+  text-only reusable instructions.
 - Improve knowledge-base recovery, indexing diagnostics, and user-facing error
   states.
 - Add more screenshots and workflow examples for common model, search, RAG,
-  voice, and plugin setups.
+  voice, skills, plugin, and deployment health setups.
 
 ## Later
 
@@ -39,3 +39,5 @@ deployment issues, or simpler implementation paths.
   controls before production use.
 - Runtime plugin calls execute automatically after a plugin is enabled for a
   chat; users should only enable plugins they trust.
+- Skills are text-only prompt context. They do not execute scripts, call
+  networks, or access local files.

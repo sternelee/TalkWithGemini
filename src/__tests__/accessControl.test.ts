@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { API_INPUT_LIMITS } from "../config/limits";
 import {
   ACCESS_ATTEMPTS_COOKIE,
   ACCESS_ERROR_CODES,
@@ -148,6 +149,27 @@ describe("access password verification route", () => {
     });
   });
 
+  it("rejects oversized verification bodies before parsing unauthenticated JSON", async () => {
+    vi.stubEnv("ACCESS_PASSWORD", "secret");
+    const { POST } = await import("../app/api/access/verify/route");
+
+    const response = await POST(
+      new NextRequest("https://neo.test/api/access/verify", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(API_INPUT_LIMITS.maxJsonBodyBytes + 1),
+        },
+        body: JSON.stringify({ password: "secret" }),
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({
+      code: "PAYLOAD_TOO_LARGE",
+    });
+  });
+
   it("locks on the third invalid password and keeps rejecting while locked", async () => {
     vi.stubEnv("ACCESS_PASSWORD", "secret");
     const { POST } = await import("../app/api/access/verify/route");
@@ -224,6 +246,29 @@ describe("access password verification route", () => {
     const data = await locked.json();
 
     expect(locked.status).toBe(423);
+    expect(data.code).toBe(ACCESS_ERROR_CODES.locked);
+  });
+
+  it("does not let spoofed forwarded IP headers bypass server-side access lockout", async () => {
+    vi.stubEnv("ACCESS_PASSWORD", "secret");
+    vi.stubEnv("TRUST_PROXY_HEADERS", "");
+    const { POST } = await import("../app/api/access/verify/route");
+
+    let response: Response | null = null;
+    for (const ip of ["203.0.113.44", "203.0.113.45", "203.0.113.46"]) {
+      response = await POST(
+        new NextRequest("https://neo.test/api/access/verify", {
+          method: "POST",
+          headers: {
+            "x-forwarded-for": ip,
+          },
+          body: JSON.stringify({ password: "wrong" }),
+        }),
+      );
+    }
+
+    const data = await response?.json();
+    expect(response?.status).toBe(423);
     expect(data.code).toBe(ACCESS_ERROR_CODES.locked);
   });
 });

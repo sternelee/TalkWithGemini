@@ -32,6 +32,8 @@ The `src/lib/utils` directory contains small, focused helpers used across chat, 
 
 - `rag.ts` processes RAG attachments and local knowledge-base content.
 - `citations.ts` normalizes citation data.
+- `diagramSvg.ts` normalizes generated Mermaid and mind map SVG roots for stable fullscreen and export rendering.
+- `htmlStyle.ts` and `htmlVisualMarkdown.ts` sanitize and normalize safe inline HTML visual output.
 - `toolDisplay.ts` formats tool names, arguments, and results for display.
 
 ### Media And Voice
@@ -46,6 +48,7 @@ The `src/lib/utils` directory contains small, focused helpers used across chat, 
 - `chatInput.ts` handles input behavior.
 - `clipboard.ts` wraps copy behavior.
 - `htmlPreview.ts` prepares safe artifact previews.
+- `messageInputHelpers.ts` keeps message composer formatting, media detection, and IME-safe submit behavior testable.
 - `messageMetaTooltip.ts` formats message metadata.
 - `reasoningDisplay.ts` formats reasoning blocks.
 - `timedStatus.ts` handles temporary status reset behavior.

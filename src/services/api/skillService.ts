@@ -42,19 +42,12 @@ function getSkillDefinitionCacheKey(
   return `${locale}:${file}`;
 }
 
-function getCachedSkillCatalog(
-  locale: SkillDataLocale,
-): SkillCatalog | null {
-  const { skillCatalogs, skillCatalogTimestamps } =
-    useSettingsStore.getState();
+function getCachedSkillCatalog(locale: SkillDataLocale): SkillCatalog | null {
+  const { skillCatalogs, skillCatalogTimestamps } = useSettingsStore.getState();
   const catalog = skillCatalogs?.[locale];
   const timestamp = skillCatalogTimestamps?.[locale] || 0;
 
-  if (
-    !catalog ||
-    !timestamp ||
-    Date.now() - timestamp >= CACHE_CONFIG.skills
-  ) {
+  if (!catalog || !timestamp || Date.now() - timestamp >= CACHE_CONFIG.skills) {
     return null;
   }
 
@@ -68,11 +61,7 @@ function getCachedSkillDefinition(cacheKey: string): TextSkill | null {
   const skill = skillDefinitions?.[cacheKey];
   const timestamp = skillDefinitionTimestamps?.[cacheKey] || 0;
 
-  if (
-    !skill ||
-    !timestamp ||
-    Date.now() - timestamp >= CACHE_CONFIG.skills
-  ) {
+  if (!skill || !timestamp || Date.now() - timestamp >= CACHE_CONFIG.skills) {
     return null;
   }
 
@@ -214,6 +203,7 @@ export async function resolveSkillsForMessage({
   installedSkills,
   customSkills = [],
   activeSkillIds,
+  autoSelect,
   signal,
 }: {
   message: string;
@@ -260,6 +250,16 @@ export async function resolveSkillsForMessage({
   }
 
   let appliedSkills: AppliedSkill[] = [];
+  if (!autoSelect) {
+    appliedSkills = activeSkills.map((skill) => ({ skill, mode: "manual" }));
+    const context = buildSkillPromptContext({ skills: appliedSkills });
+    return {
+      appliedSkills,
+      invocations: createSkillInvocations(appliedSkills),
+      context,
+    };
+  }
+
   let selectedSkillIds: string[] | null = null;
   try {
     const toolCall = await streamGenerateToolCall(

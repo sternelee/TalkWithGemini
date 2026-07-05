@@ -19,6 +19,10 @@ function getRegistry(): Map<string, Plugin> {
   return globalThis.__neoChatServerPluginRegistry;
 }
 
+function getBuiltInPlugin(pluginId: string): Plugin | undefined {
+  return BUILT_IN_PLUGINS.find((plugin) => plugin.id === pluginId);
+}
+
 class UpstashServerPluginRegistryStore implements ServerPluginRegistryStore {
   constructor(
     private readonly url: string,
@@ -118,6 +122,10 @@ function getServerPluginRegistryStore(): ServerPluginRegistryStore {
 }
 
 export async function registerServerPlugin(plugin: Plugin): Promise<void> {
+  if (getBuiltInPlugin(plugin.id)) {
+    throw new Error(`Plugin id ${plugin.id} is a reserved built-in plugin id`);
+  }
+
   getRegistry().set(plugin.id, plugin);
   try {
     await getServerPluginRegistryStore().set(plugin);
@@ -132,13 +140,11 @@ export async function registerServerPlugin(plugin: Plugin): Promise<void> {
 export async function getServerPlugin(
   pluginId: string,
 ): Promise<Plugin | undefined> {
+  const builtInPlugin = getBuiltInPlugin(pluginId);
+  if (builtInPlugin) return builtInPlugin;
+
   const memoryPlugin = getRegistry().get(pluginId);
   if (memoryPlugin) return memoryPlugin;
-
-  const builtInPlugin = BUILT_IN_PLUGINS.find(
-    (plugin) => plugin.id === pluginId,
-  );
-  if (builtInPlugin) return builtInPlugin;
 
   try {
     const storedPlugin = await getServerPluginRegistryStore().get(pluginId);

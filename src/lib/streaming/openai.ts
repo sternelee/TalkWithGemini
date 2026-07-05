@@ -73,7 +73,9 @@ function collectSourceCandidates(
   if (!value) return [];
   if (Array.isArray(value)) {
     return value
-      .map((item) => createSourceCandidate(item, "Search source", fallbackContent))
+      .map((item) =>
+        createSourceCandidate(item, "Search source", fallbackContent),
+      )
       .filter(Boolean);
   }
   const candidate = createSourceCandidate(

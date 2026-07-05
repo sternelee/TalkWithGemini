@@ -47,6 +47,36 @@ interface SkillMarketProps {
 }
 
 const ITEMS_PER_PAGE = 24;
+const focusableModalSelector =
+  'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+const trapModalFocus = (
+  event: React.KeyboardEvent<HTMLElement>,
+  container: HTMLElement | null,
+) => {
+  if (event.key !== "Tab" || !container) return;
+
+  const focusableElements = Array.from(
+    container.querySelectorAll<HTMLElement>(focusableModalSelector),
+  ).filter((element) => element.offsetParent !== null);
+
+  if (focusableElements.length === 0) {
+    event.preventDefault();
+    container.focus({ preventScroll: true });
+    return;
+  }
+
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+
+  if (event.shiftKey && document.activeElement === firstElement) {
+    event.preventDefault();
+    lastElement.focus({ preventScroll: true });
+  } else if (!event.shiftKey && document.activeElement === lastElement) {
+    event.preventDefault();
+    firstElement.focus({ preventScroll: true });
+  }
+};
 
 const titleCaseCategoryName = (value: string) =>
   value
@@ -140,11 +170,27 @@ const SkillEditorModal = ({
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const id = useId();
   const titleId = `${id}-title`;
+  const tagInputId = `${id}-tag-input`;
 
   useEffect(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus({ preventScroll: true });
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      if (previousFocusRef.current?.isConnected) {
+        previousFocusRef.current.focus({ preventScroll: true });
+      }
+      previousFocusRef.current = null;
+    };
   }, []);
 
   const updateDraft = (updates: Partial<TextSkill>) =>
@@ -200,12 +246,15 @@ const SkillEditorModal = ({
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
+      return;
     }
+
+    trapModalFocus(event, dialogRef.current);
   };
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm animate-in fade-in duration-200"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -217,7 +266,7 @@ const SkillEditorModal = ({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="flex max-h-[90vh] w-full max-w-2xl flex-col gap-4 overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-border dark:bg-card"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col gap-4 overflow-hidden overscroll-contain rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-border dark:bg-card sm:max-h-[90vh]"
       >
         <div className="flex items-center justify-between gap-3">
           <h2
@@ -243,6 +292,10 @@ const SkillEditorModal = ({
             <label className="space-y-1 text-sm font-medium text-gray-700 dark:text-foreground/85">
               <span>{t("skillId")}</span>
               <input
+                type="text"
+                name="skill-id"
+                autoComplete="off"
+                spellCheck={false}
                 value={draft.id}
                 onChange={(event) => updateDraft({ id: event.target.value })}
                 placeholder="custom-writing-helper"
@@ -253,6 +306,9 @@ const SkillEditorModal = ({
           <label className="space-y-1 text-sm font-medium text-gray-700 dark:text-foreground/85">
             <span>{t("skillTitle")}</span>
             <input
+              type="text"
+              name="skill-title"
+              autoComplete="off"
               value={draft.title}
               onChange={(event) => updateDraft({ title: event.target.value })}
               className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 dark:border-border dark:bg-muted"
@@ -261,6 +317,10 @@ const SkillEditorModal = ({
           <label className="space-y-1 text-sm font-medium text-gray-700 dark:text-foreground/85">
             <span>{t("category")}</span>
             <input
+              type="text"
+              name="skill-category"
+              autoComplete="off"
+              spellCheck={false}
               value={draft.category}
               onChange={(event) =>
                 updateDraft({ category: event.target.value })
@@ -271,6 +331,7 @@ const SkillEditorModal = ({
           <label className="space-y-1 text-sm font-medium text-gray-700 dark:text-foreground/85 md:col-span-2">
             <span>{t("skillDescription")}</span>
             <textarea
+              name="skill-description"
               value={draft.description}
               onChange={(event) =>
                 updateDraft({ description: event.target.value })
@@ -281,17 +342,25 @@ const SkillEditorModal = ({
           <label className="space-y-1 text-sm font-medium text-gray-700 dark:text-foreground/85 md:col-span-2">
             <span>{t("skillInstructions")}</span>
             <textarea
+              name="skill-instructions"
               value={draft.content}
               onChange={(event) => updateDraft({ content: event.target.value })}
               className="h-28 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 dark:border-border dark:bg-muted"
             />
           </label>
           <div className="space-y-2 md:col-span-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-foreground/85">
+            <label
+              htmlFor={tagInputId}
+              className="text-sm font-medium text-gray-700 dark:text-foreground/85"
+            >
               {t("tags")}
             </label>
             <div className="flex gap-2">
               <input
+                id={tagInputId}
+                type="text"
+                name="skill-tag"
+                autoComplete="off"
                 value={tagInput}
                 onChange={(event) => setTagInput(event.target.value)}
                 onKeyDown={(event) => {
@@ -305,6 +374,7 @@ const SkillEditorModal = ({
               />
               <button
                 type="button"
+                aria-label={t("addTagAria")}
                 onClick={addTag}
                 className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:bg-emerald-900/20 dark:text-emerald-300"
               >
@@ -778,6 +848,10 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
             <Search size={20} className="mr-3 text-gray-400" />
             <input
               id={searchInputId}
+              type="search"
+              name="skill-search"
+              autoComplete="off"
+              spellCheck={false}
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={t("searchPlaceholder")}
@@ -848,7 +922,11 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
               {renderCategoryFilter()}
             </div>
             {isLoading ? (
-              <div className="flex h-64 flex-col items-center justify-center gap-4 text-gray-400">
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex h-64 flex-col items-center justify-center gap-4 text-gray-400"
+              >
                 <Loader2
                   size={32}
                   className="animate-spin text-emerald-500"

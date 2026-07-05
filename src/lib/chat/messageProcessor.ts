@@ -1,7 +1,11 @@
 import { v7 as uuidv7 } from "uuid";
 import type { Attachment, Message, Source } from "../../types";
 import type { ModelInfo } from "@/services/api/chatService";
-import { processRAGAttachments, processLocalKBAttachments } from "../utils/rag";
+import {
+  isIndexedKnowledgeFileAttachment,
+  processRAGAttachments,
+  processLocalKBAttachments,
+} from "../utils/rag";
 import {
   separateKBAttachments,
   processAttachmentsForModel,
@@ -9,7 +13,6 @@ import {
 import {
   createKnowledgeCollectionAttachment,
   getKnowledgeAttachmentSelectionKey,
-  isKnowledgeCollectionAttachment,
   isKnowledgeFileAttachment,
 } from "../utils/knowledgeAttachments";
 import { parseModelString } from "../utils/model";
@@ -93,24 +96,26 @@ export async function processMessageForSending(
   const isRagServiceEnabled = ragConfig.enabled && hasRagVectorStore(ragConfig);
 
   if (hasKB && isRagServiceEnabled) {
-    const collectionAttachments = allKBAttachments.filter(
-      isKnowledgeCollectionAttachment,
-    );
     const fileAttachments = allKBAttachments.filter(isKnowledgeFileAttachment);
 
     const ragResult = await processRAGAttachments(
       text,
-      collectionAttachments,
+      allKBAttachments,
       ragConfig,
       supportAttachment,
+      knowledgeCollections,
     );
     convertedContent += ragResult.convertedContent;
     finalAttachments.push(...ragResult.finalAttachments);
     ragSources = ragResult.ragSources;
 
-    if (fileAttachments.length > 0) {
+    const localFileAttachments = fileAttachments.filter(
+      (attachment) =>
+        !isIndexedKnowledgeFileAttachment(attachment, knowledgeCollections),
+    );
+    if (localFileAttachments.length > 0) {
       const localResult = await processLocalKBAttachments(
-        fileAttachments,
+        localFileAttachments,
         knowledgeCollections,
         supportAttachment,
       );

@@ -52,9 +52,7 @@ const normalizeMemories = (value: unknown): DisplayMemory[] => {
   return memories;
 };
 
-const MemorySearchBlock: React.FC<MemorySearchBlockProps> = ({
-  toolCalls,
-}) => {
+const MemorySearchBlock: React.FC<MemorySearchBlockProps> = ({ toolCalls }) => {
   const t = useTranslations("Content");
   const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
@@ -128,7 +126,9 @@ const MemorySearchBlock: React.FC<MemorySearchBlockProps> = ({
         role="region"
         aria-label={t("memorySearchDetails")}
         className={`grid transition-[grid-template-rows,opacity] duration-300 ease-in-out ${
-          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+          isExpanded
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0"
         }`}
       >
         <div className="overflow-hidden">

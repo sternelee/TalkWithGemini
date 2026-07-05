@@ -74,6 +74,12 @@ export async function POST(request: NextRequest) {
       title: `${res.metadata?.fileName || "Knowledge Result"} [Score: ${Number(res.score || 0).toFixed(2)}]`,
       url: res.metadata?.url || "#",
       content: res.data,
+      metadata: {
+        ...(res.metadata || {}),
+        ...(effectiveNamespace && !res.metadata?.collectionId
+          ? { collectionId: effectiveNamespace }
+          : {}),
+      },
     }));
 
     return NextResponse.json({

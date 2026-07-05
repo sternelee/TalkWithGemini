@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A local-first AI chat workspace for models, agents, plugins, search, RAG, voice, and artifacts.</strong>
+  <strong>A local-first AI chat workspace for models, agents, skills, plugins, search, RAG, voice, memory, and artifacts.</strong>
 </p>
 
 <p align="center">
@@ -20,22 +20,25 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6" />
 </p>
 
-Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, OpenAPI-style plugin tools, web search, knowledge-base RAG, voice, generated media, Markdown, math, citations, and editable artifacts into one clean workspace.
+Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, text-only Skills, OpenAPI-style plugin tools, web search, knowledge-base RAG, local memory, voice, generated media, rich message rendering, citations, and editable artifacts into one clean workspace.
 
-It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, plugin configuration, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, and plugin execution.
+It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, skills, plugin configuration, memories, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, plugin execution, and deployment health.
 
 ## Features
 
 - Multi-provider chat with Gemini, OpenAI, and OpenAI-compatible endpoints.
 - Local-first sessions, branches, pinned chats, workspaces, workspace files, and assistant instructions.
 - Assistant presets from the LobeHub agent registry plus local custom assistants.
+- Text-only Skills with localized public catalogs, install/uninstall flows, local edits, custom skills, auto-selection, and workspace presets.
 - OpenAPI-based plugin tools with per-plugin authentication and server-side execution.
 - Built-in tools for web reading, weather, Unsplash search, Agnes image generation, and Agnes video generation.
 - Web search through Gemini native Google Search or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
 - Knowledge-base RAG with OPFS file storage, Mineru/LlamaParse document parsing, and optional vector indexing.
-- Voice input and output through browser APIs, ElevenLabs, or compatible configured providers.
-- Rich message rendering for Markdown, GFM tables, math, code highlighting, citations, reasoning, tool calls, images, audio, and artifacts.
+- Local memory with optional memory search, background extraction, and dream consolidation.
+- Voice input and output through browser APIs, ElevenLabs, Mimo, or compatible configured providers.
+- Rich message rendering for Markdown, safe inline HTML visual blocks, GFM tables, math, code highlighting, Mermaid diagrams, mind maps, citations, reasoning, tool calls, images, audio, and artifacts.
 - Local BYOK encryption for user-entered provider, plugin, search, RAG, and voice secrets.
+- Deployment health checks for BYOK, access password, shared stores, default model, search, RAG, and voice readiness.
 - Docker and Cloudflare Workers deployment paths.
 
 ## Screenshots
@@ -66,7 +69,7 @@ For deployment-wide defaults, copy the environment template:
 cp .env.example .env.local
 ```
 
-Most settings can be managed in the browser. Server environment variables are useful when you want a shared default provider, hosted deployment safety, access password protection, or managed defaults for search, RAG, document parsing, and voice.
+Most settings can be managed in the browser. Server environment variables are useful when you want a shared default provider, hosted deployment safety, access password protection, shared runtime stores, or managed defaults for search, RAG, document parsing, voice, memory, and HTML visual rendering.
 
 ## Deployment
 
@@ -76,7 +79,7 @@ Most settings can be managed in the browser. Server environment variables are us
 docker compose up --build
 ```
 
-The compose file publishes Neo Chat on `http://localhost:3000` and uses local/self-hosted safety defaults. For production Docker deployments, set stable BYOK values instead of relying on the compose-only ephemeral BYOK default.
+The compose file publishes Neo Chat on `http://localhost:3000` and uses local/self-hosted safety defaults. For production Docker deployments, set stable BYOK values, use shared stores for hosted or multi-instance deployments, and enable `TRUST_PROXY_HEADERS` only behind a proxy that strips spoofed forwarded headers.
 
 ### Docker Image
 
@@ -156,7 +159,7 @@ See [Deployment Hardening](docs/deployment-hardening.md) for production configur
 Neo Chat is local-first by default:
 
 - Core settings, provider records, selected models, and provider API keys are stored in browser `localStorage`.
-- Chat metadata, messages, app settings, installed plugins, assistants, and knowledge metadata are stored in IndexedDB through `localforage`.
+- Chat metadata, messages, app settings, installed plugins, installed/custom skills, skill catalog caches, assistants, knowledge metadata, and local memories are stored in IndexedDB through `localforage`.
 - Uploaded chat, workspace, and knowledge files are stored in browser OPFS.
 - User-entered secrets are encrypted in the browser as BYOK envelopes before being sent to API routes.
 
@@ -214,6 +217,7 @@ DEFAULT_MODEL_RELATED_QUESTIONS="model-a"
 DEFAULT_MODEL_CONTEXT_COMPRESSION="model-a"
 DEFAULT_MODEL_PROMPT_OPTIMIZATION="model-a"
 DEFAULT_MODEL_RAG_QUERY="model-a"
+DEFAULT_MODEL_MEMORY="model-a"
 ```
 
 Search, RAG, document parsing, and voice defaults:
@@ -238,6 +242,22 @@ DEFAULT_ELEVENLABS_API_KEY="elevenlabs-key"
 DEFAULT_ELEVENLABS_STT_MODEL="scribe_v2"
 DEFAULT_ELEVENLABS_TTS_MODEL="eleven_flash_v2_5"
 DEFAULT_ELEVENLABS_TTS_VOICE_ID="bIHbv24MWmeRgasZH58o"
+
+DEFAULT_MIMO_API_KEY="mimo-key"
+DEFAULT_MIMO_STT_MODEL="mimo-v2.5-asr"
+DEFAULT_MIMO_TTS_MODEL="mimo-v2.5-tts"
+DEFAULT_MIMO_TTS_VOICE_ID="mimo_default"
+```
+
+Default system behavior:
+
+```bash
+DEFAULT_SYSTEM_PROMPT=""
+DEFAULT_ENABLE_AUTO_TITLE="true"
+DEFAULT_ENABLE_RELATED_QUESTIONS="true"
+DEFAULT_ENABLE_AUTO_COMPRESSION="true"
+DEFAULT_ENABLE_CODE_COLLAPSE="true"
+DEFAULT_ENABLE_HTML_VISUAL_PROMPT="true"
 ```
 
 Public site URL:
@@ -253,7 +273,7 @@ For the full template, see [.env.example](.env.example).
 ```mermaid
 flowchart LR
   Browser["Browser app\nReact + Zustand"] --> LocalStorage["localStorage\nproviders + settings"]
-  Browser --> IndexedDB["IndexedDB\nsessions + plugins + knowledge"]
+  Browser --> IndexedDB["IndexedDB\nsessions + plugins + skills + knowledge + memories"]
   Browser --> OPFS["OPFS\nuploads + workspace files"]
   Browser --> ApiRoutes["Next.js API routes"]
   ApiRoutes --> Providers["Model providers\nGemini / OpenAI / compatible"]
@@ -261,6 +281,7 @@ flowchart LR
   ApiRoutes --> Rag["RAG + document services"]
   ApiRoutes --> Plugins["Plugin APIs"]
   ApiRoutes --> Voice["Voice providers"]
+  ApiRoutes --> Health["Deployment health"]
   Browser -. encrypted BYOK envelopes .-> ApiRoutes
 ```
 
@@ -270,15 +291,20 @@ The app keeps durable user data in browser storage whenever possible. API routes
 - BYOK decryption on the server side;
 - URL safety gates for proxied upstreams;
 - plugin execution through registered plugin IDs and function names;
+- deployment health reporting through `/api/health`;
 - hosted-mode checks for shared stores and local-network restrictions.
 
-## Plugins, Search, RAG, and Voice
+## Skills, Plugins, Search, RAG, and Voice
 
-Plugins are installed from manifests or built-in definitions. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
+Skills are text-only prompt-context modules. The app loads localized metadata catalogs from `public/data/skills`, fetches full skill definitions only when needed, and stores installed, edited, and custom skills locally. Active skills can be selected manually, inherited from workspace presets, or auto-selected for a message.
+
+Plugins are OpenAPI-style tools installed from manifests or built-in definitions. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
 
 Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service.
 
 Voice workflows support browser speech APIs and configured external providers. Set `DEFAULT_VOICE_PROVIDER` to `elevenlabs` or `mimo` to enable a server default; leaving it empty keeps browser-native speech as the default. Empty default model values disable the matching STT or TTS capability, and the UI can store user-specific secrets locally.
+
+Deployment health is available from Settings and `/api/health`. It reports non-secret readiness for BYOK, access password, hosted mode, shared stores, default model, search, RAG, and voice configuration.
 
 ## Security Model
 

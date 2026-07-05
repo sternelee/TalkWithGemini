@@ -252,6 +252,20 @@ describe("server default configuration", () => {
     expect(config.system?.enableHtmlVisualPrompt).toBe(false);
   });
 
+  it("keeps keyless Firecrawl available as a default search provider", async () => {
+    setEnv({
+      DEFAULT_SEARCH_PROVIDER: "firecrawl",
+    });
+
+    const { getDefaultSearchRuntimeConfig, getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+
+    expect(getDefaultSearchRuntimeConfig()).toEqual({
+      provider: "firecrawl",
+    });
+    expect(getPublicServerConfig().search.available).toBe(true);
+  });
+
   it("does not publish a default voice provider unless it is explicitly configured", async () => {
     setEnv({
       DEFAULT_ELEVENLABS_API_KEY: "eleven-secret",
@@ -553,6 +567,7 @@ describe("server default configuration", () => {
     const response = await POST(
       new Request("https://neo.test/api/doc-parse", {
         method: "POST",
+        headers: { "content-length": "2048" },
         body: formData,
       }) as any,
     );
@@ -602,6 +617,7 @@ describe("server default configuration", () => {
     const response = await POST(
       new Request("https://neo.test/api/voice/transcribe", {
         method: "POST",
+        headers: { "content-length": "2048" },
         body: formData,
       }) as any,
     );
@@ -790,6 +806,7 @@ describe("server default configuration", () => {
     const response = await POST(
       new Request("https://neo.test/api/voice/transcribe", {
         method: "POST",
+        headers: { "content-length": "2048" },
         body: formData,
       }) as any,
     );

@@ -37,14 +37,7 @@ import {
   getRandomAgents,
   getAgentDetail,
 } from "@/services/api/agentService";
-import {
-  Message,
-  Attachment,
-  ImageSource,
-  LobeAgent,
-  SessionMessageTree,
-  Source,
-} from "@/types";
+import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
@@ -99,6 +92,7 @@ import {
   parseChatPanelUrlState,
   setChatPanelUrlState,
 } from "@/lib/chat/panelUrlState";
+import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
 
 const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
@@ -129,50 +123,7 @@ const SettingsPage = dynamic(
 );
 
 const logChatAppError = logDevError;
-
-const mergeSources = (existing: Source[] = [], incoming: Source[] = []) => {
-  const seen = new Set<string>();
-  const merged: Source[] = [];
-
-  for (const source of [...existing, ...incoming]) {
-    const key = `${source.url}\n${source.title}\n${source.content}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(source);
-  }
-
-  return merged;
-};
-
-const mergeImages = (
-  existing: ImageSource[] = [],
-  incoming: ImageSource[] = [],
-) => {
-  const seen = new Set<string>();
-  const merged: ImageSource[] = [];
-
-  for (const image of [...existing, ...incoming]) {
-    const key = `${image.url}\n${image.description || ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(image);
-  }
-
-  return merged;
-};
-
-const buildSearchUpdate = (
-  message: Message | undefined,
-  isSearching: boolean,
-  results?: { sources: Source[]; images: ImageSource[] },
-): Partial<Message> => {
-  const updates: Partial<Message> = { isSearching };
-  if (results) {
-    updates.searchSources = mergeSources(message?.searchSources, results.sources);
-    updates.searchImages = mergeImages(message?.searchImages, results.images);
-  }
-  return updates;
-};
+const EMPTY_MESSAGES: Message[] = [];
 
 const ChatApp = () => {
   // --- Global Store ---
@@ -297,6 +248,8 @@ const ChatApp = () => {
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const isNearMessageBottomRef = useRef(true);
   const messageInputRef = useRef<MessageInputRef>(null);
   const refreshAgentsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -308,7 +261,7 @@ const ChatApp = () => {
   const defaultProviderFetchRef = useRef(false);
 
   const currentSession = getCurrentSession(); // This is just metadata now
-  const messages = activeMessages || []; // Use activeMessages from store
+  const messages = activeMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
   const currentSessionConfig = currentSession?.config;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   useChatThemeEffects(theme, system.fontSize);
@@ -778,14 +731,34 @@ const ChatApp = () => {
     selectSession,
   ]);
 
-  // Scroll to bottom
-  useEffect(() => {
-    if (isGenerating || messages.length > 0) {
-      if (welcomeState === "hidden") {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
+  const updateIsNearMessageBottom = useCallback(() => {
+    const container = messagesScrollRef.current;
+    if (!container) {
+      isNearMessageBottomRef.current = true;
+      return;
     }
-  }, [messages.length, isGenerating, welcomeState]);
+
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearMessageBottomRef.current = distanceFromBottom < 160;
+  }, []);
+
+  // Scroll to bottom when the user is already following the live stream.
+  useEffect(() => {
+    if (
+      welcomeState === "hidden" &&
+      (isGenerating || messages.length > 0) &&
+      isNearMessageBottomRef.current
+    ) {
+      const reduceMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      messagesEndRef.current?.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "end",
+      });
+    }
+  }, [messages, isGenerating, welcomeState]);
 
   // --- Handlers ---
 
@@ -877,7 +850,9 @@ const ChatApp = () => {
 
     const memoryState = useMemoryStore.getState();
     const directMemoryContext =
-      memoryState.settings.enabled && memoryState.settings.searchEnabled
+      memoryState._hasHydrated &&
+      memoryState.settings.enabled &&
+      memoryState.settings.searchEnabled
         ? buildDirectMemoryPromptContext({
             memories: memoryState.memories,
             query: text,
@@ -889,9 +864,13 @@ const ChatApp = () => {
     return {
       ...processedData,
       finalText: directMemoryContext.text
-        ? appendContextToChatInput(processedData.finalText, directMemoryContext.text, {
-            separator: "\n\n",
-          })
+        ? appendContextToChatInput(
+            processedData.finalText,
+            directMemoryContext.text,
+            {
+              separator: "\n\n",
+            },
+          )
         : processedData.finalText,
       effectiveContext,
       injectedMemoryIds: directMemoryContext.injectedMemoryIds,
@@ -975,8 +954,7 @@ const ChatApp = () => {
         ragSources,
         userMessage,
         injectedMemoryIds,
-      } =
-        processedData;
+      } = processedData;
 
       if (!isGenerationRunActive(generation)) return;
       commitInjectedMemoryContext(
@@ -1354,8 +1332,11 @@ const ChatApp = () => {
         ragSources,
         effectiveContext,
         injectedMemoryIds,
-      } =
-        await processPromptForModel(sessionMeta, promptText, promptAttachments);
+      } = await processPromptForModel(
+        sessionMeta,
+        promptText,
+        promptAttachments,
+      );
       commitInjectedMemoryContext(
         currentSessionId,
         sessionMeta,
@@ -2070,7 +2051,11 @@ const ChatApp = () => {
             </header>
 
             {/* Content */}
-            <div className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative scroll-smooth scrollbar-overlay">
+            <div
+              ref={messagesScrollRef}
+              onScroll={updateIsNearMessageBottom}
+              className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative motion-safe:scroll-smooth scrollbar-overlay"
+            >
               <div className="w-full max-w-3xl mx-auto min-h-full flex flex-col">
                 {/* Assistant / System Instruction Header */}
                 {currentSession &&
@@ -2093,7 +2078,7 @@ const ChatApp = () => {
                 {/* Empty State */}
                 {(welcomeState === "visible" || welcomeState === "exiting") && (
                   <div
-                    className={`flex-1 flex flex-col justify-center items-center transition-[opacity,transform] duration-300 transform origin-center ${
+                    className={`flex-1 flex flex-col justify-center items-center motion-safe:transition-[opacity,transform] motion-safe:duration-300 motion-safe:transform origin-center ${
                       welcomeState === "exiting"
                         ? "opacity-0 scale-95 pointer-events-none"
                         : "opacity-100 scale-100"
@@ -2110,7 +2095,7 @@ const ChatApp = () => {
 
                 {/* Message Stream */}
                 {welcomeState === "hidden" && (
-                  <div className="space-y-1 animate-in fade-in duration-500 fill-mode-forwards">
+                  <div className="space-y-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 fill-mode-forwards">
                     {messages.map((msg, idx) => {
                       const isLastUserMessage =
                         msg.role === "user" &&

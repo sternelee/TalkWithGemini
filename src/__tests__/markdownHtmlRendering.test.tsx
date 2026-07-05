@@ -72,13 +72,15 @@ vi.mock("@/lib/utils/htmlVisualMarkdown", async () =>
 );
 
 vi.mock("@/lib/utils/markdownFiles", () => ({
-  parseMarkdownFileBlocks: (content: string) => [
-    { kind: "markdown", content },
-  ],
+  parseMarkdownFileBlocks: (content: string) => [{ kind: "markdown", content }],
 }));
 
 vi.mock("@/lib/utils/markdownDiagrams", async () =>
   vi.importActual("../lib/utils/markdownDiagrams"),
+);
+
+vi.mock("@/lib/utils/diagramSvg", async () =>
+  vi.importActual("../lib/utils/diagramSvg"),
 );
 
 vi.mock("@/lib/utils/markdownImages", () => ({
@@ -104,9 +106,8 @@ vi.mock("@/lib/utils/model", () => ({
 
 describe("MarkdownRenderer HTML support", () => {
   it("renders safe inline HTML while preserving allowed layout styles", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -125,9 +126,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("wraps inline HTML in a theme scope and corrects low-contrast colors", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -146,9 +146,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("removes decorative styling from HTML visual containers that wrap tables", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -173,9 +172,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("renders safe visual HTML from markdown fences but preserves explicit html code blocks", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const visualHtml = renderToStaticMarkup(
       <MarkdownRenderer
@@ -216,9 +214,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("normalizes escaped HTML attribute quotes before rendering", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -235,9 +232,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("removes unsafe inline HTML tags, attributes, links, and page-covering styles", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -265,9 +261,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("routes mermaid and mindmap fences to diagram blocks", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -297,9 +292,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("shows streaming state for incomplete diagram fences", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer
@@ -314,9 +308,8 @@ describe("MarkdownRenderer HTML support", () => {
   });
 
   it("renders tables and blockquotes without legacy heavy borders", async () => {
-    const { default: MarkdownRenderer } = await import(
-      "../components/content/MarkdownRenderer"
-    );
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRenderer");
 
     const html = renderToStaticMarkup(
       <MarkdownRenderer

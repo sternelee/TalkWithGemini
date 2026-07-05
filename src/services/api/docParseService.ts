@@ -8,7 +8,8 @@ import { logDevError } from "../../lib/utils/devLogger";
 import type { DocumentParseProvider } from "../../types";
 
 type DocumentParseStartResponse =
-  { markdown?: string } | { jobId?: string; status?: "pending" };
+  | { markdown?: string }
+  | { jobId?: string; jobSecret?: string; status?: "pending" };
 
 type DocumentParseJobResponse =
   | { status: "pending" }
@@ -22,7 +23,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function pollDocumentParseJob(jobId: string): Promise<string> {
+async function pollDocumentParseJob(
+  jobId: string,
+  jobSecret: string,
+): Promise<string> {
   for (let attempt = 0; attempt < DOC_PARSE_MAX_POLLS; attempt += 1) {
     await sleep(DOC_PARSE_POLL_INTERVAL_MS);
 
@@ -30,6 +34,9 @@ async function pollDocumentParseJob(jobId: string): Promise<string> {
       `/api/doc-parse/jobs/${encodeURIComponent(jobId)}`,
       {
         method: "GET",
+        headers: {
+          "x-doc-parse-job-secret": jobSecret,
+        },
         cache: "no-store",
       },
     );
@@ -111,8 +118,8 @@ export async function parseDocumentFile(
       "Document parsing failed",
     );
     if ("markdown" in data) return data.markdown || "";
-    if ("jobId" in data && data.jobId) {
-      return pollDocumentParseJob(data.jobId);
+    if ("jobId" in data && data.jobId && data.jobSecret) {
+      return pollDocumentParseJob(data.jobId, data.jobSecret);
     }
 
     throw new Error("Document parsing did not return a job id");

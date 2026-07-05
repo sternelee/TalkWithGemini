@@ -15,6 +15,7 @@ src/components/
 ├── media/
 ├── modals/
 ├── plugin/
+├── skill/
 ├── settings/
 ├── ui/
 ├── index.ts
@@ -59,9 +60,13 @@ Reusable feature modals that do not belong to a narrower product area.
 
 Plugin marketplace, installation, configuration, and built-in plugin management UI.
 
+### `skill`
+
+Skills marketplace, install/uninstall flows, local skill editing, and custom text-only skill management UI.
+
 ### `settings`
 
-Settings pages and provider, model, search, RAG, voice, and system configuration controls.
+Settings pages and provider, model, search, RAG, voice, deployment health, and system configuration controls.
 
 ### `ui`
 

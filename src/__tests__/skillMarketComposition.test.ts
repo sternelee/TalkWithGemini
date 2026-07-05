@@ -23,8 +23,12 @@ describe("SkillMarket composition", () => {
       "utf8",
     );
 
-    expect(source).toContain('searchTerm ? t("searchResults") : t("allSkills")');
-    expect(source).not.toContain('searchTerm ? t("searchResults") : t("availableSkills")');
+    expect(source).toContain(
+      'searchTerm ? t("searchResults") : t("allSkills")',
+    );
+    expect(source).not.toContain(
+      'searchTerm ? t("searchResults") : t("availableSkills")',
+    );
     expect(source.indexOf("const renderCategoryFilter")).toBeLessThan(
       source.indexOf("{/* Search Bar */}"),
     );

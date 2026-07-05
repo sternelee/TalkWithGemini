@@ -1,5 +1,12 @@
 "use client";
-import React, { useState, useRef, useEffect, useMemo, useId } from "react";
+import React, {
+  useCallback,
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useId,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import type { Attachment, Message } from "@/types";
@@ -296,8 +303,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const t = useTranslations("Message");
   const [isEditing, setIsEditing] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
-  const [readerCopyStatus, setReaderCopyStatus] =
-    useState<CopyStatus>("idle");
+  const [readerCopyStatus, setReaderCopyStatus] = useState<CopyStatus>("idle");
   const isCopied = copyStatus === "copied";
   const copyTooltip =
     copyStatus === "copied"
@@ -380,12 +386,12 @@ const MessageItem: React.FC<MessageItemProps> = ({
     controller.set(status);
   };
 
-  const closeReadingMode = () => {
+  const closeReadingMode = useCallback(() => {
     setReadingMode("none");
     setFileToRead(null);
     setAttachmentToRead(null);
     setReaderCopyStatus("idle");
-  };
+  }, []);
 
   const clearDeleteConfirmTimer = () => {
     if (deleteConfirmTimerRef.current) {
@@ -421,10 +427,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
       if (event.key !== "Escape") return;
 
       if (readingMode !== "none") {
-        setReadingMode("none");
-        setFileToRead(null);
-        setAttachmentToRead(null);
-        setReaderCopyStatus("idle");
+        closeReadingMode();
         return;
       }
 
@@ -439,14 +442,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [readingMode, showMoreMenu]);
+  }, [closeReadingMode, readingMode, showMoreMenu]);
 
   useEffect(() => {
-    if (readingMode === "none") {
-      readingRestoreFocusRef.current?.focus();
-      readingRestoreFocusRef.current = null;
-      return;
-    }
+    if (readingMode === "none") return;
 
     if (!readingRestoreFocusRef.current) {
       readingRestoreFocusRef.current =
@@ -455,11 +454,20 @@ const MessageItem: React.FC<MessageItemProps> = ({
           : null;
     }
 
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const frame = requestAnimationFrame(() => {
-      readingDialogRef.current?.focus();
+      readingDialogRef.current?.focus({ preventScroll: true });
     });
 
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = previousBodyOverflow;
+      if (readingRestoreFocusRef.current?.isConnected) {
+        readingRestoreFocusRef.current.focus({ preventScroll: true });
+      }
+      readingRestoreFocusRef.current = null;
+    };
   }, [readingMode]);
 
   // Cleanup Audio on unmount
@@ -585,7 +593,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const handleDocumentAttachmentClick = (attachment: Attachment) => {
-    if (!attachment.data || !isTextDocumentMimeType(attachment.mimeType)) return;
+    if (!attachment.data || !isTextDocumentMimeType(attachment.mimeType))
+      return;
 
     try {
       setAttachmentToRead({
@@ -713,11 +722,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
   // Optimized Loading State: Show bubbles if active (typing/waiting) AND no content is displayed yet.
   const hasOutputEvents = Boolean(
     message.outputBlocks?.length ||
-      message.reasoning ||
-      message.isSearching ||
-      message.searchSources?.length ||
-      message.searchImages?.length ||
-      message.toolCalls?.length,
+    message.reasoning ||
+    message.isSearching ||
+    message.searchSources?.length ||
+    message.searchImages?.length ||
+    message.toolCalls?.length,
   );
   const isLoading =
     (isTyping || isWaitingForResponse) && !displayedContent && !hasOutputEvents;
@@ -823,6 +832,13 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const handleReadingDialogKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
   ) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeReadingMode();
+      return;
+    }
+
     if (event.key !== "Tab") return;
 
     const dialog = readingDialogRef.current;
@@ -832,11 +848,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
       dialog.querySelectorAll<HTMLElement>(
         'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
-    );
+    ).filter((element) => element.getClientRects().length > 0);
 
     if (focusable.length === 0) {
       event.preventDefault();
-      dialog.focus();
+      dialog.focus({ preventScroll: true });
       return;
     }
 
@@ -845,10 +861,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
     if (event.shiftKey && document.activeElement === first) {
       event.preventDefault();
-      last.focus();
+      last.focus({ preventScroll: true });
     } else if (!event.shiftKey && document.activeElement === last) {
       event.preventDefault();
-      first.focus();
+      first.focus({ preventScroll: true });
     }
   };
 
@@ -888,7 +904,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
             aria-describedby={readingDialogDescriptionId}
             tabIndex={-1}
             onKeyDown={handleReadingDialogKeyDown}
-            className="fixed inset-0 z-999 bg-white dark:bg-background overflow-y-auto overscroll-contain animate-in fade-in duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400/40"
+            className="fixed inset-0 z-999 bg-white dark:bg-background overflow-y-auto overscroll-contain motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400/40"
           >
             <h2 id={readingDialogTitleId} className="sr-only">
               {readingTitle}
@@ -896,7 +912,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
             <p id={readingDialogDescriptionId} className="sr-only">
               {t("pressEscapeToClose")}
             </p>
-            <div className="max-w-5xl mx-auto px-4 pb-4 pt-4 md:pt-8 min-h-screen relative flex flex-col">
+            <div className="max-w-5xl mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:pt-8 min-h-screen relative flex flex-col">
               {readingFile && (
                 <div className="markdown-preview-header mb-4 flex shrink-0 items-center justify-between gap-3 rounded-lg border px-3 py-2">
                   <div className="flex min-w-0 items-center gap-2 text-gray-700 dark:text-foreground font-semibold">
@@ -978,7 +994,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 )}
               </div>
 
-              <div className="sticky bottom-4 mt-4 left-0 right-0 flex justify-center pointer-events-none shrink-0">
+              <div className="sticky bottom-[max(1rem,env(safe-area-inset-bottom))] mt-4 left-0 right-0 flex justify-center pointer-events-none shrink-0">
                 <button
                   type="button"
                   onClick={closeReadingMode}

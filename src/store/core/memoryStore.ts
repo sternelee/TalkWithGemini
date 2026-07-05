@@ -252,6 +252,7 @@ export const useMemoryStore = create<MemoryState>()(
         if (typeof window === "undefined") return;
         if (error) {
           logDevError("Memory hydration failed:", error);
+          state?.setHasHydrated(true);
         } else if (state) {
           state.setHasHydrated(true);
         }

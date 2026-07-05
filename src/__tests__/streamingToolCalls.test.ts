@@ -339,10 +339,9 @@ describe("streamed tool-call normalization", () => {
       onChunk: (message) => messages.push(message),
     });
 
-    expect(reasoningMessages(messages).map((message) => message.content)).toEqual([
-      "Consider freshness. ",
-      "Check sources.",
-    ]);
+    expect(
+      reasoningMessages(messages).map((message) => message.content),
+    ).toEqual(["Consider freshness. ", "Check sources."]);
     expect(messages).toContainEqual({ type: "content", content: "Answer" });
   });
 
@@ -406,9 +405,14 @@ describe("streamed tool-call normalization", () => {
     });
 
     const request = (client.responses.create as any).mock.calls[0][0];
-    expect(request.reasoning).toMatchObject({ effort: "high", summary: "auto" });
+    expect(request.reasoning).toMatchObject({
+      effort: "high",
+      summary: "auto",
+    });
     expect(request.tools).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: "web_search_preview" })]),
+      expect.arrayContaining([
+        expect.objectContaining({ type: "web_search_preview" }),
+      ]),
     );
     expect(request.include).toEqual(
       expect.arrayContaining([
@@ -416,16 +420,19 @@ describe("streamed tool-call normalization", () => {
         "web_search_call.action.sources",
       ]),
     );
-    expect(reasoningMessages(messages).map((message) => message.content)).toEqual([
-      "Need current info.",
-    ]);
-    expect(searchMessages(messages).flatMap((message) => message.results?.sources || []))
-      .toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ url: "https://example.com/a" }),
-          expect.objectContaining({ url: "https://example.com/b" }),
-        ]),
-      );
+    expect(
+      reasoningMessages(messages).map((message) => message.content),
+    ).toEqual(["Need current info."]);
+    expect(
+      searchMessages(messages).flatMap(
+        (message) => message.results?.sources || [],
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ url: "https://example.com/a" }),
+        expect.objectContaining({ url: "https://example.com/b" }),
+      ]),
+    );
   });
 
   it("normalizes Gemini tool calls with unique IDs and argument errors", async () => {
@@ -505,7 +512,9 @@ describe("streamed tool-call normalization", () => {
                   },
                   groundingMetadata: {
                     groundingChunks: [
-                      { web: { uri: "https://example.com/g", title: "Gemini" } },
+                      {
+                        web: { uri: "https://example.com/g", title: "Gemini" },
+                      },
                     ],
                     groundingSupports: [
                       { segment: { text: "Grounded snippet" } },
@@ -526,9 +535,9 @@ describe("streamed tool-call normalization", () => {
       onChunk: (message) => messages.push(message),
     });
 
-    expect(reasoningMessages(messages).map((message) => message.content)).toEqual([
-      "I should search. ",
-    ]);
+    expect(
+      reasoningMessages(messages).map((message) => message.content),
+    ).toEqual(["I should search. "]);
     expect(messages).toContainEqual({ type: "content", content: "Answer" });
     expect(searchMessages(messages)[0].results?.sources).toEqual([
       expect.objectContaining({

@@ -92,6 +92,17 @@ describe("chat store persistence", () => {
   beforeEach(() => {
     storedItems.clear();
     vi.clearAllMocks();
+    appDbMock.getItem.mockImplementation((key: string) =>
+      Promise.resolve(storedItems.get(key)),
+    );
+    appDbMock.setItem.mockImplementation((key: string, value: unknown) => {
+      storedItems.set(key, value);
+      return Promise.resolve(value);
+    });
+    appDbMock.removeItem.mockImplementation((key: string) => {
+      storedItems.delete(key);
+      return Promise.resolve();
+    });
     useChatStore.setState({
       _hasHydrated: true,
       sessions: [],
@@ -176,6 +187,16 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().sessions).toHaveLength(3);
   });
 
+  it("does not write an empty message tree when creating a fresh session", () => {
+    const sessionId = useChatStore.getState().createSession();
+
+    expect(sessionId).toEqual(expect.any(String));
+    expect(appDbMock.setItem).not.toHaveBeenCalledWith(
+      `session_messages_${sessionId}`,
+      expect.anything(),
+    );
+  });
+
   it("reuses only empty chats with matching workspace and session config", () => {
     const matching = {
       ...makeSession("matching"),
@@ -255,6 +276,57 @@ describe("chat store persistence", () => {
       "clarity-rewrite",
       "summary",
     ]);
+  });
+
+  it("serializes active session message writes so stale snapshots cannot overwrite newer ones", async () => {
+    const session = makeSession("active");
+    const firstTree = normalizeSessionMessageTree([makeMessage("m1", "older")]);
+    const secondTree = normalizeSessionMessageTree([
+      makeMessage("m1", "newer"),
+    ]);
+    const pendingWrites: Array<{
+      key: string;
+      value: unknown;
+      resolve: () => void;
+    }> = [];
+    appDbMock.setItem.mockImplementation((key: string, value: unknown) => {
+      return new Promise((resolve) => {
+        pendingWrites.push({
+          key,
+          value,
+          resolve: () => {
+            storedItems.set(key, value);
+            resolve(value);
+          },
+        });
+      });
+    });
+    useChatStore.setState({
+      sessions: [session],
+      currentSessionId: session.id,
+      activeMessageTree: secondTree,
+      activeMessages: getActiveMessagePath(secondTree),
+    });
+
+    const firstSave = useChatStore
+      .getState()
+      .syncActiveSession(session.id, firstTree);
+    const secondSave = useChatStore
+      .getState()
+      .syncActiveSession(session.id, secondTree);
+
+    expect(pendingWrites).toHaveLength(1);
+    expect(pendingWrites[0].value).toBe(firstTree);
+
+    pendingWrites[0].resolve();
+    await firstSave;
+    expect(pendingWrites).toHaveLength(2);
+    expect(pendingWrites[1].value).toBe(secondTree);
+
+    pendingWrites[1].resolve();
+    await secondSave;
+
+    expectStoredActivePath(session.id, [makeMessage("m1", "newer")]);
   });
 
   it("does not infer messages for a target session that is no longer active", async () => {
