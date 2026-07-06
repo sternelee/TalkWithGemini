@@ -1,9 +1,10 @@
-export type AgentMarketLocale = "en" | "zh";
+export type AgentMarketLocale = "en" | "zh" | "ja";
 
 export function normalizeAgentMarketLocale(
   locale: string | null | undefined,
 ): AgentMarketLocale {
-  return locale === "zh" || locale?.toLowerCase().startsWith("zh-")
-    ? "zh"
-    : "en";
+  const normalized = locale?.toLowerCase();
+  if (normalized === "zh" || normalized?.startsWith("zh-")) return "zh";
+  if (normalized === "ja" || normalized?.startsWith("ja-")) return "ja";
+  return "en";
 }

@@ -1,0 +1,22 @@
+{
+  "editModel": "モデルの編集",
+  "close": "モデルエディタを閉じる",
+  "modelId": "モデル ID",
+  "modelName": "モデル名",
+  "capabilities": "機能",
+  "saveChanges": "変更を保存",
+  "toggleEnableAria": "{label} を有効化",
+  "toggleDisableAria": "{label} を無効化",
+  "idCopied": "モデル ID をコピーしました",
+  "idCopyFailed": "モデル ID のコピーに失敗しました",
+  "copyId": "モデル ID をコピー",
+  "nameCopied": "モデル名をコピーしました",
+  "nameCopyFailed": "モデル名のコピーに失敗しました",
+  "copyName": "モデル名をコピー",
+  "closeSuggestions": "モデル名候補を閉じる",
+  "capAttachment": "アタッチメント",
+  "capVision": "画像認識 (Vision)",
+  "capAudio": "音声認識 (Audio)",
+  "capReasoning": "推論 (Reasoning)",
+  "capToolCall": "ツール呼び出し (Tool Call)"
+}

@@ -15,7 +15,7 @@ export type MimoVoiceID =
   | "Chloe"
   | "Milo"
   | "Dean";
-export type VoiceLanguage = "auto" | "en" | "zh";
+export type VoiceLanguage = "auto" | "en" | "zh" | "ja";
 export type ServerDefaultVoiceProvider = "elevenlabs" | "mimo";
 
 export interface VoiceSettings {

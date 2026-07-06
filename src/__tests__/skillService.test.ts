@@ -3,8 +3,8 @@ import type { SkillCatalog, TextSkill } from "../types";
 
 const storeMock = vi.hoisted(() => ({
   state: {} as {
-    skillCatalogs: Partial<Record<"en" | "zh-CN", SkillCatalog>>;
-    skillCatalogTimestamps: Partial<Record<"en" | "zh-CN", number>>;
+    skillCatalogs: Partial<Record<"en" | "zh-CN" | "ja", SkillCatalog>>;
+    skillCatalogTimestamps: Partial<Record<"en" | "zh-CN" | "ja", number>>;
     skillDefinitions: Record<string, TextSkill>;
     skillDefinitionTimestamps: Record<string, number>;
     setSkillCatalog: ReturnType<typeof vi.fn>;
@@ -78,6 +78,42 @@ const zhCatalog = {
 const zhDefinition = {
   ...zhCatalog.skills[0],
   content: "# 翻译与本地化\n\n保留术语和占位符。",
+  builtIn: true,
+};
+
+const jaCatalog = {
+  ...zhCatalog,
+  locale: "ja",
+  description:
+    "チャットで使うモジュール式の純テキスト Skills。詳細定義は英語版にフォールバックします。",
+  skills: [
+    {
+      ...zhCatalog.skills[0],
+      title: "翻訳とローカライズ",
+      description:
+        "対象読者に合わせて翻訳し、用語、形式、トーン、業務上の意味を保ちます。",
+      tags: ["翻訳", "ローカライズ"],
+      language: "ja",
+      activation: {
+        embeddingText: "翻訳とローカライズ 翻訳 ローカライズ",
+        useWhen: ["ユーザーが翻訳やローカライズを依頼している"],
+        avoidWhen: [],
+        exampleQueries: ["日本語に翻訳して"],
+      },
+      file: "translation-localization.json",
+    },
+  ],
+};
+
+const enDefinition = {
+  ...jaCatalog.skills[0],
+  title: "Translation Localization",
+  description:
+    "Translate between Chinese and English and localize for the target audience.",
+  tags: ["translation", "localization"],
+  language: "en",
+  content:
+    "# Translation Localization\n\n## Output Contract\n\nPreserve terms.",
   builtIn: true,
 };
 
@@ -184,7 +220,7 @@ describe("skill service", () => {
       skillDefinitions: {},
       skillDefinitionTimestamps: {},
       setSkillCatalog: vi.fn(
-        (locale: "en" | "zh-CN", catalog: SkillCatalog) => {
+        (locale: "en" | "zh-CN" | "ja", catalog: SkillCatalog) => {
           storeMock.state.skillCatalogs[locale] = catalog;
           storeMock.state.skillCatalogTimestamps[locale] = Date.now();
         },
@@ -229,6 +265,42 @@ describe("skill service", () => {
     expect(chatServiceMock.streamGenerateToolCall).not.toHaveBeenCalled();
     expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
       "/data/skills/skills.metadata.zh-CN.json",
+    ]);
+  });
+
+  it("loads Japanese skill metadata while using English detail files", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === "/data/skills/skills.metadata.ja.json") {
+          return jsonResponse(jaCatalog);
+        }
+        if (url === "/data/skills/translation-localization.json") {
+          return jsonResponse(enDefinition);
+        }
+        return jsonResponse({ message: "not found" }, { status: 404 });
+      });
+    const { fetchSkillCatalog, fetchSkillDefinition } =
+      await import("../services/api/skillService");
+
+    const catalog = await fetchSkillCatalog("ja-JP");
+    const definition = await fetchSkillDefinition(catalog.skills[0], "ja-JP");
+
+    expect(catalog.locale).toBe("ja");
+    expect(catalog.skills[0]).toMatchObject({
+      title: "翻訳とローカライズ",
+      language: "ja",
+      file: "translation-localization.json",
+    });
+    expect(definition).toMatchObject({
+      title: "Translation Localization",
+      language: "en",
+      content: expect.stringContaining("## Output Contract"),
+    });
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+      "/data/skills/skills.metadata.ja.json",
+      "/data/skills/translation-localization.json",
     ]);
   });
 

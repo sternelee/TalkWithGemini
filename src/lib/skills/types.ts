@@ -1,4 +1,4 @@
-export type SkillDataLocale = "en" | "zh-CN";
+export type SkillDataLocale = "en" | "zh-CN" | "ja";
 
 export interface TextSkillRisk {
   level: "low" | "medium" | "high" | string;

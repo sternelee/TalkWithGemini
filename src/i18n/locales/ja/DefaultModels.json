@@ -1,0 +1,17 @@
+{
+  "title": "デフォルトモデル",
+  "subtitle": "バックグラウンドタスクや自動化機能で使用する AI モデルを構成します。",
+  "defaultModelForAria": "{label} のデフォルトモデル",
+  "conversationTitle": "会話のタイトル",
+  "conversationTitleDesc": "新しいチャットの最初の対話の後に、簡潔なタイトルを生成するために使用されます。",
+  "relatedQuestions": "関連する質問",
+  "relatedQuestionsDesc": "AI の返答後に関連する質問を提案するために使用されます。",
+  "contextCompression": "コンテキストの圧縮",
+  "contextCompressionDesc": "トークン数の上限に近づいたときに、長い会話を要約するために使用されます。",
+  "promptOptimization": "テキストの推敲",
+  "promptOptimizationDesc": "AI を使用してテキストコンテンツを改善します。",
+  "ragQuery": "RAG クエリ生成",
+  "ragQueryDesc": "ナレッジベースに対して最適化された検索クエリを生成するために使用されます。",
+  "memory": "メモリ",
+  "memoryDesc": "長期的なローカルメモリの抽出、統合、管理に使用されます。"
+}

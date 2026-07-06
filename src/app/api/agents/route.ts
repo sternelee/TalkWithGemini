@@ -7,6 +7,11 @@ import { safeServerLogWarn } from "@/lib/utils/safeServerLog";
 
 const API_URL =
   "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public";
+const INDEX_FILES = {
+  en: "index.json",
+  zh: "index.zh-CN.json",
+  ja: "index.ja-JP.json",
+} as const;
 
 function getAgentListLocale(request?: NextRequest | Request) {
   if (!request) return "en";
@@ -17,7 +22,7 @@ function getAgentListLocale(request?: NextRequest | Request) {
 export async function GET(request?: NextRequest | Request) {
   try {
     const locale = getAgentListLocale(request);
-    const indexFile = locale === "zh" ? "index.zh-CN.json" : "index.json";
+    const indexFile = INDEX_FILES[locale];
     const { response, data } = await safeFetchJson<any>(
       `${API_URL}/${indexFile}`,
       { method: "GET" },

@@ -1,0 +1,18 @@
+{
+  "select": "選択…",
+  "noOptions": "選択肢がありません",
+  "active": "有効",
+  "enable": "有効化",
+  "apiKey": "API キー",
+  "baseUrl": "ベース URL",
+  "enterApiKey": "API キーを入力…",
+  "apiBaseUrlPlaceholder": "https://api.example.com…",
+  "getKey": "キーを取得",
+  "expandSettings": "{name} の設定を展開",
+  "collapseSettings": "{name} の設定を折りたたむ",
+  "saveSecret": "シークレットを保存",
+  "clearSecret": "保存されたシークレットを消去",
+  "secretSaved": "暗号化されたキーがローカルに保存されました。元の値は表示できません。",
+  "secretNotSaved": "ローカルキーは保存されていません。",
+  "replaceSecretPlaceholder": "保存されたキーを置き換えるには、新しいキーを入力してください…"
+}

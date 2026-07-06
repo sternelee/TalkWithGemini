@@ -1,0 +1,9 @@
+{
+  "title": "検索サービス",
+  "defaultService": "デフォルトサービス",
+  "defaultServiceDesc": "パラメータを入力せずに、サーバーに構成された検索サービスを使用します。",
+  "modelBuiltIn": "モデル内蔵",
+  "modelBuiltInDesc": "Gemini のネイティブ Google 検索機能を使用します。OpenAI 互換モデルは、外部の検索プロバイダーを使用する必要があります。",
+  "searxngDesc": "プライバシーを尊重したセルフホスト型メタ検索エンジン",
+  "resultLimit": "検索結果の上限"
+}

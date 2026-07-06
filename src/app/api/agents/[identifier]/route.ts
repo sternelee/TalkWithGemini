@@ -7,6 +7,11 @@ import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
 const API_URL =
   "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public";
+const DETAIL_FILE_SUFFIXES = {
+  en: "",
+  zh: ".zh-CN",
+  ja: ".ja-JP",
+} as const;
 
 function getAgentDetailLocale(request: NextRequest | Request) {
   const url = "nextUrl" in request ? request.nextUrl : new URL(request.url);
@@ -27,8 +32,7 @@ export async function GET(
     }
 
     const locale = getAgentDetailLocale(request);
-    const detailFile =
-      locale === "zh" ? `${identifier}.zh-CN.json` : `${identifier}.json`;
+    const detailFile = `${identifier}${DETAIL_FILE_SUFFIXES[locale]}.json`;
     const { response, data } = await safeFetchJson<any>(
       `${API_URL}/${encodeURIComponent(detailFile)}`,
       { method: "GET" },

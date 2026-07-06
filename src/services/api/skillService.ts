@@ -30,9 +30,9 @@ const catalogRequests = new Map<string, Promise<SkillCatalog>>();
 const definitionRequests = new Map<string, Promise<TextSkill>>();
 
 function getCatalogPath(locale: SkillDataLocale) {
-  return locale === "zh-CN"
-    ? "/data/skills/skills.metadata.zh-CN.json"
-    : "/data/skills/skills.metadata.json";
+  if (locale === "zh-CN") return "/data/skills/skills.metadata.zh-CN.json";
+  if (locale === "ja") return "/data/skills/skills.metadata.ja.json";
+  return "/data/skills/skills.metadata.json";
 }
 
 function getSkillDefinitionCacheKey(

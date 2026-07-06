@@ -176,6 +176,7 @@ const VoiceSettings = () => {
     { value: "auto", label: t("langAuto") },
     { value: "en", label: t("langEnglish") },
     { value: "zh", label: t("langChinese") },
+    { value: "ja", label: t("langJapanese") },
   ];
 
   const elevenLabsVoiceOptions = [

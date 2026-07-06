@@ -518,7 +518,7 @@ export const VoiceTranscribeRequestSchema = z
     apiKeySecret: EncryptedSecretEnvelopeSchema.optional(),
     modelId: z.string().max(120).optional(),
     modelProvider: ProviderRuntimeConfigSchema.optional(),
-    language: z.enum(["auto", "en", "zh"]).optional(),
+    language: z.enum(["auto", "en", "zh", "ja"]).optional(),
   })
   .strict()
   .superRefine((request, ctx) => {

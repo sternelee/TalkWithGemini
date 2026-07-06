@@ -124,7 +124,10 @@ function normalizeActivation(value: unknown): TextSkillActivation {
 }
 
 export function resolveSkillDataLocale(locale?: string): SkillDataLocale {
-  return locale?.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+  const normalized = locale?.toLowerCase();
+  if (normalized?.startsWith("zh")) return "zh-CN";
+  if (normalized === "ja" || normalized?.startsWith("ja-")) return "ja";
+  return "en";
 }
 
 export function normalizeSkillCatalogEntry(

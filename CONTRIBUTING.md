@@ -43,6 +43,8 @@ Use `pnpm format` to apply Prettier formatting across the repository.
   security-sensitive behavior.
 - Update docs when changing configuration, deployment behavior, plugins,
   privacy boundaries, or user workflows.
+- For localization changes, follow `docs/localization-pr-guide.md` and document
+  any intentional English fallback.
 - Do not include real API keys, access passwords, provider secrets, private
   chat logs, or user files in issues, tests, screenshots, or fixtures.
 - For hosted deployment changes, consider `DEPLOYMENT_MODE=hosted`,

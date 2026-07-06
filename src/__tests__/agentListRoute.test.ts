@@ -103,6 +103,24 @@ describe("agent list route", () => {
     );
   });
 
+  it("uses the Japanese upstream index for Japanese locale requests", async () => {
+    safeFetchJsonMock.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: { agents: [] },
+    });
+
+    const { GET } = await import("../app/api/agents/route");
+    await (GET as (request: Request) => Promise<Response>)(
+      new Request("http://localhost/api/agents?locale=ja-JP"),
+    );
+
+    expect(safeFetchJsonMock).toHaveBeenCalledWith(
+      "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public/index.ja-JP.json",
+      { method: "GET" },
+      expect.any(Object),
+    );
+  });
+
   it("silently degrades when the upstream registry is unavailable", async () => {
     const error = new Error("Request timed out");
     safeFetchJsonMock.mockRejectedValue(error);
@@ -170,6 +188,30 @@ describe("agent detail route", () => {
     expect(response.status).toBe(200);
     expect(safeFetchJsonMock).toHaveBeenCalledWith(
       "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public/agent-1.json",
+      { method: "GET" },
+      expect.any(Object),
+    );
+  });
+
+  it("uses the Japanese localized detail file for Japanese locale requests", async () => {
+    safeFetchJsonMock.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        identifier: "agent-1",
+        meta: { title: "日本語アシスタント" },
+        config: { systemRole: "日本語のシステムプロンプト" },
+      },
+    });
+
+    const { GET } = await import("../app/api/agents/[identifier]/route");
+    const response = await (GET as any)(
+      new Request("http://localhost/api/agents/agent-1?locale=ja"),
+      { params: Promise.resolve({ identifier: "agent-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(safeFetchJsonMock).toHaveBeenCalledWith(
+      "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public/agent-1.ja-JP.json",
       { method: "GET" },
       expect.any(Object),
     );

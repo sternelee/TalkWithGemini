@@ -35,6 +35,18 @@ describe("SEO screenshot assets", () => {
     ]);
   });
 
+  it("keeps Japanese metadata and structured data in Japanese", () => {
+    expect(seo.normalizeSeoLocale("ja")).toBe("ja");
+    expect(seo.getSeoContent("ja")).toMatchObject({
+      openGraphLocale: "ja_JP",
+      structuredDataLanguage: "ja-JP",
+    });
+    expect(seo.getSeoContent("ja").title).toContain("ローカル優先");
+    expect(seo.buildWebApplicationJsonLd("ja")).toMatchObject({
+      inLanguage: "ja-JP",
+    });
+  });
+
   it("builds screenshot URLs from NEXT_PUBLIC_SITE_URL", () => {
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://chat.example.com/");
 

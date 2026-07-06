@@ -4,7 +4,7 @@ const DEFAULT_SITE_URL = "http://localhost:3000";
 const DESKTOP_SCREENSHOT_SRC = "/desktop.png" as const;
 const MOBILE_SCREENSHOT_SRC = "/mobile.png" as const;
 
-export type SeoLocale = "en" | "zh";
+export type SeoLocale = "en" | "zh" | "ja";
 
 type SeoContent = {
   title: string;
@@ -122,10 +122,43 @@ export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
       "Markdown、数学公式、代码、引用和可编辑产物",
     ],
   },
+  ja: {
+    title: "Neo Chat - ローカル優先の AI チャットワークスペース",
+    description:
+      "Neo Chat はローカル優先の AI チャットワークスペースです。複数モデルの会話、アシスタントプリセット、プラグインツール、Web 検索、ナレッジベース RAG、音声、編集可能な成果物に対応します。",
+    keywords: [
+      "Neo Chat",
+      "AI チャット",
+      "ローカル優先 AI",
+      "マルチモデルチャット",
+      "AI アシスタント",
+      "ナレッジベース RAG",
+      "Web 検索",
+      "AI プラグイン",
+      "音声入力",
+      "Next.js チャットアプリ",
+    ],
+    ogTitle: "Neo Chat - ローカル優先の AI チャットワークスペース",
+    ogDescription:
+      "複数モデル、アシスタント、プラグイン、Web 検索、ナレッジベース RAG、音声、編集可能な成果物をひとつのワークスペースで扱えます。",
+    ogImageAlt: "Neo Chat AI チャットワークスペース",
+    openGraphLocale: "ja_JP",
+    structuredDataLanguage: "ja-JP",
+    features: [
+      "複数モデルの AI 会話",
+      "アシスタントプリセットとカスタムアシスタント",
+      "プラグインツールと Web 検索",
+      "ナレッジベース RAG",
+      "音声入力と音声合成",
+      "Markdown、数式、コード、引用、編集可能な成果物",
+    ],
+  },
 };
 
 export function normalizeSeoLocale(locale: string | undefined): SeoLocale {
-  return locale === "zh" ? "zh" : "en";
+  if (locale === "zh") return "zh";
+  if (locale === "ja") return "ja";
+  return "en";
 }
 
 export function getSeoContent(locale: string | undefined): SeoContent {
