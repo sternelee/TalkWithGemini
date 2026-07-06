@@ -1,0 +1,12 @@
+{
+  "pluginJinaTitle": "Web リーダー (Jina AI)",
+  "pluginJinaDescription": "任意の URL を LLM フレンドリーな Markdown コンテンツに変換します。ドキュメント、記事、または任意のウェブページを読み込むのに便利です。",
+  "pluginWeatherTitle": "リアルタイム天気予報",
+  "pluginWeatherDescription": "任意の都市の気温、天気状況、湿度を含むリアルタイムの天気情報を取得します。",
+  "pluginUnsplashTitle": "Unsplash 画像検索",
+  "pluginUnsplashDescription": "Unsplash で高品質な写真を検索します。",
+  "pluginAgnesImageTitle": "Agnes 画像生成",
+  "pluginAgnesImageDescription": "プロンプトテキストやインプット画像から、Agnes Image 2.1 Flash で画像を生成します。",
+  "pluginAgnesVideoTitle": "Agnes 動画生成",
+  "pluginAgnesVideoDescription": "Agnes Video V2.0 を使用して動画生成タスクを作成および取得します。"
+}

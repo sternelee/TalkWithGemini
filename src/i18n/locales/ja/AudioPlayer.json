@@ -1,0 +1,9 @@
+{
+  "audioAttachmentNamed": "音声添付ファイル: {fileName}",
+  "audioAttachment": "音声添付ファイル",
+  "playbackFailed": "音声の再生に失敗しました。もう一度お試しください。",
+  "pause": "音声を一時停止",
+  "play": "音声を再生",
+  "seekNamed": "{fileName} をシーク",
+  "seek": "音声をシーク"
+}

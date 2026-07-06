@@ -58,7 +58,7 @@ export interface SystemSettings {
 
 export interface AppSettings {
   theme: "light" | "dark" | "system";
-  language: "en" | "zh" | "auto";
+  language: "en" | "zh" | "ja" | "auto";
   system: SystemSettings;
   providers: ModelProvider[];
   modelMetadata: Record<string, ModelMetadata>;

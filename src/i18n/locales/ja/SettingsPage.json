@@ -1,0 +1,13 @@
+{
+  "title": "設定",
+  "close": "設定を閉じる",
+  "sections": "設定セクション",
+  "tabProviders": "モデルプロバイダー",
+  "tabDefaults": "デフォルトモデル",
+  "tabSearch": "検索サービス",
+  "tabRag": "RAG サービス",
+  "tabVoice": "音声とスピーチ",
+  "tabMemory": "メモリ",
+  "tabHealth": "デプロイ状態",
+  "tabSystem": "システム設定"
+}

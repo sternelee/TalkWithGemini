@@ -132,6 +132,7 @@ const SystemSettings = () => {
           options={[
             { value: "en", label: t("langEnglish") },
             { value: "zh", label: t("langChinese") },
+            { value: "ja", label: t("langJapanese") },
             { value: "auto", label: t("langSystem") },
           ]}
           value={language}

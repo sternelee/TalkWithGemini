@@ -1,0 +1,18 @@
+{
+  "title": "リモートファイル",
+  "close": "リモートファイルダイアログを閉じる",
+  "fileTypeAria": "リモートファイルタイプ: {type}",
+  "typeMenuLabel": "リモートファイルタイプ",
+  "fileUrl": "ファイルの URL",
+  "placeholderImage": "https://example.com/image.png…",
+  "placeholderAudio": "https://example.com/audio.mp3…",
+  "placeholderText": "https://example.com/file.txt…",
+  "typeText": "テキスト",
+  "typeImage": "画像",
+  "typeAudio": "音声",
+  "warnNoExtension": "ファイル拡張子を検出できません。リンクが直接ファイルを指しているか確認してください。",
+  "warnUnsupported": "リンクがサポートされている {type} ファイルではないようです。失敗する可能性があります。",
+  "invalidUrl": "URL の形式が無効です。",
+  "cancel": "キャンセル",
+  "attach": "添付"
+}

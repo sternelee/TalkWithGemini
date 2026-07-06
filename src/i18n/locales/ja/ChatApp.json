@@ -1,0 +1,19 @@
+{
+  "errSaveChanges": "チャットの最新の変更を保存できませんでした。もう一度お試しください。",
+  "errSaveStopped": "停止された返答を保存できませんでした。もう一度お試しください。",
+  "errRegenerate": "この返答を再生成できませんでした。直前のプロンプトが見つかりません。",
+  "errDeleteMessage": "メッセージを削除できませんでした。チャットは復元されました。",
+  "errDeleteChat": "チャットを削除できませんでした。もう一度お試しください。",
+  "errDuplicateChat": "チャットを複製できませんでした。もう一度お試しください。",
+  "errRetractMessage": "メッセージを取り消せませんでした。チャットは復元されました。",
+  "errEditUserMessage": "メッセージを編集できませんでした。もう一度お試しください。",
+  "errRenameChat": "チャットの名前を変更できませんでした。もう一度お試しください。",
+  "skipToChat": "チャットへスキップ",
+  "closeSidebar": "サイドバーを閉じる",
+  "openSidebar": "サイドバーを開く",
+  "closeSidebarAria": "サイドバーを閉じる",
+  "openSidebarAria": "サイドバーを開く",
+  "productName": "Neo Chat",
+  "newChat": "新規チャット",
+  "newChatAria": "新規チャット"
+}

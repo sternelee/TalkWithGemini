@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
 
-export const SUPPORTED_LOCALES = ["en", "zh"] as const;
+export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 
@@ -14,6 +14,7 @@ const isSupported = (value: string): value is Locale =>
 const localeLoaders: Record<Locale, () => Promise<Record<string, unknown>>> = {
   en: async () => (await import("./locales/en")).default,
   zh: async () => (await import("./locales/zh")).default,
+  ja: async () => (await import("./locales/ja")).default,
 };
 
 /**
