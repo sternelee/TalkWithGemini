@@ -372,6 +372,60 @@ describe("server default configuration", () => {
     expect(serialized).not.toContain("provider-secret");
   });
 
+  it("accepts compact provider model capability arrays and falls back to id names", async () => {
+    setEnv({
+      DEFAULT_PROVIDER_TYPE: "OpenAI Compatible",
+      DEFAULT_PROVIDER_NAME: "Hosted Default",
+      DEFAULT_PROVIDER_API_KEY: "provider-secret",
+      DEFAULT_PROVIDER_MODELS: JSON.stringify([
+        {
+          id: "gpt-5.5",
+          capabilities: ["vision", "attachment", "reasoning", "tool_call"],
+        },
+        {
+          id: "gpt-5.4",
+          name: "GPT-5.4",
+          capabilities: {
+            vision: true,
+            audio: false,
+            attachment: true,
+            reasoning: false,
+            tool_call: true,
+          },
+        },
+        "gpt-5.4-mini",
+      ]),
+    });
+
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+    const config = getPublicServerConfig();
+
+    expect(config.modelProvider.models).toEqual([
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+    ]);
+    expect(config.modelProvider.modelMetadata).toEqual({
+      "gpt-5.5": {
+        id: "gpt-5.5",
+        name: "gpt-5.5",
+        attachment: true,
+        reasoning: true,
+        tool_call: true,
+        modalities: { input: ["image", "text"] },
+      },
+      "gpt-5.4": {
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        attachment: true,
+        reasoning: false,
+        tool_call: true,
+        modalities: { input: ["image", "text"] },
+      },
+    });
+  });
+
   it("falls back to comma-separated models when provider model JSON is invalid", async () => {
     setEnv({
       DEFAULT_PROVIDER_TYPE: "OpenAI",

@@ -117,6 +117,9 @@ const COMPLEX_BACKGROUND_RE =
 const HEX_COLOR_RE = /#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})\b/gi;
 const RGB_OR_HSL_COLOR_RE = /\b(?:rgba?|hsla?)\([^)]*\)/gi;
 const NEUTRAL_KEYWORD_RE = /\b(?:black|white)\b/gi;
+const CSS_VARIABLE_RE = /var\(--[a-z0-9-]+\)/gi;
+const HTML_VISUAL_TONE_TOKEN_RE =
+  /^var\(--html-visual-(info|knowledge|success|warning|danger)-(?:surface|foreground|border|accent)\)$/i;
 const THEME_COLOR_TOKENS = new Map<string, string>([
   ["#ecfeff", "var(--html-visual-info-surface)"],
   ["#cffafe", "var(--html-visual-info-surface)"],
@@ -440,14 +443,55 @@ function replaceNeutralColors(value: string, replacement: string): string {
     .replace(NEUTRAL_KEYWORD_RE, replaceIfNeutral);
 }
 
-function replaceThemeColors(value: string): string {
-  return value.replace(HEX_COLOR_RE, (match) => {
-    return THEME_COLOR_TOKENS.get(match.toLowerCase()) ?? match;
-  });
-}
-
 function mapSingleThemeColor(value: string): string | null {
   return THEME_COLOR_TOKENS.get(value.trim().toLowerCase()) ?? null;
+}
+
+function mapHtmlVisualTokenForRole(
+  value: string,
+  role: "foreground" | "border",
+): string | null {
+  const normalized = value.trim().toLowerCase();
+  const toneMatch = normalized.match(HTML_VISUAL_TONE_TOKEN_RE);
+  if (toneMatch?.[1]) {
+    return `var(--html-visual-${toneMatch[1]}-${role})`;
+  }
+
+  if (role === "foreground") {
+    if (
+      normalized === HTML_VISUAL_SURFACE ||
+      normalized === HTML_VISUAL_SUBTLE_BORDER ||
+      normalized === "var(--html-visual-border)"
+    ) {
+      return HTML_VISUAL_FOREGROUND;
+    }
+    if (normalized === "var(--markdown-soft-surface)") {
+      return "var(--markdown-foreground)";
+    }
+    if (normalized === "var(--markdown-code-bg)") {
+      return "var(--markdown-code-text)";
+    }
+    return null;
+  }
+
+  if (
+    normalized === HTML_VISUAL_SURFACE ||
+    normalized === HTML_VISUAL_FOREGROUND ||
+    normalized === "var(--html-visual-border)"
+  ) {
+    return HTML_VISUAL_SUBTLE_BORDER;
+  }
+  return null;
+}
+
+function mapSingleThemeColorForRole(
+  value: string,
+  role: "foreground" | "border",
+): string | null {
+  return (
+    mapHtmlVisualTokenForRole(value, role) ||
+    mapHtmlVisualTokenForRole(mapSingleThemeColor(value) || "", role)
+  );
 }
 
 function containsNeutralColor(value: string, ignoreAlpha = false): boolean {
@@ -460,6 +504,19 @@ function containsNeutralColor(value: string, ignoreAlpha = false): boolean {
     const color = parseCssColor(match[0]);
     return Boolean(color && isNearExtremeNeutral(color, ignoreAlpha));
   });
+}
+
+function replaceThemeColorsForRole(
+  value: string,
+  role: "foreground" | "border",
+): string {
+  return value
+    .replace(HEX_COLOR_RE, (match) => {
+      return mapSingleThemeColorForRole(match, role) ?? match;
+    })
+    .replace(CSS_VARIABLE_RE, (match) => {
+      return mapHtmlVisualTokenForRole(match, role) ?? match;
+    });
 }
 
 function normalizeColorStyleValue(property: string, value: string): string {
@@ -477,12 +534,12 @@ function normalizeColorStyleValue(property: string, value: string): string {
   }
 
   if (property === "color") {
-    return mapSingleThemeColor(value) ?? value;
+    return mapSingleThemeColorForRole(value, "foreground") ?? value;
   }
 
   if (BORDER_COLOR_PROPERTIES.has(property)) {
     return replaceNeutralColors(
-      replaceThemeColors(value),
+      replaceThemeColorsForRole(value, "border"),
       HTML_VISUAL_SUBTLE_BORDER,
     );
   }

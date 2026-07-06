@@ -200,9 +200,11 @@ DEFAULT_PROVIDER_MODELS="gpt-5.5,gpt-5.4-mini"
 # JSON string array
 DEFAULT_PROVIDER_MODELS='["gpt-5.5","gpt-5.4-mini"]'
 
-# JSON object array with display names and capability metadata
-DEFAULT_PROVIDER_MODELS='[{"id": "gpt-5.5","name": "GPT-5.5","capabilities": {"vision": true,"audio": false,"attachment": true,"reasoning": true,"tool_call": true}},"gpt-5.4-mini"]'
+# JSON object array with optional display names and capability metadata
+DEFAULT_PROVIDER_MODELS='[{"id": "gpt-5.5","name": "GPT-5.5","capabilities": ["vision","attachment","reasoning","tool_call"]},"gpt-5.4-mini"]'
 ```
+
+JSON 对象条目中的 `name` 可选，缺省时会使用 `id` 作为显示名。
 
 默认任务模型：
 

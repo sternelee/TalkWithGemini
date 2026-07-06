@@ -26,7 +26,13 @@ describe("HTML visual prompt helpers", () => {
     expect(instruction).toContain("var(--html-visual-warning-surface)");
     expect(instruction).toContain("var(--html-visual-danger-surface)");
     expect(instruction).toContain(
-      "same cyan, mint, violet, amber, and rose hue families",
+      "Use light or pale backgrounds with dark, readable foreground text",
+    );
+    expect(instruction).toContain(
+      "Never use surface, border, pastel, or translucent color variables as text color",
+    );
+    expect(instruction).toContain(
+      "Aim for at least a 4.5:1 foreground/background contrast ratio",
     );
     expect(instruction).toContain("Prefer pale surfaces in light mode");
     expect(instruction).toContain(
@@ -76,9 +82,7 @@ describe("HTML visual prompt helpers", () => {
     expect(requestMessage).toContain(
       "Do not use pale text on light, pale, transparent, or unset backgrounds",
     );
-    expect(requestMessage).toContain(
-      "Prefer semantic foreground variables",
-    );
+    expect(requestMessage).toContain("Prefer semantic foreground variables");
     expect(requestMessage).toContain(
       "Never place HTML visual fragments inside code fences",
     );

@@ -94,26 +94,35 @@ function envList(name: string): string[] {
   );
 }
 
-function readBooleanCapability(
-  capabilities: Record<string, unknown>,
+function readProviderModelCapability(
+  capabilities: unknown,
   key: string,
 ): boolean | undefined {
-  return typeof capabilities[key] === "boolean"
-    ? (capabilities[key] as boolean)
-    : undefined;
+  if (Array.isArray(capabilities)) {
+    return capabilities.some(
+      (item) => typeof item === "string" && item.trim().toLowerCase() === key,
+    )
+      ? true
+      : undefined;
+  }
+
+  if (!capabilities || typeof capabilities !== "object") return undefined;
+  const value = (capabilities as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function modelMetadataFromEnvObject(
   value: Record<string, unknown>,
   modelId: string,
 ): ModelMetadata | null {
-  const capabilities =
-    value.capabilities && typeof value.capabilities === "object"
-      ? (value.capabilities as Record<string, unknown>)
-      : {};
+  const capabilities = value.capabilities;
   const inputModalities = [
-    ...(capabilities.vision === true ? ["image"] : []),
-    ...(capabilities.audio === true ? ["audio"] : []),
+    ...(readProviderModelCapability(capabilities, "vision") === true
+      ? ["image"]
+      : []),
+    ...(readProviderModelCapability(capabilities, "audio") === true
+      ? ["audio"]
+      : []),
   ];
   if (inputModalities.length > 0) inputModalities.push("text");
 
@@ -121,9 +130,9 @@ function modelMetadataFromEnvObject(
     {
       id: modelId,
       name: value.name,
-      attachment: readBooleanCapability(capabilities, "attachment"),
-      reasoning: readBooleanCapability(capabilities, "reasoning"),
-      tool_call: readBooleanCapability(capabilities, "tool_call"),
+      attachment: readProviderModelCapability(capabilities, "attachment"),
+      reasoning: readProviderModelCapability(capabilities, "reasoning"),
+      tool_call: readProviderModelCapability(capabilities, "tool_call"),
       ...(inputModalities.length > 0
         ? { modalities: { input: inputModalities } }
         : {}),

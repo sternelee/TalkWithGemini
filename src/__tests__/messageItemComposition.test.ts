@@ -113,7 +113,10 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("md:hidden");
 
     const markdownRenderer = readFileSync(
-      resolve(process.cwd(), "src/components/content/MarkdownRendererClient.tsx"),
+      resolve(
+        process.cwd(),
+        "src/components/content/MarkdownRendererClient.tsx",
+      ),
       "utf8",
     );
     expect(markdownRenderer).toContain("forcedTheme?: DiagramTheme");
@@ -130,8 +133,12 @@ describe("MessageItem composition", () => {
     expect(globals).toContain("size: A4");
     expect(globals).toContain(".message-pdf-print-root");
     expect(globals).toContain(".markdown-codeblock-header");
-    expect(globals).toContain(".message-export-content-root .markdown-diagram-header");
-    expect(globals).toContain(".message-pdf-print-root .markdown-diagram-header");
+    expect(globals).toContain(
+      ".message-export-content-root .markdown-diagram-header",
+    );
+    expect(globals).toContain(
+      ".message-pdf-print-root .markdown-diagram-header",
+    );
     expect(globals).toContain("max-height: none !important");
     expect(globals).toContain(".markdown-codeblock-fade");
     expect(globals).toContain(".markdown-console");

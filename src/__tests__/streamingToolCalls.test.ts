@@ -31,6 +31,13 @@ function reasoningMessages(messages: SSEMessage[]) {
   );
 }
 
+function contentMessages(messages: SSEMessage[]) {
+  return messages.filter(
+    (message): message is Extract<SSEMessage, { type: "content" }> =>
+      message.type === "content",
+  );
+}
+
 function searchMessages(messages: SSEMessage[]) {
   return messages.filter(
     (message): message is Extract<SSEMessage, { type: "search" }> =>
@@ -455,6 +462,122 @@ describe("streamed tool-call normalization", () => {
       reasoningMessages(messages).map((message) => message.content),
     ).toEqual(["Consider freshness. ", "Check sources."]);
     expect(messages).toContainEqual({ type: "content", content: "Answer" });
+  });
+
+  it("separates DeepSeek think tags from visible OpenAI Compatible content", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () =>
+            asyncChunks([
+              {
+                choices: [
+                  {
+                    delta: {
+                      content:
+                        "Intro <think>Check contrast.</think> Final answer.",
+                    },
+                  },
+                ],
+              },
+            ]),
+          ),
+        },
+      },
+    };
+
+    await streamOpenAIChatCompletions({
+      client: client as any,
+      model: "deepseek-reasoner",
+      messages: [],
+      useReasoning: true,
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(
+      reasoningMessages(messages).map((message) => message.content),
+    ).toEqual(["Check contrast."]);
+    expect(
+      contentMessages(messages)
+        .map((message) => message.content)
+        .join(""),
+    ).toBe("Intro  Final answer.");
+  });
+
+  it("handles DeepSeek think tags split across OpenAI Compatible chunks", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () =>
+            asyncChunks([
+              { choices: [{ delta: { content: "Start <thi" } }] },
+              { choices: [{ delta: { content: "nk>Step one. " } }] },
+              { choices: [{ delta: { content: "Step two.</th" } }] },
+              { choices: [{ delta: { content: "ink> Done." } }] },
+            ]),
+          ),
+        },
+      },
+    };
+
+    await streamOpenAIChatCompletions({
+      client: client as any,
+      model: "deepseek-reasoner",
+      messages: [],
+      useReasoning: true,
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(
+      reasoningMessages(messages)
+        .map((message) => message.content)
+        .join(""),
+    ).toBe("Step one. Step two.");
+    expect(
+      contentMessages(messages)
+        .map((message) => message.content)
+        .join(""),
+    ).toBe("Start  Done.");
+  });
+
+  it("strips DeepSeek think tags from visible content when reasoning is disabled", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      chat: {
+        completions: {
+          create: vi.fn(async () =>
+            asyncChunks([
+              {
+                choices: [
+                  {
+                    delta: {
+                      content: "<think>Hidden chain.</think>Answer",
+                    },
+                  },
+                ],
+              },
+            ]),
+          ),
+        },
+      },
+    };
+
+    await streamOpenAIChatCompletions({
+      client: client as any,
+      model: "deepseek-reasoner",
+      messages: [],
+      useReasoning: false,
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(reasoningMessages(messages)).toEqual([]);
+    expect(
+      contentMessages(messages)
+        .map((message) => message.content)
+        .join(""),
+    ).toBe("Answer");
   });
 
   it("suppresses OpenAI Responses reasoning events when reasoning is disabled", async () => {

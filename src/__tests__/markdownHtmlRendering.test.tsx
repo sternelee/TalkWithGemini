@@ -165,6 +165,26 @@ describe("MarkdownRenderer HTML support", () => {
     expect(html).not.toContain("color:#ffffff");
   });
 
+  it("maps pale visual surface colors away from text color", async () => {
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRendererClient");
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer
+        content={
+          '<section style="background:#ffffff; color:#ecfeff; border:1px solid #ecfeff"><span>Readable</span></section>'
+        }
+      />,
+    );
+
+    expect(html).toContain("markdown-html-visual");
+    expect(html).toContain("background:var(--html-visual-surface)");
+    expect(html).toContain("color:var(--html-visual-info-foreground)");
+    expect(html).toContain("border:1px solid var(--html-visual-info-border)");
+    expect(html).toContain("Readable");
+    expect(html).not.toContain("color:var(--html-visual-info-surface)");
+  });
+
   it("removes decorative styling from HTML visual containers that wrap tables", async () => {
     const { default: MarkdownRenderer } =
       await import("../components/content/MarkdownRendererClient");
@@ -266,7 +286,7 @@ describe("MarkdownRenderer HTML support", () => {
     expect(html).toContain("<section");
     expect(html).toContain("display:flex");
     expect(html).toContain("safe");
-    expect(html).toContain("color:var(--html-visual-success-accent)");
+    expect(html).toContain("color:var(--html-visual-success-foreground)");
     expect(html).not.toContain("onclick");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("<style");

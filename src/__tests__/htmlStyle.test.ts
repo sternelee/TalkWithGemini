@@ -14,7 +14,7 @@ describe("HTML style sanitization", () => {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
       gap: "12px",
-      color: "var(--html-visual-info-accent)",
+      color: "var(--html-visual-info-foreground)",
     });
 
     expect(

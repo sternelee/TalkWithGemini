@@ -195,6 +195,15 @@ describe("effective chat context", () => {
     expect(context.systemInstruction).toContain(
       "Do not output full HTML documents",
     );
+    expect(context.systemInstruction).toContain(
+      "Use light or pale backgrounds with dark, readable foreground text",
+    );
+    expect(context.systemInstruction).toContain(
+      "Aim for at least a 4.5:1 foreground/background contrast ratio",
+    );
+    expect(context.systemInstruction).toContain(
+      "Never use surface, border, pastel, or translucent color variables as text color",
+    );
   });
 
   it("does not inject HTML visual guidance when the setting is disabled", () => {

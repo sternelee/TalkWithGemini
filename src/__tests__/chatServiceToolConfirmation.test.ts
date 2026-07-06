@@ -474,6 +474,12 @@ describe("chat service tool execution", () => {
     expect(body.newMessage).toContain(
       "Never place HTML visual fragments inside code fences",
     );
+    expect(body.newMessage).toContain(
+      "Use light or pale backgrounds with dark, readable foreground text",
+    );
+    expect(body.newMessage).toContain(
+      "Aim for at least a 4.5:1 foreground/background contrast ratio",
+    );
     expect(body.newMessage).toContain('data-diagram-rendering="true"');
     expect(body.newMessage).toContain("Mermaid");
     expect(body.newMessage).toContain("mindmap");

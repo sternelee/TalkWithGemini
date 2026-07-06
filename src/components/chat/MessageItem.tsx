@@ -243,7 +243,8 @@ const proxyMessageExportImages = (root: HTMLElement) => {
   const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
 
   for (const image of images) {
-    const src = image.currentSrc || image.src || image.getAttribute("src") || "";
+    const src =
+      image.currentSrc || image.src || image.getAttribute("src") || "";
     const proxiedUrl = getProxiedMessageExportImageUrl(src);
     if (!proxiedUrl) continue;
 

@@ -120,6 +120,101 @@ function extractReasoningSummary(item: any): string {
     .join("");
 }
 
+type ThinkTagStreamEvent = {
+  type: "content" | "reasoning";
+  content: string;
+};
+
+const THINK_OPEN_TAG = "<think>";
+const THINK_CLOSE_TAG = "</think>";
+
+function findTagIndex(value: string, tag: string): number {
+  return value.toLowerCase().indexOf(tag);
+}
+
+function splitBeforePotentialTagPrefix(value: string, tag: string) {
+  const lower = value.toLowerCase();
+  for (
+    let length = Math.min(tag.length - 1, lower.length);
+    length > 0;
+    length--
+  ) {
+    if (tag.startsWith(lower.slice(-length))) {
+      return {
+        ready: value.slice(0, -length),
+        pending: value.slice(-length),
+      };
+    }
+  }
+  return { ready: value, pending: "" };
+}
+
+function pushThinkTagEvent(
+  events: ThinkTagStreamEvent[],
+  type: ThinkTagStreamEvent["type"],
+  content: string,
+) {
+  if (content) events.push({ type, content });
+}
+
+function createThinkTagStreamParser() {
+  let buffer = "";
+  let insideThink = false;
+
+  const consume = (input: string): ThinkTagStreamEvent[] => {
+    buffer += input;
+    const events: ThinkTagStreamEvent[] = [];
+
+    while (buffer) {
+      if (insideThink) {
+        const closeIndex = findTagIndex(buffer, THINK_CLOSE_TAG);
+        if (closeIndex !== -1) {
+          pushThinkTagEvent(events, "reasoning", buffer.slice(0, closeIndex));
+          buffer = buffer.slice(closeIndex + THINK_CLOSE_TAG.length);
+          insideThink = false;
+          continue;
+        }
+
+        const { ready, pending } = splitBeforePotentialTagPrefix(
+          buffer,
+          THINK_CLOSE_TAG,
+        );
+        pushThinkTagEvent(events, "reasoning", ready);
+        buffer = pending;
+        break;
+      }
+
+      const openIndex = findTagIndex(buffer, THINK_OPEN_TAG);
+      if (openIndex !== -1) {
+        pushThinkTagEvent(events, "content", buffer.slice(0, openIndex));
+        buffer = buffer.slice(openIndex + THINK_OPEN_TAG.length);
+        insideThink = true;
+        continue;
+      }
+
+      const { ready, pending } = splitBeforePotentialTagPrefix(
+        buffer,
+        THINK_OPEN_TAG,
+      );
+      pushThinkTagEvent(events, "content", ready);
+      buffer = pending;
+      break;
+    }
+
+    return events;
+  };
+
+  const flush = (): ThinkTagStreamEvent[] => {
+    const pending = buffer;
+    buffer = "";
+    return pending
+      ? [{ type: insideThink ? "reasoning" : "content", content: pending }]
+      : [];
+  };
+
+  return { consume, flush };
+}
+
 export interface OpenAIResponsesStreamOptions {
   client: OpenAI;
   model: string;
@@ -196,13 +291,20 @@ function emitChatCompletionChunk(
   chunk: any,
   toolCalls: ReturnType<typeof createOpenAIToolCallAccumulator>,
   emitReasoning: boolean,
+  thinkTagParser: ReturnType<typeof createThinkTagStreamParser>,
   onChunk: (message: SSEMessage) => void,
 ): void {
   const delta = chunk.choices?.[0]?.delta;
 
   // 处理文本内容
   if (delta?.content) {
-    onChunk({ type: "content", content: delta.content });
+    for (const event of thinkTagParser.consume(delta.content)) {
+      if (event.type === "content") {
+        onChunk({ type: "content", content: event.content });
+      } else if (emitReasoning) {
+        onChunk({ type: "reasoning", content: event.content });
+      }
+    }
   }
 
   const reasoningContent =
@@ -239,9 +341,24 @@ async function finishChatCompletionStream(
   onChunk: (message: SSEMessage) => void,
 ): Promise<void> {
   const toolCalls = createOpenAIToolCallAccumulator();
+  const thinkTagParser = createThinkTagStreamParser();
 
   for await (const chunk of chunks) {
-    emitChatCompletionChunk(chunk, toolCalls, emitReasoning, onChunk);
+    emitChatCompletionChunk(
+      chunk,
+      toolCalls,
+      emitReasoning,
+      thinkTagParser,
+      onChunk,
+    );
+  }
+
+  for (const event of thinkTagParser.flush()) {
+    if (event.type === "content") {
+      onChunk({ type: "content", content: event.content });
+    } else if (emitReasoning) {
+      onChunk({ type: "reasoning", content: event.content });
+    }
   }
 
   // 发送完整的工具调用
