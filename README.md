@@ -91,7 +91,7 @@ docker run --rm -p 3000:3000 -e BYOK_ALLOW_EPHEMERAL_KEY=true neo-chat:local
 The Docker workflow builds pull requests and publishes `main` / `v*` tags to GitHub Container Registry:
 
 ```text
-ghcr.io/amery2010/neo-chat
+ghcr.io/u14app/neo-chat:latest
 ```
 
 ### Vercel

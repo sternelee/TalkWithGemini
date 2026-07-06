@@ -91,7 +91,7 @@ docker run --rm -p 3000:3000 -e BYOK_ALLOW_EPHEMERAL_KEY=true neo-chat:local
 Docker workflow 会为 pull request 构建镜像，并将 `main` / `v*` 标签发布到 GitHub Container Registry：
 
 ```text
-ghcr.io/amery2010/neo-chat
+ghcr.io/u14app/neo-chat:latest
 ```
 
 ### Vercel
