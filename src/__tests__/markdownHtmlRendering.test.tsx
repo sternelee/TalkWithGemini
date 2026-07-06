@@ -251,6 +251,68 @@ describe("MarkdownRenderer HTML support", () => {
     expect(codeHtml).toContain("<span>html</span>");
     expect(codeHtml).toContain("previewHtml");
     expect(codeHtml).toContain("hljs-name");
+    expect(codeHtml).not.toContain("markdown-html-visual hljs");
+    expect(codeHtml).toContain('class="group/codeblock');
+    expect(codeHtml).not.toContain('<pre><div class="group/codeblock');
+
+    const plainCodeHtml = renderToStaticMarkup(
+      <MarkdownRenderer content={"```\nconst value = 1;\n```"} />,
+    );
+
+    expect(plainCodeHtml).toContain("<pre><code");
+    expect(plainCodeHtml).toContain("const value = 1;");
+    expect(plainCodeHtml).not.toContain("group/codeblock");
+  });
+
+  it("keeps collapsed code blocks scrollable and HTML previews script-enabled in an opaque sandbox", () => {
+    const source = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/content/MarkdownRendererClient.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(source).not.toContain("overflow-y-hidden");
+    expect(source).toContain("overflow-auto");
+    expect(source).toContain('sandbox="allow-scripts"');
+    expect(source).not.toContain('sandbox=""');
+    expect(source).not.toContain("allow-same-origin");
+    const toggleCollapseSource = source.slice(
+      source.indexOf("const toggleCollapse = () => {"),
+      source.indexOf(
+        "React.useEffect(() => {",
+        source.indexOf("const toggleCollapse = () => {"),
+      ),
+    );
+    expect(toggleCollapseSource).not.toMatch(
+      /setIsCollapsed\(false\);[\s\S]*?setMaxHeight\("none"\)/u,
+    );
+  });
+
+  it("keeps fullscreen code controls and highlighting aligned with inline code blocks", () => {
+    const source = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/content/MarkdownRendererClient.tsx",
+      ),
+      "utf8",
+    );
+    const css = readFileSync(resolve(process.cwd(), "src/app/globals.css"), {
+      encoding: "utf8",
+    });
+
+    expect(source.indexOf("/* Copy Button */")).toBeLessThan(
+      source.indexOf("/* Fullscreen Toggle */"),
+    );
+    expect(css).toContain(":where(.markdown-body, .markdown-codeblock) .hljs");
+    expect(css).toContain(
+      ":where(.markdown-body, .markdown-codeblock) .hljs-keyword",
+    );
+    expect(css).toContain(
+      ":where(.markdown-body, .markdown-codeblock) .hljs-meta",
+    );
+    expect(css).not.toContain(".markdown-html-visual.hljs");
   });
 
   it("normalizes escaped HTML attribute quotes before rendering", async () => {

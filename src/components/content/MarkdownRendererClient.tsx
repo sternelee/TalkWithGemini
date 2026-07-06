@@ -213,6 +213,12 @@ const markdownRehypePlugins = [
 const mergeClassName = (...classNames: Array<string | undefined>) =>
   classNames.filter(Boolean).join(" ") || undefined;
 
+const isHighlightClassName = (className: unknown) =>
+  typeof className === "string" &&
+  className
+    .split(/\s+/)
+    .some((name) => name === "hljs" || name.startsWith("hljs-"));
+
 const nodeContainsTable = (node: any): boolean => {
   if (!node || typeof node !== "object") return false;
   if (node.tagName === "table") return true;
@@ -256,7 +262,13 @@ const HtmlAside = (props: any) => <aside {...getSafeVisualHtmlProps(props)} />;
 
 const HtmlMain = (props: any) => <main {...getSafeVisualHtmlProps(props)} />;
 
-const HtmlSpan = (props: any) => <span {...getSafeVisualHtmlProps(props)} />;
+const HtmlSpan = (props: any) => {
+  if (isHighlightClassName(props.className)) {
+    return <span {...getSafeHtmlProps(props)} />;
+  }
+
+  return <span {...getSafeVisualHtmlProps(props)} />;
+};
 
 const HtmlHeading = ({
   as: Tag,
@@ -1447,17 +1459,8 @@ const ArtifactBlock = ({
     if (isCollapsed) {
       // EXPAND
       if (contentRef.current) {
-        // 1. Set specific height for transition start
         setMaxHeight(`${contentRef.current.scrollHeight}px`);
         setIsCollapsed(false);
-
-        // 2. Allow transition to finish, then remove constraint
-        collapseTimerRef.current = setTimeout(() => {
-          if (isMountedRef.current) {
-            setMaxHeight("none");
-          }
-          collapseTimerRef.current = null;
-        }, 500);
       }
     } else {
       // COLLAPSE
@@ -1471,7 +1474,7 @@ const ArtifactBlock = ({
           collapseFrameRef.current = null;
           collapseTimerRef.current = setTimeout(() => {
             if (isMountedRef.current) {
-              setMaxHeight("50vh");
+              setMaxHeight("40vh");
             }
             collapseTimerRef.current = null;
           }, 10);
@@ -1529,7 +1532,7 @@ const ArtifactBlock = ({
           setCanCollapse(true);
           if (shouldAutoCollapse) {
             setIsCollapsed(true);
-            setMaxHeight("50vh");
+            setMaxHeight("40vh");
           }
         }
         hasCheckedHeight.current = true;
@@ -1607,28 +1610,6 @@ const ArtifactBlock = ({
           </Tooltip>
         )}
 
-        {/* Fullscreen Toggle */}
-        <Tooltip
-          content={isFullscreenMode ? t("exitFullscreen") : t("fullscreen")}
-          position="bottom"
-        >
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            aria-label={
-              isFullscreenMode ? t("exitFullscreenAria") : t("fullscreenAria")
-            }
-            aria-pressed={isFullscreen}
-            className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
-          >
-            {isFullscreenMode ? (
-              <Minimize2 size={14} aria-hidden="true" />
-            ) : (
-              <Maximize2 size={14} aria-hidden="true" />
-            )}
-          </button>
-        </Tooltip>
-
         {/* Copy Button */}
         <Tooltip
           content={
@@ -1674,6 +1655,28 @@ const ArtifactBlock = ({
                   ? t("copyFailed")
                   : t("copyCodeAria")}
             </span>
+          </button>
+        </Tooltip>
+
+        {/* Fullscreen Toggle */}
+        <Tooltip
+          content={isFullscreenMode ? t("exitFullscreen") : t("fullscreen")}
+          position="bottom"
+        >
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={
+              isFullscreenMode ? t("exitFullscreenAria") : t("fullscreenAria")
+            }
+            aria-pressed={isFullscreen}
+            className="markdown-icon-button markdown-focus-ring flex items-center justify-center rounded p-1.5"
+          >
+            {isFullscreenMode ? (
+              <Minimize2 size={14} aria-hidden="true" />
+            ) : (
+              <Maximize2 size={14} aria-hidden="true" />
+            )}
           </button>
         </Tooltip>
 
@@ -1781,7 +1784,7 @@ const ArtifactBlock = ({
             <iframe
               srcDoc={previewSrcDoc}
               className="w-full h-full border-none"
-              sandbox=""
+              sandbox="allow-scripts"
               referrerPolicy="no-referrer"
               title={t("previewTitleSuffix", { title: previewTitle })}
             />
@@ -1800,9 +1803,8 @@ const ArtifactBlock = ({
             id={codeContentId}
             ref={contentRef}
             className={`
-                        markdown-codeblock-content w-full overflow-x-auto text-sm font-mono leading-relaxed
+                        markdown-codeblock-content w-full overflow-auto custom-scrollbar text-sm font-mono leading-relaxed
                         transition-[max-height] duration-500 ease-in-out relative
-                        ${isCollapsed ? "overflow-y-hidden" : ""}
                     `}
             style={{ maxHeight: maxHeight }}
           >
@@ -1930,7 +1932,7 @@ const MarkdownImage = ({
 
   const image = (
     <img
-      className="markdown-image block min-h-20 max-h-[50vh] max-w-full rounded-lg bg-muted/20 object-contain"
+      className="markdown-image block min-h-20 max-h-[40vh] max-w-full rounded-lg bg-muted/20 object-contain"
       src={resolvedSrc}
       alt={alt || ""}
       width={hasExplicitAspectRatio ? numericWidth : undefined}
@@ -1986,9 +1988,26 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   // Define components for ReactMarkdown
   const markdownComponents: any = useMemo(
     () => ({
+      pre({ children, ...props }: any) {
+        delete props.node;
+        const onlyChild = React.Children.toArray(children)[0];
+        const childClassName = React.isValidElement<{ className?: string }>(
+          onlyChild,
+        )
+          ? onlyChild.props.className
+          : undefined;
+
+        if (childClassName && /language-\w+/.test(childClassName)) {
+          return <>{children}</>;
+        }
+
+        return <pre {...props}>{children}</pre>;
+      },
       code({ node, className = "", children, ...props }: any) {
         const match = /language-(\w+)/.exec(className || "");
         const language = match ? match[1] : "";
+        const isBlockCode =
+          node?.position?.start?.line !== node?.position?.end?.line;
 
         // Extract raw text for copy functionality
         const getRawText = (node: any): string => {
@@ -2015,7 +2034,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         return (
           <code
             className={mergeClassName(
-              "markdown-inline-code rounded px-1 py-0.5 text-sm break-all font-mono",
+              isBlockCode
+                ? "font-mono text-sm"
+                : "markdown-inline-code rounded px-1 py-0.5 text-sm break-all font-mono",
               className,
             )}
             {...props}

@@ -2,9 +2,10 @@
 
 All notable changes to Neo Chat should be documented here.
 
-This project does not yet follow a formal release cadence. Until release
-automation is added, maintainers should group changes by version or date and
-link to GitHub releases when available.
+This project does not yet follow a formal release cadence. Maintainers should
+group changes under a level-2 heading that matches the release tag, such as
+`## v2.0.0`; the release workflow uses that section as the GitHub release notes
+when the matching tag is pushed.
 
 ## v2.0.0
 

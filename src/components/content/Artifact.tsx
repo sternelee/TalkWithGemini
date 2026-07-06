@@ -249,7 +249,7 @@ const Artifact: React.FC<ArtifactProps> = ({
   return (
     <div className="bg-white/80 dark:bg-muted/80 backdrop-blur-xl rounded-xl shadow-lg ring-2 ring-red-100/50 dark:ring-red-900/30 relative flex flex-col">
       {/* Content Area - Rounded Top, Hidden Overflow for overlays */}
-      <div className="relative overflow-hidden rounded-t-xl min-h-[100px]">
+      <div className="relative overflow-hidden rounded-t-xl min-h-25">
         {/* Loading Overlay */}
         {isProcessing && (
           <div
@@ -358,7 +358,7 @@ const Artifact: React.FC<ArtifactProps> = ({
             setProcessingError(null);
             setContent(e.target.value);
           }}
-          className="w-full p-4 text-sm md:text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400/40 resize-none bg-white/50 dark:bg-card/50 text-gray-800 dark:text-foreground min-h-[100px] max-h-[50vh] overflow-y-auto custom-scrollbar"
+          className="w-full p-4 text-sm md:text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-400/40 resize-none bg-white/50 dark:bg-card/50 text-gray-800 dark:text-foreground min-h-25 max-h-[40vh] overflow-y-auto custom-scrollbar"
         />
       </div>
 
