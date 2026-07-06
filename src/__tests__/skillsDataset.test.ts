@@ -20,17 +20,25 @@ describe("public skills dataset", () => {
     const zhCatalog = normalizeSkillCatalog(
       readJson(resolve(skillsDir, "skills.metadata.zh-CN.json")),
     );
+    const jaCatalog = normalizeSkillCatalog(
+      readJson(resolve(skillsDir, "skills.metadata.ja.json")),
+    );
     const ids = new Set(englishCatalog.skills.map((skill) => skill.id));
 
     expect(schema.$id).toBe("skills.schema.json");
     expect(schema.title).toBe("Skills Dataset");
     expect(englishCatalog.schemaVersion).toBe("skills-v1");
     expect(zhCatalog.schemaVersion).toBe("skills-v1");
+    expect(jaCatalog.schemaVersion).toBe("skills-v1");
     expect(englishCatalog.skills).toHaveLength(57);
     expect(zhCatalog.skills).toHaveLength(57);
+    expect(jaCatalog.skills).toHaveLength(57);
     expect(ids.size).toBe(57);
     expect(englishCatalog.skillCount).toBe(57);
+    expect(jaCatalog.skillCount).toBe(57);
+    expect(jaCatalog.locale).toBe("ja");
     expect(englishCatalog.categories).toContain("writing");
+    expect(jaCatalog.categories).toEqual(englishCatalog.categories);
     expect(englishCatalog.skills.every((skill) => !("content" in skill))).toBe(
       true,
     );
@@ -54,6 +62,27 @@ describe("public skills dataset", () => {
         );
       }),
     ).toBe(true);
+    expect(
+      jaCatalog.skills.every((skill) => {
+        const enEntry = englishCatalog.skills.find(
+          (englishSkill) => englishSkill.id === skill.id,
+        );
+        return Boolean(
+          enEntry &&
+          skill.file === enEntry.file &&
+          skill.language === "ja" &&
+          skill.title &&
+          skill.description &&
+          existsSync(resolve(skillsDir, skill.file!)),
+        );
+      }),
+    ).toBe(true);
+    expect(
+      jaCatalog.skills.find((skill) => skill.id === "translation-localization"),
+    ).toMatchObject({
+      title: "翻訳とローカライズ",
+      file: "translation-localization.json",
+    });
 
     for (const entry of englishCatalog.skills) {
       expect(entry.file).toBeTruthy();

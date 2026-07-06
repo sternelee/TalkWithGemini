@@ -23,6 +23,10 @@ import {
   getDefaultVoiceProvider,
 } from "@/lib/defaultConfig/server";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
+import {
+  getGeminiTranscriptionPrompt,
+  getProviderTranscriptionLanguage,
+} from "@/lib/voice/language";
 import { bytesToBase64 } from "../../../../lib/utils/binary";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
@@ -56,16 +60,6 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
 }
 
-function getGeminiTranscriptionPrompt(language?: "auto" | "en" | "zh") {
-  if (language === "zh") {
-    return "Transcribe the speech directly into Simplified Chinese text. Do not include any other text.";
-  }
-  if (language === "en") {
-    return "Transcribe the speech directly into English text. Do not include any other text.";
-  }
-  return "Generate a transcript of the speech.";
-}
-
 function getMimoAudioMimeType(blob: Blob): string {
   const mimeType = blob.type || "audio/wav";
   if (mimeType.includes("mpeg")) return "audio/mpeg";
@@ -78,7 +72,7 @@ async function transcribeWithMimo(
   audioBlob: Blob,
   apiKey: string,
   modelId: string | undefined,
-  language: "auto" | "en" | "zh" | undefined,
+  language: "auto" | "en" | "zh" | "ja" | undefined,
 ) {
   const mimeType = getMimoAudioMimeType(audioBlob);
   const audioBase64 = await blobToBase64(audioBlob);
@@ -281,12 +275,7 @@ export async function POST(request: NextRequest) {
         const response = await openai.audio.transcriptions.create({
           file,
           model: modelId,
-          language:
-            language && language !== "auto"
-              ? language === "zh"
-                ? "zh"
-                : "en"
-              : undefined,
+          language: getProviderTranscriptionLanguage(language),
         });
 
         return NextResponse.json({ text: response.text || "" });

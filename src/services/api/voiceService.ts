@@ -26,6 +26,7 @@ import {
   resolveElevenLabsApiKey,
   resolveMimoApiKey,
 } from "../../lib/security/localSecretResolvers";
+import { getBrowserVoiceLanguage } from "../../lib/voice/language";
 
 const getProviderForModel = async (modelString: string) => {
   const { providers } = useCoreSettingsStore.getState();
@@ -217,11 +218,7 @@ export const startBrowserSpeechRecognition = (
   recognition.continuous = true;
   recognition.interimResults = true;
 
-  if (language !== "auto") {
-    recognition.lang = language === "zh" ? "zh-CN" : "en-US";
-  } else {
-    recognition.lang = navigator.language || "en-US";
-  }
+  recognition.lang = getBrowserVoiceLanguage(language, navigator.language);
 
   recognition.onresult = (event: any) => {
     let finalTranscript = "";
@@ -379,7 +376,7 @@ export const synthesizeSpeech = async (
       const utterance = new SpeechSynthesisUtterance(text);
 
       if (settings.ttsLanguage !== "auto") {
-        utterance.lang = settings.ttsLanguage === "zh" ? "zh-CN" : "en-US";
+        utterance.lang = getBrowserVoiceLanguage(settings.ttsLanguage);
       }
 
       const voices = window.speechSynthesis.getVoices();

@@ -157,6 +157,42 @@ describe("agent service", () => {
     expect(setMarketAgents).toHaveBeenCalledWith([zhAgent], "zh");
   });
 
+  it("normalizes Japanese agent requests and cache locale", async () => {
+    const now = Date.UTC(2026, 0, 1);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const jaAgent = {
+      identifier: "fresh-ja",
+      meta: {
+        avatar: "bot",
+        title: "日本語アシスタント",
+        description: "日本語のマーケットアシスタント",
+        tags: [],
+        category: "General",
+      },
+      createdAt: "",
+      homepage: "",
+      author: "",
+    };
+    const setMarketAgents = vi.fn();
+    storeState.value = {
+      marketAgents: [],
+      marketAgentsTimestamp: 0,
+      marketAgentsLocale: "",
+      setMarketAgents,
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ agents: [jaAgent] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { getAgents } = await import("../services/api/agentService");
+
+    await expect(getAgents(false, "ja-JP")).resolves.toEqual([jaAgent]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=ja");
+    expect(setMarketAgents).toHaveBeenCalledWith([jaAgent], "ja");
+  });
+
   it("uses stale cache without overwriting it when the agent registry is unavailable", async () => {
     const now = Date.UTC(2026, 0, 1);
     vi.spyOn(Date, "now").mockReturnValue(now);
@@ -253,7 +289,11 @@ describe("agent service", () => {
           JSON.stringify({
             agents: [
               {
-                identifier: String(url).includes("locale=zh") ? "zh" : "en",
+                identifier: String(url).includes("locale=zh")
+                  ? "zh"
+                  : String(url).includes("locale=ja")
+                    ? "ja"
+                    : "en",
                 meta: { title: String(url) },
               },
             ],
@@ -268,14 +308,20 @@ describe("agent service", () => {
     const { getAgents } = await import("../services/api/agentService");
 
     await expect(
-      Promise.all([getAgents(false, "en"), getAgents(false, "zh")]),
+      Promise.all([
+        getAgents(false, "en"),
+        getAgents(false, "zh"),
+        getAgents(false, "ja"),
+      ]),
     ).resolves.toEqual([
       [expect.objectContaining({ identifier: "en" })],
       [expect.objectContaining({ identifier: "zh" })],
+      [expect.objectContaining({ identifier: "ja" })],
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=en");
     expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=zh");
+    expect(fetchMock).toHaveBeenCalledWith("/api/agents?locale=ja");
   });
 
   it("encodes agent detail identifiers before building the local API path", async () => {
@@ -305,9 +351,9 @@ describe("agent service", () => {
     );
     const { getAgentDetail } = await import("../services/api/agentService");
 
-    await getAgentDetail("agent-1", "zh");
+    await getAgentDetail("agent-1", "ja-JP");
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/agents/agent-1?locale=zh");
+    expect(fetchMock).toHaveBeenCalledWith("/api/agents/agent-1?locale=ja");
   });
 
   it("normalizes agent detail responses at the client boundary", async () => {

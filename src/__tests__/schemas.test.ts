@@ -289,7 +289,7 @@ describe("api schemas", () => {
         provider: "mimo",
         apiKeySecret: { ...encryptedSecret, context: "voice:mimo" },
         modelId: "mimo-v2.5-asr",
-        language: "auto",
+        language: "ja",
       }),
     ).not.toThrow();
   });
