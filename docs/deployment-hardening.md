@@ -59,6 +59,46 @@ spoofed forwarded headers before requests reach Neo Chat. These headers affect
 rate-limit identity and public request metadata; trusting user-supplied values
 can weaken hosted protections.
 
+## Vercel Environment Variables
+
+Vercel runs the standard Next.js build output, not the Cloudflare Workers
+OpenNext output. Import the repository with the Next.js framework preset and use
+the default output directory.
+
+Recommended project settings:
+
+```bash
+Install Command: default, or corepack pnpm install --frozen-lockfile
+Build Command: pnpm build
+Output Directory: default
+```
+
+For public Vercel deployments, use hosted mode and shared stores:
+
+```bash
+DEPLOYMENT_MODE=hosted
+ALLOW_LOCAL_NETWORK_PROXY=false
+RATE_LIMIT_STORE=upstash
+DOCUMENT_PARSE_JOB_STORE=upstash
+PLUGIN_REGISTRY_STORE=upstash
+UPSTASH_REDIS_REST_URL=https://...
+UPSTASH_REDIS_REST_TOKEN=...
+BYOK_ALLOW_EPHEMERAL_KEY=false
+BYOK_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+BYOK_KEY_ID=prod-2026-07
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+```
+
+Set these values in the Vercel project under the Production, Preview, or
+Development environments that need them. Vercel environment variables are
+available to the build step and to Next.js function execution for that
+deployment, so `NEXT_PUBLIC_SITE_URL` should be configured anywhere metadata,
+Open Graph image URLs, or generated public links must use the deployed domain.
+
+Keep deployment passwords, provider keys, BYOK key material, Upstash
+credentials, and third-party service tokens out of source control. Configure
+them as Vercel environment variables instead.
+
 ## Cloudflare Workers Environment Variables
 
 OpenNext and Cloudflare Workers have separate build-time and runtime

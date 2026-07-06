@@ -13,14 +13,14 @@ describe("SEO screenshot assets", () => {
     expect((seo as { SEO_SCREENSHOTS?: unknown }).SEO_SCREENSHOTS).toEqual([
       {
         src: "/desktop.png",
-        sizes: "1920x1045",
+        sizes: "2880x1568",
         type: "image/png",
         form_factor: "wide",
         label: "Neo Chat desktop workspace screenshot",
       },
       {
         src: "/mobile.png",
-        sizes: "1498x1328",
+        sizes: "1490x1332",
         type: "image/png",
         form_factor: "narrow",
         label: "Neo Chat mobile workspace screenshot",
@@ -44,8 +44,8 @@ describe("SEO screenshot assets", () => {
     ]);
     expect(seo.getSeoOpenGraphImages("Neo Chat")[0]).toMatchObject({
       url: "https://chat.example.com/desktop.png",
-      width: 1920,
-      height: 1045,
+      width: 2880,
+      height: 1568,
       alt: "Neo Chat",
     });
   });

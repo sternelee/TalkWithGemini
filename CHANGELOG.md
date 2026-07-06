@@ -6,7 +6,7 @@ This project does not yet follow a formal release cadence. Until release
 automation is added, maintainers should group changes by version or date and
 link to GitHub releases when available.
 
-## Unreleased
+## v2.0.0
 
 - Added open-source governance files, issue templates, pull request template,
   Dependabot configuration, and documentation for environment variables,

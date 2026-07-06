@@ -94,6 +94,39 @@ The Docker workflow builds pull requests and publishes `main` / `v*` tags to Git
 ghcr.io/amery2010/neo-chat
 ```
 
+### Vercel
+
+Import the repository as a Next.js project. Vercel can use the framework preset
+and package manager detection from `pnpm-lock.yaml` and the `packageManager`
+field, so the project does not need a custom output directory.
+
+Recommended project settings:
+
+```text
+Framework Preset: Next.js
+Install Command: default, or corepack pnpm install --frozen-lockfile
+Build Command: pnpm build
+Output Directory: default
+```
+
+For public Vercel deployments, configure production environment variables in
+the Vercel project settings:
+
+```bash
+DEPLOYMENT_MODE=hosted
+RATE_LIMIT_STORE=upstash
+DOCUMENT_PARSE_JOB_STORE=upstash
+PLUGIN_REGISTRY_STORE=upstash
+BYOK_ALLOW_EPHEMERAL_KEY=false
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+```
+
+Store deployment passwords, provider keys, BYOK material, and shared store
+credentials as Vercel environment variables with the appropriate Production,
+Preview, or Development scope. Do not commit these values to the repository.
+When a `NEXT_PUBLIC_*` value affects metadata or generated public links, set it
+for the environments that build those deployments.
+
 ### Cloudflare Workers
 
 ```bash
@@ -404,6 +437,10 @@ Contributions are welcome. Keep changes focused, preserve local-first behavior, 
 
 Read [Contributing](CONTRIBUTING.md), [Security Policy](SECURITY.md), and the
 [Code of Conduct](CODE_OF_CONDUCT.md) before opening larger changes.
+
+## Community Support
+
+[LinuxDo](https://linux.do/)
 
 ## License
 

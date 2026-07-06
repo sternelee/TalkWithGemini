@@ -37,14 +37,14 @@ type SeoScreenshotDimensions = {
 export const SEO_SCREENSHOTS: SeoScreenshot[] = [
   {
     src: DESKTOP_SCREENSHOT_SRC,
-    sizes: "1920x1045",
+    sizes: "2880x1568",
     type: "image/png",
     form_factor: "wide",
     label: "Neo Chat desktop workspace screenshot",
   },
   {
     src: MOBILE_SCREENSHOT_SRC,
-    sizes: "1498x1328",
+    sizes: "1490x1332",
     type: "image/png",
     form_factor: "narrow",
     label: "Neo Chat mobile workspace screenshot",
@@ -55,8 +55,8 @@ const SEO_SCREENSHOT_DIMENSIONS: Record<
   SeoScreenshotSrc,
   SeoScreenshotDimensions
 > = {
-  [DESKTOP_SCREENSHOT_SRC]: { width: 1920, height: 1045 },
-  [MOBILE_SCREENSHOT_SRC]: { width: 1498, height: 1328 },
+  [DESKTOP_SCREENSHOT_SRC]: { width: 2880, height: 1568 },
+  [MOBILE_SCREENSHOT_SRC]: { width: 1490, height: 1332 },
 };
 
 export const SEO_CONTENT: Record<SeoLocale, SeoContent> = {
