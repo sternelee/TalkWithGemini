@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ATTACHMENT_LIMITS } from "../config/limits";
+import { ATTACHMENT_LIMITS, formatBytes } from "../config/limits";
 import {
   getWorkspaceFileSelectionMessage,
   selectWorkspaceFilesForUpload,
@@ -59,6 +59,8 @@ describe("workspace file upload selection", () => {
     });
 
     expect(message).toMatch(/limited to 20/);
-    expect(message).toMatch(/5\.0 MB or smaller/);
+    expect(message).toContain(
+      `${formatBytes(ATTACHMENT_LIMITS.maxFileBytes)} or smaller`,
+    );
   });
 });

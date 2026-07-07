@@ -16,6 +16,8 @@ import {
   isDefaultDocumentProcessingAvailable,
 } from "../defaultConfig/server";
 import { getDeploymentMode } from "../security/deployment";
+import { getApiProofPublicStatus } from "../security/requestProof";
+import { isLocalhostName, isPrivateIpAddress } from "../security/urlPolicy";
 
 type StoreEnvName =
   "RATE_LIMIT_STORE" | "DOCUMENT_PARSE_JOB_STORE" | "PLUGIN_REGISTRY_STORE";
@@ -77,6 +79,17 @@ function byokHealth(): ServiceHealthItem {
   return item("byok", "missing_key", "STABLE_KEY_MISSING");
 }
 
+function apiProofHealth(): ServiceHealthItem {
+  const status = getApiProofPublicStatus();
+  if (!status.required) {
+    return item("apiProof", "local_only", "API_PROOF_LOCAL_MODE");
+  }
+  if (!status.configured) {
+    return item("apiProof", "missing_key", "API_PROOF_BYOK_MISSING");
+  }
+  return item("apiProof", "available", "API_PROOF_ENABLED");
+}
+
 function accessPasswordHealth(hosted: boolean): ServiceHealthItem {
   if (env("ACCESS_PASSWORD")) {
     return item("accessPassword", "available", "ACCESS_PASSWORD_CONFIGURED");
@@ -86,6 +99,36 @@ function accessPasswordHealth(hosted: boolean): ServiceHealthItem {
     hosted ? "missing_key" : "local_only",
     hosted ? "ACCESS_PASSWORD_RECOMMENDED" : "ACCESS_PASSWORD_OPTIONAL",
   );
+}
+
+function hasPublicSiteUrl(): boolean {
+  const value = env("NEXT_PUBLIC_SITE_URL");
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return !isLocalhostName(hostname) && !isPrivateIpAddress(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function hostedModeHealth(hosted: boolean): ServiceHealthItem {
+  if (hosted) {
+    return item("hostedMode", "available", "HOSTED_MODE_ENABLED");
+  }
+
+  if (hasPublicSiteUrl()) {
+    return item(
+      "hostedMode",
+      "policy_blocked",
+      "PUBLIC_LOCAL_MODE",
+      "Public deployments should run with DEPLOYMENT_MODE=hosted.",
+    );
+  }
+
+  return item("hostedMode", "local_only", "LOCAL_MODE");
 }
 
 function defaultModelHealth(): ServiceHealthItem {
@@ -166,12 +209,9 @@ export function getServiceHealthStatus(
     deploymentMode,
     services: {
       byok: byokHealth(),
+      apiProof: apiProofHealth(),
       accessPassword: accessPasswordHealth(hosted),
-      hostedMode: item(
-        "hostedMode",
-        hosted ? "available" : "local_only",
-        hosted ? "HOSTED_MODE_ENABLED" : "LOCAL_MODE",
-      ),
+      hostedMode: hostedModeHealth(hosted),
       rateLimitStore: storeHealth("rateLimitStore", "RATE_LIMIT_STORE", hosted),
       documentParseJobStore: storeHealth(
         "documentParseJobStore",

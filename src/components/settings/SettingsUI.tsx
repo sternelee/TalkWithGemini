@@ -1,5 +1,12 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback, useId } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useId,
+  useMemo,
+} from "react";
 import {
   ChevronDown,
   Check,
@@ -50,6 +57,22 @@ export const CustomSelect = ({
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listboxId = useId();
   const hasOptions = options.length > 0;
+  const flatOptions = useMemo(() => {
+    if (!hasOptions) return [] as SelectOption[];
+    if ("options" in options[0]) {
+      return (options as GroupedSelectOption[]).flatMap(
+        (group) => group.options,
+      );
+    }
+    return options as SelectOption[];
+  }, [hasOptions, options]);
+  const [highlightedValue, setHighlightedValue] = useState(value);
+
+  const getOptionId = useCallback(
+    (optionValue: string) =>
+      `${listboxId}-option-${optionValue.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+    [listboxId],
+  );
 
   const clearCloseTimer = useCallback(() => {
     if (!closeTimerRef.current) return;
@@ -79,7 +102,74 @@ export const CustomSelect = ({
     }
   };
 
+  const commitOption = useCallback(
+    (optionValue: string) => {
+      onChange(optionValue);
+      handleClose();
+    },
+    [handleClose, onChange],
+  );
+
+  const handleListboxKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    if (!hasOptions || flatOptions.length === 0) return;
+
+    const currentIndex = Math.max(
+      0,
+      flatOptions.findIndex((option) => option.value === highlightedValue),
+    );
+    const lastIndex = flatOptions.length - 1;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      clearCloseTimer();
+      setIsClosing(false);
+      setIsOpen(true);
+      setHighlightedValue(
+        flatOptions[Math.min(currentIndex + 1, lastIndex)].value,
+      );
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      clearCloseTimer();
+      setIsClosing(false);
+      setIsOpen(true);
+      setHighlightedValue(flatOptions[Math.max(currentIndex - 1, 0)].value);
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      clearCloseTimer();
+      setIsClosing(false);
+      setIsOpen(true);
+      setHighlightedValue(flatOptions[0].value);
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      clearCloseTimer();
+      setIsClosing(false);
+      setIsOpen(true);
+      setHighlightedValue(flatOptions[lastIndex].value);
+      return;
+    }
+
+    if (event.key === "Enter" && isOpen) {
+      event.preventDefault();
+      commitOption(highlightedValue || value);
+    }
+  };
+
   useEffect(() => clearCloseTimer, [clearCloseTimer]);
+
+  useEffect(() => {
+    setHighlightedValue(value);
+  }, [value]);
 
   // Helper to find label across flat or grouped options
   const getSelectedLabel = () => {
@@ -109,6 +199,7 @@ export const CustomSelect = ({
         aria-expanded={isOpen}
         aria-controls={isOpen ? listboxId : undefined}
         onClick={handleToggle}
+        onKeyDown={handleListboxKeyDown}
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-[border-color,background-color,box-shadow] hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background disabled:hover:text-foreground flex items-center justify-between"
       >
         <div className="flex items-center gap-2 truncate text-gray-700 dark:text-foreground">
@@ -131,6 +222,9 @@ export const CustomSelect = ({
         id={listboxId}
         role="listbox"
         ariaLabel={ariaLabel}
+        aria-activedescendant={
+          isOpen && highlightedValue ? getOptionId(highlightedValue) : undefined
+        }
         placement="bottom-start"
         matchAnchorWidth
         maxHeight={240}
@@ -152,14 +246,14 @@ export const CustomSelect = ({
                     <button
                       type="button"
                       role="option"
+                      id={getOptionId(opt.value)}
                       aria-selected={value === opt.value}
                       key={opt.value}
                       onClick={() => {
-                        onChange(opt.value);
-                        handleClose();
+                        commitOption(opt.value);
                       }}
                       className={`mb-0.5 flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                        value === opt.value
+                        value === opt.value || highlightedValue === opt.value
                           ? "bg-accent text-accent-foreground font-medium"
                           : "text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                       }`}
@@ -177,14 +271,14 @@ export const CustomSelect = ({
                 <button
                   type="button"
                   role="option"
+                  id={getOptionId(opt.value)}
                   aria-selected={value === opt.value}
                   key={opt.value}
                   onClick={() => {
-                    onChange(opt.value);
-                    handleClose();
+                    commitOption(opt.value);
                   }}
                   className={`mb-0.5 flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    value === opt.value
+                    value === opt.value || highlightedValue === opt.value
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
@@ -445,7 +539,7 @@ export const SearchProviderItem = ({
             type="button"
             aria-pressed={isActive}
             onClick={onActivate}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
               isActive
                 ? "bg-blue-500 text-white shadow-sm"
                 : "bg-gray-100 dark:bg-accent text-gray-600 dark:text-foreground/85 hover:bg-gray-200 dark:hover:bg-accent/80"

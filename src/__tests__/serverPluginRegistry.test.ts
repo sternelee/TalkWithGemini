@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { JINA_READER_PLUGIN } from "../config/plugins";
 import type { Plugin } from "../types";
 
+const lookupMock = vi.hoisted(() => vi.fn());
+
 vi.mock("server-only", () => ({}));
+vi.mock("node:dns/promises", () => ({
+  lookup: lookupMock,
+}));
 
 const plugin: Plugin = {
   id: "custom-weather",
@@ -27,6 +32,7 @@ describe("server plugin registry", () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.resetModules();
+    lookupMock.mockReset();
   });
 
   it("recovers hosted custom plugins from the shared registry after memory is cleared", async () => {
@@ -36,7 +42,7 @@ describe("server plugin registry", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(Response.json({ result: "OK" }))
       .mockResolvedValueOnce(Response.json({ result: JSON.stringify(plugin) }));
 
     const {
@@ -59,6 +65,24 @@ describe("server plugin registry", () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
       "https://redis.example/get/",
     );
+  });
+
+  it("uses the safe outbound policy for hosted shared registry requests", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("PLUGIN_REGISTRY_STORE", "upstash");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://127.0.0.1:8787");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    const { registerServerPlugin } =
+      await import("../lib/plugin/serverRegistry");
+
+    await expect(registerServerPlugin(plugin)).rejects.toThrow(
+      /Private network outbound requests are blocked/i,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("requires a shared registry for hosted custom plugin registration", async () => {

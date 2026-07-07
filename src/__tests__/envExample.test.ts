@@ -77,6 +77,7 @@ function scanDirectProcessEnvKeys(): Set<string> {
     "src/lib/security/accessControl.ts",
     "src/lib/security/deployment.ts",
     "src/lib/security/requestGuards.ts",
+    "src/lib/security/requestProof.ts",
     "src/lib/security/rateLimitStore.ts",
     "src/lib/plugin/serverRegistry.ts",
     "src/lib/api/docParseJobs.ts",
@@ -153,5 +154,15 @@ describe(".env.example", () => {
 
     expect(config.keep_vars).toBe(true);
     expect(vars?.keep_vars).toBeUndefined();
+    expect(vars?.DEPLOYMENT_MODE).toBe("hosted");
+  });
+
+  it("keeps copied local defaults fail-closed for proxy identity", () => {
+    const example = readFileSync(
+      resolve(process.cwd(), ".env.example"),
+      "utf8",
+    );
+
+    expect(example).toContain('TRUST_PROXY_HEADERS="false"');
   });
 });

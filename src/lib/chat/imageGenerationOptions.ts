@@ -56,7 +56,7 @@ export function parseImageGenerationOptions(
 function createImageGenerationOptionsPrompt(userMessage: string): string {
   return [
     "Decide optional image generation request options for a chat app.",
-    "Return strict JSON only: {} or {\"imageCount\": number}.",
+    'Return strict JSON only: {} or {"imageCount": number}.',
     `imageCount must be an integer from ${IMAGE_GENERATION_LIMITS.minCount} to ${IMAGE_GENERATION_LIMITS.maxCount}.`,
     "Only set imageCount when the user clearly asks for multiple separate images, variants, options, or a specific number of images.",
     "Do not set imageCount for one image that contains multiple panels, objects, people, or comparison sections.",

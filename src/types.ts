@@ -69,6 +69,7 @@ export type {
   MemoryType,
   RAGConfig,
   SystemSettings,
+  SystemPersonality,
 } from "./lib/settings/types";
 export type {
   ServiceHealthItem,

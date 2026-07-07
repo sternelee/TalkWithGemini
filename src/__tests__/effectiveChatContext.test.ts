@@ -13,7 +13,7 @@ describe("effective chat context", () => {
         systemInstruction: "Answer in project voice.",
         config: {
           activePlugins: ["needs-auth", "free-plugin"],
-          activeSkills: ["session-skill", "session-skill", ""],
+          activeSkills: ["session-skill", "missing-skill", "session-skill", ""],
         },
       },
       workspace: {
@@ -75,6 +75,10 @@ describe("effective chat context", () => {
           auth: { type: "none" },
         },
       ],
+      installedSkills: [
+        { id: "session-skill" },
+        { id: "workspace-skill" },
+      ] as any,
       pluginConfigs: {},
       activePlugins: [],
     });
@@ -247,5 +251,61 @@ describe("effective chat context", () => {
     expect(context.systemInstruction).toContain("<diagram-rendering>");
     expect(context.systemInstruction).not.toContain("<diagram-visual-polish>");
     expect(context.systemInstruction).not.toContain("<format_instructions");
+  });
+
+  it("keeps default personalization silent and appends selected personality instructions", () => {
+    const baseOptions = {
+      systemPrompt: "Global system prompt.",
+      selectedModel: "openai:gpt-test",
+      provider: { type: "OpenAI" as const },
+      modelMetadata: {},
+      customModelMetadata: {},
+      chatConfig: {
+        useSearch: false,
+        useReasoning: false,
+        reasoningMode: "off" as const,
+        temperature: 0.7,
+        useRAG: false,
+      },
+      search: {
+        provider: "google" as const,
+        configs: {},
+      },
+      rag: {
+        enabled: false,
+        url: "",
+        token: "",
+        topK: 10,
+        chunkSize: 512,
+        documentParseProvider: "mineru" as const,
+        mineruApiToken: "",
+        llamaParseApiKey: "",
+      },
+      installedPlugins: [],
+      pluginConfigs: {},
+      activePlugins: [],
+    };
+
+    const defaultContext = resolveEffectiveChatContext({
+      ...baseOptions,
+      personality: "default",
+    });
+    const personalizedContext = resolveEffectiveChatContext({
+      ...baseOptions,
+      personality: "efficient",
+    });
+
+    expect(defaultContext.systemInstruction).not.toContain(
+      "<response-personalization>",
+    );
+    expect(personalizedContext.systemInstruction).toContain(
+      "<response-personalization>",
+    );
+    expect(personalizedContext.systemInstruction).toContain(
+      "Be concise, direct, and practical",
+    );
+    expect(personalizedContext.systemInstruction).toContain(
+      "Global system prompt.",
+    );
   });
 });

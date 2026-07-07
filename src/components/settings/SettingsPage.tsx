@@ -10,6 +10,7 @@ import {
   FolderSearch,
   ShieldCheck,
   Brain,
+  Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -21,6 +22,7 @@ import SystemSettings from "./SystemSettings";
 import DefaultModelSettings from "./DefaultModelSettings";
 import DeploymentHealth from "./DeploymentHealth";
 import MemorySettings from "./MemorySettings";
+import AboutSettings from "./AboutSettings";
 import type { SettingsTabId } from "@/lib/chat/panelUrlState";
 
 const SETTINGS_TABS: Array<{
@@ -36,6 +38,7 @@ const SETTINGS_TABS: Array<{
   { id: "memory", labelKey: "tabMemory", Icon: Brain },
   { id: "health", labelKey: "tabHealth", Icon: ShieldCheck },
   { id: "system", labelKey: "tabSystem", Icon: Settings },
+  { id: "about", labelKey: "tabAbout", Icon: Info },
 ];
 
 const renderTabContent = (activeTab: SettingsTabId) => {
@@ -56,6 +59,8 @@ const renderTabContent = (activeTab: SettingsTabId) => {
       return <DeploymentHealth />;
     case "system":
       return <SystemSettings />;
+    case "about":
+      return <AboutSettings />;
   }
 };
 

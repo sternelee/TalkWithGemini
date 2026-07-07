@@ -1980,6 +1980,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   // If className is provided, we assume the caller handles text color, otherwise default to gray.
   const defaultTextColors = "markdown-body-default";
   const finalClass = className ? className : defaultTextColors;
+  const t = useTranslations("Content");
   const imageGallery = useMemo(
     () => collectMarkdownImageGallery(content),
     [content],
@@ -2097,7 +2098,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       table: (props: any) => {
         const safeProps = getSafeHtmlProps(props);
         return (
-          <div className="markdown-table-wrap">
+          <div
+            className="markdown-table-wrap"
+            tabIndex={0}
+            aria-label={t("tableScrollRegion")}
+          >
             <table
               {...safeProps}
               className={mergeClassName("markdown-table", safeProps.className)}
@@ -2134,7 +2139,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         );
       },
     }),
-    [imageGallery, searchSources, isStreaming, forceExpandCodeBlocks],
+    [imageGallery, searchSources, isStreaming, forceExpandCodeBlocks, t],
   );
 
   // Process content line by line for <file> tags

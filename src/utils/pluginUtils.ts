@@ -4,7 +4,7 @@ import {
   getPluginFunctionNameCollisions,
   resolvePluginFunction,
 } from "../lib/plugin/resolve";
-import { readJsonResponseOrThrow } from "../lib/api/client";
+import { readJsonResponseOrThrow, signedApiFetch } from "../lib/api/client";
 import {
   getPluginExecutionArgsError,
   getPluginExecutionFunctionNameError,
@@ -34,7 +34,7 @@ async function postPluginExecution(
 ) {
   return fetchWithByokRetry(async () => {
     const payload = await buildPayload();
-    return fetch("/api/plugins/execute", {
+    return signedApiFetch("/api/plugins/execute", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

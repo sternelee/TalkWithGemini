@@ -98,6 +98,36 @@ describe("server default store injection", () => {
     expect(useSettingsStore.getState().search.provider).toBe("google");
   });
 
+  it("enables default document processing when local credentials belong to another parser", async () => {
+    const { useSettingsStore } = await import("../store/core/settingsStore");
+
+    useSettingsStore.setState((state) => ({
+      ...state,
+      rag: {
+        ...state.rag,
+        documentParseProvider: "llamaParse",
+        mineruApiToken: "mineru-token",
+        llamaParseApiKey: "",
+        useDefaultDocumentProcessing: undefined,
+      },
+    }));
+
+    useSettingsStore.getState().applyServerConfig({
+      ...serverConfig,
+      rag: {
+        ...serverConfig.rag,
+        documentProcessingAvailable: true,
+        documentProcessingProvider: "llamaParse",
+      },
+    });
+
+    expect(useSettingsStore.getState().rag).toMatchObject({
+      documentParseProvider: "llamaParse",
+      useDefaultDocumentProcessing: true,
+      serverDocumentProcessingAvailable: true,
+    });
+  });
+
   it("seeds missing task-model defaults without overwriting persisted user choices", async () => {
     const { useCoreSettingsStore } =
       await import("../store/core/coreSettingsStore");

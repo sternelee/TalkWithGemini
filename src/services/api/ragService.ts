@@ -4,6 +4,7 @@ import { RAG_LIMITS } from "../../config/limits";
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
+  signedApiFetch,
 } from "../../lib/api/client";
 import { normalizeSearchSources } from "../../lib/search/results";
 import { BYOK_CONTEXTS } from "../../lib/byok/shared";
@@ -43,14 +44,14 @@ export async function queryRAG(
       const tokenSecret = useDefault
         ? undefined
         : await encryptSecret(token, BYOK_CONTEXTS.ragToken);
-      return fetch("/api/rag/query", {
+      return signedApiFetch("/api/rag/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           text,
-          namespace,
+          namespace: useDefault ? undefined : namespace,
           url: rag.url,
           useDefault,
           tokenSecret,
@@ -99,14 +100,14 @@ export async function upsertToRAG(
         const tokenSecret = useDefault
           ? undefined
           : await encryptSecret(token, BYOK_CONTEXTS.ragToken);
-        return fetch("/api/rag/upsert", {
+        return signedApiFetch("/api/rag/upsert", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             items: batch,
-            namespace,
+            namespace: useDefault ? undefined : namespace,
             url: rag.url,
             useDefault,
             tokenSecret,
@@ -152,14 +153,14 @@ export async function deleteFromRAG(
         const tokenSecret = useDefault
           ? undefined
           : await encryptSecret(token, BYOK_CONTEXTS.ragToken);
-        return fetch("/api/rag/delete", {
+        return signedApiFetch("/api/rag/delete", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             ids: batch,
-            namespace,
+            namespace: useDefault ? undefined : namespace,
             url: rag.url,
             useDefault,
             tokenSecret,

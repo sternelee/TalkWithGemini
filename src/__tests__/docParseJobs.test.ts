@@ -4,6 +4,7 @@ import { strToU8, zipSync } from "fflate";
 const safeFetchJsonMock = vi.hoisted(() => vi.fn());
 const safeFetchTextMock = vi.hoisted(() => vi.fn());
 const safeFetchArrayBufferMock = vi.hoisted(() => vi.fn());
+const safeFetchSharedStoreJsonMock = vi.hoisted(() => vi.fn());
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
@@ -30,6 +31,9 @@ vi.mock("@/lib/security/safeFetch", () => ({
   safeFetchJson: safeFetchJsonMock,
   safeFetchText: safeFetchTextMock,
   safeFetchArrayBuffer: safeFetchArrayBufferMock,
+}));
+vi.mock("../lib/security/sharedStoreFetch", () => ({
+  safeFetchSharedStoreJson: safeFetchSharedStoreJsonMock,
 }));
 
 function crc32(bytes: Uint8Array): number {
@@ -154,6 +158,7 @@ describe("document parse jobs", () => {
     safeFetchJsonMock.mockReset();
     safeFetchTextMock.mockReset();
     safeFetchArrayBufferMock.mockReset();
+    safeFetchSharedStoreJsonMock.mockReset();
     const { clearDocumentParseJobs } = await import("../lib/api/docParseJobs");
     clearDocumentParseJobs();
   });
@@ -227,6 +232,41 @@ describe("document parse jobs", () => {
       ),
     ).rejects.toThrow(/DOCUMENT_PARSE_JOB_STORE=upstash/i);
     expect(safeFetchJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the safe outbound wrapper for hosted shared document job stores", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("DOCUMENT_PARSE_JOB_STORE", "upstash");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.example");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
+    vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
+    safeFetchJsonMock.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      data: { id: "upstream-job" },
+    });
+    safeFetchSharedStoreJsonMock.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      data: { result: "OK" },
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    const { createDocumentParseJob } = await import("../lib/api/docParseJobs");
+    await createDocumentParseJob(
+      new File(["hello"], "doc.txt", { type: "text/plain" }),
+      {
+        provider: "llamaParse",
+        apiKey: "llama-secret",
+        credential: { kind: "default" },
+      },
+    );
+
+    expect(safeFetchSharedStoreJsonMock).toHaveBeenCalledWith(
+      "https://redis.example/set",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects multipart document uploads without a trustworthy content length before parsing", async () => {
@@ -364,6 +404,39 @@ describe("document parse jobs", () => {
     });
     expect(unauthorizedDelete.status).toBe(403);
     expect(await unauthorizedDelete.json()).toMatchObject({
+      code: "DOCUMENT_JOB_FORBIDDEN",
+    });
+  });
+
+  it("does not accept document parse job secrets from query parameters", async () => {
+    vi.stubEnv("DEFAULT_LLAMA_PARSE_API_KEY", "llama-secret");
+    safeFetchJsonMock.mockResolvedValueOnce({
+      response: new Response(null, { status: 200 }),
+      data: { id: "upstream-job" },
+    });
+
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "doc.txt", { type: "text/plain" }),
+    );
+    formData.set("useDefault", "true");
+    formData.set("provider", "llamaParse");
+
+    const { POST } = await import("../app/api/doc-parse/route");
+    const startResponse = await POST(makeDocumentParseRequest(formData) as any);
+    const started = await startResponse.json();
+    const { GET } = await import("../app/api/doc-parse/jobs/[id]/route");
+
+    const response = await GET(
+      new Request(
+        `https://neo.test/api/doc-parse/jobs/${started.jobId}?jobSecret=${started.jobSecret}`,
+      ) as any,
+      { params: Promise.resolve({ id: started.jobId }) },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
       code: "DOCUMENT_JOB_FORBIDDEN",
     });
   });

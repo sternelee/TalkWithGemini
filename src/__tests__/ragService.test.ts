@@ -25,6 +25,16 @@ vi.mock("../lib/byok/client", () => ({
   fetchWithByokRetry: vi.fn((requestFactory) => requestFactory()),
 }));
 
+vi.mock("../lib/api/client", async () => {
+  const actual = await vi.importActual("../lib/api/client");
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, init),
+    ),
+  };
+});
+
 describe("rag service batching", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -93,8 +103,8 @@ describe("rag service batching", () => {
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
       useDefault: true,
-      namespace: "collection",
     });
+    expect(body).not.toHaveProperty("namespace");
     expect(body).not.toHaveProperty("url");
     expect(body).not.toHaveProperty("tokenSecret");
   });

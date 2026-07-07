@@ -1,12 +1,14 @@
 import { cookies, headers } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_COOKIE,
+  SUPPORTED_LOCALES,
+  type Locale,
+} from "./constants";
 
-export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
-export type Locale = (typeof SUPPORTED_LOCALES)[number];
-export const DEFAULT_LOCALE: Locale = "en";
-
-/** Cookie name used to persist the interface language across requests. */
-export const LOCALE_COOKIE = "NEXT_LOCALE";
+export { DEFAULT_LOCALE, LOCALE_COOKIE, SUPPORTED_LOCALES };
+export type { Locale };
 
 const isSupported = (value: string): value is Locale =>
   (SUPPORTED_LOCALES as readonly string[]).includes(value);

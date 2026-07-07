@@ -13,6 +13,7 @@ import {
   safeFetchJson,
   safeFetchText,
 } from "@/lib/security/safeFetch";
+import { safeFetchSharedStoreJson } from "../security/sharedStoreFetch";
 import { getSafeUrlPolicy } from "@/lib/security/urlPolicy";
 import { getDeploymentMode } from "../security/deployment";
 
@@ -106,7 +107,7 @@ class UpstashDocumentParseJobStore implements DocumentParseJobStore {
   }
 
   async create(job: DocumentParseJob, ttlMs: number): Promise<void> {
-    const response = await fetch(this.endpoint("set"), {
+    const { response } = await safeFetchSharedStoreJson(this.endpoint("set"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -118,7 +119,6 @@ class UpstashDocumentParseJobStore implements DocumentParseJobStore {
         "PX",
         ttlMs,
       ]),
-      cache: "no-store",
     });
     if (!response.ok) {
       throw new Error(
@@ -128,31 +128,27 @@ class UpstashDocumentParseJobStore implements DocumentParseJobStore {
   }
 
   async get(id: string): Promise<DocumentParseJob | undefined> {
-    const response = await fetch(
-      this.endpoint(`get/${encodeURIComponent(this.key(id))}`),
-      {
-        headers: { Authorization: `Bearer ${this.token}` },
-        cache: "no-store",
-      },
-    );
+    const { response, data } = await safeFetchSharedStoreJson<{
+      result?: string | null;
+    }>(this.endpoint(`get/${encodeURIComponent(this.key(id))}`), {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
     if (!response.ok) {
       throw new Error(
         `Document job store failed with status ${response.status}`,
       );
     }
 
-    const data = (await response.json()) as { result?: string | null };
     if (!data.result) return undefined;
     return JSON.parse(data.result) as DocumentParseJob;
   }
 
   async delete(id: string): Promise<boolean> {
-    const response = await fetch(
+    const { response } = await safeFetchSharedStoreJson(
       this.endpoint(`del/${encodeURIComponent(this.key(id))}`),
       {
         method: "POST",
         headers: { Authorization: `Bearer ${this.token}` },
-        cache: "no-store",
       },
     );
     return response.ok;

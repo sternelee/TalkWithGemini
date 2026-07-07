@@ -9,6 +9,7 @@ import {
   isValidAccessSessionCookie,
 } from "./lib/security/accessControl";
 import { applyRequestGuards } from "./lib/security/requestGuards";
+import { REQUEST_PROOF_SESSION_PATH } from "./lib/security/requestProof";
 
 const ACCESS_VERIFY_PATH = "/api/access/verify";
 
@@ -32,7 +33,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (request.nextUrl.pathname === ACCESS_VERIFY_PATH) {
+  if (
+    request.nextUrl.pathname === ACCESS_VERIFY_PATH ||
+    request.nextUrl.pathname === REQUEST_PROOF_SESSION_PATH
+  ) {
     return NextResponse.next();
   }
 

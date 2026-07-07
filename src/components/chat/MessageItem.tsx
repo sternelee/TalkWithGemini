@@ -348,7 +348,7 @@ const UserMessageEditor = ({
   };
 
   return (
-    <div className="rounded-lg border border-input bg-background shadow-sm">
+    <div className="rounded-lg border border-input bg-background shadow-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background">
       <textarea
         ref={textareaRef}
         value={draft}
@@ -356,7 +356,7 @@ const UserMessageEditor = ({
           setDraft(event.target.value);
           setPolishError(null);
         }}
-        className="max-h-72 min-h-28 w-full resize-none bg-transparent px-3 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+        className="max-h-72 min-h-28 w-full resize-none bg-transparent px-3 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-ring"
         aria-label={t("editUserMessageAria")}
         autoFocus
       />
@@ -447,6 +447,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const [imageExportJob, setImageExportJob] = useState<ImageExportJob | null>(
     null,
   );
+  const [imageExportError, setImageExportError] = useState<string | null>(null);
 
   // Immersive / Reading Mode State
   const [readingMode, setReadingMode] = useState<
@@ -734,6 +735,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         const didProxy = proxyMessageExportImages(root);
         if (!didProxy) {
           logMessageItemError("Failed to export message image", firstError);
+          setImageExportError(t("downloadImageFailed"));
           return;
         }
 
@@ -744,6 +746,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         } catch (retryError) {
           if (!cancelled) {
             logMessageItemError("Failed to export message image", retryError);
+            setImageExportError(t("downloadImageFailed"));
           }
         }
       } finally {
@@ -762,7 +765,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
       if (firstFrame !== null) cancelAnimationFrame(firstFrame);
       if (secondFrame !== null) cancelAnimationFrame(secondFrame);
     };
-  }, [imageExportJob]);
+  }, [imageExportJob, t]);
 
   // Typewriter Effect Logic using requestAnimationFrame
   useEffect(() => {
@@ -866,6 +869,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const handleDownloadImage = () => {
+    setImageExportError(null);
     setImageExportJob({
       id: `${message.id}-${Date.now()}`,
       title: getMessageDownloadName("png"),
@@ -1562,6 +1566,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
               className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
             >
               {ttsError}
+            </div>
+          ) : null}
+          {imageExportError ? (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100"
+            >
+              {imageExportError}
             </div>
           ) : null}
 

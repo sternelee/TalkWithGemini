@@ -8,6 +8,7 @@ export type ServiceHealthState =
 
 export type ServiceHealthServiceKey =
   | "byok"
+  | "apiProof"
   | "accessPassword"
   | "hostedMode"
   | "rateLimitStore"

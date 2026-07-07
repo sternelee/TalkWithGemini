@@ -1,0 +1,13 @@
+{
+  "title": "このプロジェクトについて",
+  "client": "クライアント",
+  "clientValue": "Web アプリ",
+  "description": "Neo Chat は、モデルプロバイダー、会話、ファイル、ナレッジ、プラグイン、アシスタント、メモリ、実行時設定を扱う、ローカル優先でセルフホスト可能な AI チャットワークスペースです。",
+  "productInfo": "製品情報",
+  "website": "公式サイト",
+  "officialRepo": "公式リポジトリ",
+  "version": "バージョン",
+  "license": "ライセンス",
+  "copyright": "著作権表示",
+  "licensedUnder": "コードは {license} の下でライセンスされています。"
+}

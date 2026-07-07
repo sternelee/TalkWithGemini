@@ -13,6 +13,11 @@ describe("SkillMarket composition", () => {
     expect(source).toContain("fetchSkillDefinition");
     expect(source).toContain("installSkill");
     expect(source).toContain("uninstallSkill");
+    expect(source).toContain("uninstallConfirmingSkillId");
+    expect(source).toContain("confirmUninstallSkill");
+    expect(source).toContain('t("confirmUninstall")');
+    expect(source).toContain('aria-label={t("removeTagAria", { tag })}');
+    expect(source).toContain("focus-visible:ring-2");
     expect(source).toContain("updateInstalledSkill");
     expect(source).not.toContain("toggleSkillActive");
   });

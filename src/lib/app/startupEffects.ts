@@ -21,7 +21,6 @@ export function shouldApplySessionPluginPreset(
   return (
     shouldSyncSessionPlugins(settingsHydrated, chatHydrated) &&
     Array.isArray(pluginIds) &&
-    pluginIds.length > 0 &&
     (!nextPresetSyncKey || appliedPresetSyncKey !== nextPresetSyncKey)
   );
 }
@@ -30,7 +29,7 @@ export function getSessionPluginPresetSyncKey(
   sessionId: string | null | undefined,
   pluginIds: unknown,
 ): string | null {
-  if (!sessionId || !Array.isArray(pluginIds) || pluginIds.length === 0) {
+  if (!sessionId || !Array.isArray(pluginIds)) {
     return null;
   }
 

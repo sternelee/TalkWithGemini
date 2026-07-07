@@ -87,6 +87,16 @@ vi.mock("../lib/byok/client", () => ({
   fetchWithByokRetry: vi.fn((requestFactory) => requestFactory()),
 }));
 
+vi.mock("../lib/api/client", async () => {
+  const actual = await vi.importActual("../lib/api/client");
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, init),
+    ),
+  };
+});
+
 vi.mock("@/lib/utils/devLogger", () => ({
   logDevError: vi.fn(),
   logDevWarn: vi.fn(),

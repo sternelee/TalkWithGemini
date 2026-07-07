@@ -20,15 +20,16 @@ describe("app startup effects", () => {
     expect(shouldSyncSessionPlugins(true, true)).toBe(true);
   });
 
-  it("applies session plugin presets only when a non-empty preset exists", () => {
+  it("applies session plugin presets when an explicit preset exists", () => {
     expect(shouldApplySessionPluginPreset(false, true, ["weather-gpt"])).toBe(
       false,
     );
     expect(shouldApplySessionPluginPreset(true, true, undefined)).toBe(false);
-    expect(shouldApplySessionPluginPreset(true, true, [])).toBe(false);
+    expect(shouldApplySessionPluginPreset(true, true, [])).toBe(true);
     expect(shouldApplySessionPluginPreset(true, true, ["weather-gpt"])).toBe(
       true,
     );
+    expect(getSessionPluginPresetSyncKey("session-1", [])).toBe("session-1:[]");
   });
 
   it("does not reapply a session plugin preset already synced for the current session", () => {

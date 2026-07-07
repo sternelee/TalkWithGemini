@@ -24,6 +24,8 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("handleAddToKnowledge");
     expect(messageItem).toContain("canEditUserMessage");
     expect(messageItem).toContain("UserMessageEditor");
+    expect(messageItem).toContain("focus-within:ring-2");
+    expect(messageItem).toContain("focus-visible:ring-ring");
     expect(messageItem).toContain("PencilSparkles");
     expect(messageItem).toContain('t("polishUserMessageShort")');
     expect(messageItem).not.toContain("text-amber-500");
@@ -84,6 +86,9 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("handleDownloadMarkdown");
     expect(messageItem).toContain("handleDownloadPdf");
     expect(messageItem).toContain("handleDownloadImage");
+    expect(messageItem).toContain("imageExportError");
+    expect(messageItem).toContain('t("downloadImageFailed")');
+    expect(messageItem).toContain('role="alert"');
     expect(messageItem).toContain("message-pdf-print-root");
     expect(messageItem).toContain("message-image-export-root");
     expect(messageItem).toContain("message={pdfPrintJob.message}");

@@ -974,9 +974,12 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       const selection = selectChatAttachmentFiles(attachments.length, files, {
         maxFileBytes: maxAttachmentFileBytes,
       });
-      const selectionMessage = getChatAttachmentFileSelectionMessage(selection, {
-        maxFileBytes: maxAttachmentFileBytes,
-      });
+      const selectionMessage = getChatAttachmentFileSelectionMessage(
+        selection,
+        {
+          maxFileBytes: maxAttachmentFileBytes,
+        },
+      );
       if (selectionMessage) setErrorMsg(selectionMessage);
       const newAttachments: Attachment[] = [];
 

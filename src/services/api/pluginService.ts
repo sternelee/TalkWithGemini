@@ -3,6 +3,7 @@ import { useSettingsStore } from "@/store/core/settingsStore";
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
+  signedApiFetch,
 } from "../../lib/api/client";
 import { normalizeMarketPlugins } from "../../lib/market/plugins";
 import { logDevError, logDevInfo, logDevWarn } from "../../lib/utils/devLogger";
@@ -70,7 +71,7 @@ export const fetchApiGuruList = async (
 
   const request = (async () => {
     logDevInfo("Fetching plugins from API...");
-    const response = await fetch("/api/plugins/list");
+    const response = await signedApiFetch("/api/plugins/list");
     if (!response.ok) throw new Error("Failed to fetch plugins");
 
     const data = await readJsonResponseOrThrow<{ plugins?: Plugin[] }>(
@@ -105,7 +106,7 @@ export const clearPluginsCache = (): void => {
 
 export const installPlugin = async (plugin: Plugin): Promise<Plugin> => {
   try {
-    const response = await fetch("/api/plugins/install", {
+    const response = await signedApiFetch("/api/plugins/install", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -128,7 +129,7 @@ export const installPlugin = async (plugin: Plugin): Promise<Plugin> => {
 
 export const installCustomPlugin = async (input: string): Promise<Plugin> => {
   try {
-    const response = await fetch("/api/plugins/install", {
+    const response = await signedApiFetch("/api/plugins/install", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

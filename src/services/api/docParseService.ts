@@ -1,6 +1,7 @@
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
+  signedApiFetch,
 } from "../../lib/api/client";
 import { encryptSecret, fetchWithByokRetry } from "../../lib/byok/client";
 import { BYOK_CONTEXTS } from "../../lib/byok/shared";
@@ -18,19 +19,72 @@ type DocumentParseJobResponse =
 
 const DOC_PARSE_POLL_INTERVAL_MS = 2_000;
 const DOC_PARSE_MAX_POLLS = 150;
+const DOC_PARSE_TIMEOUT_ERROR =
+  "Document parsing timed out. Please try again later.";
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+function createAbortError(): DOMException | Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("Document parsing was cancelled", "AbortError");
+  }
+  const error = new Error("Document parsing was cancelled");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      signal?.removeEventListener("abort", abort);
+    };
+    const timer = globalThis.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const abort = () => {
+      globalThis.clearTimeout(timer);
+      cleanup();
+      reject(createAbortError());
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function shouldCancelPendingJob(error: unknown): boolean {
+  return (
+    (error instanceof Error && error.name === "AbortError") ||
+    (error instanceof Error && error.message === DOC_PARSE_TIMEOUT_ERROR)
+  );
+}
+
+async function cancelDocumentParseJob(
+  jobId: string,
+  jobSecret: string,
+): Promise<void> {
+  await signedApiFetch(`/api/doc-parse/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+    headers: {
+      "x-doc-parse-job-secret": jobSecret,
+    },
+    cache: "no-store",
+  });
 }
 
 async function pollDocumentParseJob(
   jobId: string,
   jobSecret: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   for (let attempt = 0; attempt < DOC_PARSE_MAX_POLLS; attempt += 1) {
-    await sleep(DOC_PARSE_POLL_INTERVAL_MS);
+    await sleep(DOC_PARSE_POLL_INTERVAL_MS, signal);
 
-    const response = await fetch(
+    const response = await signedApiFetch(
       `/api/doc-parse/jobs/${encodeURIComponent(jobId)}`,
       {
         method: "GET",
@@ -38,6 +92,7 @@ async function pollDocumentParseJob(
           "x-doc-parse-job-secret": jobSecret,
         },
         cache: "no-store",
+        signal,
       },
     );
 
@@ -58,7 +113,7 @@ async function pollDocumentParseJob(
     }
   }
 
-  throw new Error("Document parsing timed out. Please try again later.");
+  throw new Error(DOC_PARSE_TIMEOUT_ERROR);
 }
 
 function getDocumentParseSecretContext(
@@ -75,14 +130,17 @@ export async function parseDocumentFile(
     provider: DocumentParseProvider;
     apiKey?: string;
     useDefault?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<string> {
-  const { provider, apiKey, useDefault = false } = options;
+  const { provider, apiKey, useDefault = false, signal } = options;
   if (provider === "llamaParse" && !apiKey && !useDefault) {
     throw new Error("LlamaParse API Key is required");
   }
 
+  let pendingJob: { id: string; secret: string } | null = null;
   try {
+    throwIfAborted(signal);
     const response = await fetchWithByokRetry(async () => {
       const formData = new FormData();
       formData.append("file", file);
@@ -101,9 +159,10 @@ export async function parseDocumentFile(
         );
       }
 
-      return fetch("/api/doc-parse", {
+      return signedApiFetch("/api/doc-parse", {
         method: "POST",
         body: formData,
+        signal,
       });
     });
 
@@ -119,11 +178,19 @@ export async function parseDocumentFile(
     );
     if ("markdown" in data) return data.markdown || "";
     if ("jobId" in data && data.jobId && data.jobSecret) {
-      return pollDocumentParseJob(data.jobId, data.jobSecret);
+      pendingJob = { id: data.jobId, secret: data.jobSecret };
+      return await pollDocumentParseJob(data.jobId, data.jobSecret, signal);
     }
 
     throw new Error("Document parsing did not return a job id");
   } catch (error) {
+    if (pendingJob && shouldCancelPendingJob(error)) {
+      try {
+        await cancelDocumentParseJob(pendingJob.id, pendingJob.secret);
+      } catch (cancelError) {
+        logDevError("Document parse job cancellation failed:", cancelError);
+      }
+    }
     logDevError("Document parse error:", error);
     throw error;
   }

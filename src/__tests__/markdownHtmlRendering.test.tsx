@@ -145,6 +145,19 @@ describe("MarkdownRenderer HTML support", () => {
     expect(html).toContain("HTML");
   });
 
+  it("makes wide Markdown table scrollers keyboard-focusable", async () => {
+    const { default: MarkdownRenderer } =
+      await import("../components/content/MarkdownRendererClient");
+
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer content={"| A | B |\n|---|---|\n| 1 | 2 |"} />,
+    );
+
+    expect(html).toContain('class="markdown-table-wrap"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('aria-label="tableScrollRegion"');
+  });
+
   it("wraps inline HTML in a theme scope and corrects low-contrast colors", async () => {
     const { default: MarkdownRenderer } =
       await import("../components/content/MarkdownRendererClient");

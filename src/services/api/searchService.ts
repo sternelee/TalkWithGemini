@@ -1,6 +1,6 @@
 import { Source, ImageSource } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { readJsonResponseOrThrow } from "../../lib/api/client";
+import { readJsonResponseOrThrow, signedApiFetch } from "../../lib/api/client";
 import {
   normalizeImageSources,
   normalizeSearchSources,
@@ -28,7 +28,7 @@ export async function createSearchProvider({ query, scope }: SearchOptions) {
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/search", {
+      signedApiFetch("/api/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -57,6 +57,6 @@ export async function createSearchProvider({ query, scope }: SearchOptions) {
     };
   } catch (error) {
     logDevError("Search error:", error);
-    return { sources: [], images: [] };
+    throw error;
   }
 }

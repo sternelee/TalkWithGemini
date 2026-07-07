@@ -4,6 +4,7 @@ import {
   clearRateLimitStoreForTesting,
   incrementRateLimitBucket,
 } from "./rateLimitStore";
+import { enforceApiRequestProof } from "./requestProof";
 
 export const REQUEST_GUARD_ERROR_CODES = {
   csrf: "CSRF_ORIGIN_BLOCKED",
@@ -179,7 +180,13 @@ export async function enforceRateLimit(
 export async function applyRequestGuards(
   request: NextRequest,
 ): Promise<NextResponse | null> {
-  return validateSameOriginRequest(request) || enforceRateLimit(request);
+  const originResponse = validateSameOriginRequest(request);
+  if (originResponse) return originResponse;
+
+  const proofResponse = await enforceApiRequestProof(request);
+  if (proofResponse) return proofResponse;
+
+  return enforceRateLimit(request);
 }
 
 export function clearRequestRateLimitBuckets(): void {

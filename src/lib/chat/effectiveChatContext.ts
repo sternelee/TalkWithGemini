@@ -8,8 +8,10 @@ import type {
   SearchProviderID,
   SearchServiceConfig,
   Session,
+  SystemPersonality,
   Workspace,
 } from "../../types";
+import type { SkillCatalogEntry } from "../skills/types";
 import {
   isPluginAuthRequired,
   normalizeActivePluginIds,
@@ -65,6 +67,7 @@ export interface ResolveEffectiveChatContextOptions {
   session?: Session | null;
   workspace?: Workspace | null;
   systemPrompt?: string;
+  personality?: SystemPersonality;
   enableHtmlVisualPrompt?: boolean;
   now?: Date | number;
   selectedModel: string;
@@ -78,6 +81,7 @@ export interface ResolveEffectiveChatContextOptions {
   };
   rag: RAGConfig;
   installedPlugins: Plugin[];
+  installedSkills?: SkillCatalogEntry[];
   pluginConfigs: Record<string, PluginConfig>;
   activePlugins: string[];
 }
@@ -99,14 +103,55 @@ function formatCurrentDateTime(now: Date | number | undefined): string {
   ].join("\n");
 }
 
+const PERSONALITY_INSTRUCTIONS: Record<
+  Exclude<SystemPersonality, "default">,
+  string
+> = {
+  professional:
+    "Use a professional, precise, and dependable voice. Prioritize accuracy, structure, and practical detail.",
+  friendly:
+    "Use a warm, approachable, and supportive voice. Explain clearly without becoming overly formal.",
+  direct:
+    "Be candid and straightforward. State the main answer early and avoid unnecessary preamble.",
+  imaginative:
+    "Use imaginative framing and playful ideas while staying useful, accurate, and grounded.",
+  efficient:
+    "Be concise, direct, and practical. Focus on the fastest useful path and skip filler.",
+  snarky:
+    "Use dry wit sparingly while staying helpful, respectful, and technically accurate.",
+};
+
+export function buildResponsePersonalizationInstruction({
+  personality,
+}: {
+  personality?: SystemPersonality;
+}): string {
+  const instruction =
+    personality && personality !== "default"
+      ? PERSONALITY_INSTRUCTIONS[personality]
+      : "";
+
+  if (!instruction) return "";
+
+  return [
+    "<response-personalization>",
+    instruction,
+    "</response-personalization>",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function buildSystemInstruction({
   systemPrompt,
+  personality,
   workspacePrompt,
   sessionInstruction,
   enableHtmlVisualPrompt,
   now,
 }: {
   systemPrompt?: string;
+  personality?: SystemPersonality;
   workspacePrompt?: string;
   sessionInstruction?: string;
   enableHtmlVisualPrompt?: boolean;
@@ -119,6 +164,12 @@ function buildSystemInstruction({
     if (!trimmed || seen.has(trimmed)) continue;
     seen.add(trimmed);
     sections.push(trimmed);
+  }
+  const personalizationInstruction = buildResponsePersonalizationInstruction({
+    personality,
+  });
+  if (personalizationInstruction) {
+    sections.push(personalizationInstruction);
   }
   sections.push(
     buildDiagramPromptInstruction({
@@ -164,6 +215,7 @@ export function resolveEffectiveChatContext(
     session,
     workspace,
     systemPrompt,
+    personality,
     enableHtmlVisualPrompt,
     now,
     selectedModel,
@@ -174,6 +226,7 @@ export function resolveEffectiveChatContext(
     search,
     rag,
     installedPlugins,
+    installedSkills = [],
     pluginConfigs,
     activePlugins,
   } = options;
@@ -199,7 +252,7 @@ export function resolveEffectiveChatContext(
   );
   const activeSkillIds = normalizeSkillIdRefs(
     session?.config?.activeSkills || workspace?.activeSkills || [],
-    [],
+    installedSkills,
   );
   const statuses: CapabilityStatus[] = [];
 
@@ -248,6 +301,7 @@ export function resolveEffectiveChatContext(
     sessionId: session?.id || null,
     systemInstruction: buildSystemInstruction({
       systemPrompt,
+      personality,
       workspacePrompt: workspace?.systemPrompt,
       sessionInstruction: session?.systemInstruction,
       enableHtmlVisualPrompt,

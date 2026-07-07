@@ -835,6 +835,11 @@ samp {
   padding: 0;
 }
 
+.markdown-body :where(.markdown-table-wrap:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--ring) 65%, transparent);
+  outline-offset: 3px;
+}
+
 .markdown-body :where(table) {
   width: 100%;
   min-width: max-content;

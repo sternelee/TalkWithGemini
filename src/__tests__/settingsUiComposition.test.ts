@@ -16,6 +16,14 @@ describe("settings UI primitives", () => {
     expect(settingsUi).toContain("border-input");
     expect(settingsUi).toContain("focus-visible:ring-ring");
     expect(settingsUi).toContain("data-[state=checked]");
+    expect(settingsUi).toContain("handleListboxKeyDown");
+    expect(settingsUi).toContain('event.key === "ArrowDown"');
+    expect(settingsUi).toContain('event.key === "Home"');
+    expect(settingsUi).toContain('event.key === "End"');
+    expect(settingsUi).toContain("aria-activedescendant");
+    expect(settingsUi).toContain(
+      "focus-visible:ring-2 focus-visible:ring-blue-500/60",
+    );
   });
 
   it("exposes memory management as a settings tab", () => {
@@ -26,6 +34,65 @@ describe("settings UI primitives", () => {
 
     expect(settingsPage).toContain('id: "memory"');
     expect(settingsPage).toContain("tabMemory");
+  });
+
+  it("organizes system settings into scalable grouped sections", () => {
+    const systemSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SystemSettings.tsx"),
+      "utf8",
+    );
+
+    expect(systemSettings).toContain("SystemSection");
+    expect(systemSettings).toContain("SettingRow");
+    expect(systemSettings).toContain("ToggleRow");
+    expect(systemSettings).toContain("RadioDropdown");
+    expect(systemSettings).toContain("INTERFACE_LANGUAGE_OPTIONS");
+    expect(systemSettings).toContain("systemInterfaceTitle");
+    expect(systemSettings).toContain("systemAssistantTitle");
+    expect(systemSettings).toContain("systemAutomationTitle");
+    expect(systemSettings).toContain("systemDataTitle");
+    expect(en.System.systemInterfaceTitle).toBeTruthy();
+    expect(zh.System.systemInterfaceTitle).toBeTruthy();
+    expect(ja.System.systemInterfaceTitle).toBeTruthy();
+  });
+
+  it("uses a dropdown for interface language instead of a fixed segmented control", () => {
+    const systemSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SystemSettings.tsx"),
+      "utf8",
+    );
+    const languageAriaIndex = systemSettings.indexOf("interfaceLanguageAria");
+    const languageControlIndex = systemSettings.lastIndexOf(
+      "RadioDropdown",
+      languageAriaIndex,
+    );
+    const languageSection = systemSettings.slice(
+      languageControlIndex,
+      systemSettings.indexOf('title={t("fontSize")}', languageControlIndex),
+    );
+
+    expect(systemSettings).toContain("INTERFACE_LANGUAGE_OPTIONS");
+    expect(languageSection).toContain("RadioDropdown");
+    expect(languageSection).not.toContain("SegmentedControl");
+  });
+
+  it("keeps personality selection compact and trims option descriptions on mobile", () => {
+    const systemSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SystemSettings.tsx"),
+      "utf8",
+    );
+    const personalizationIndex = systemSettings.indexOf(
+      'title={t("personalization")}',
+    );
+    const personalitySection = systemSettings.slice(
+      personalizationIndex,
+      systemSettings.indexOf('title={t("systemPrompt")}', personalizationIndex),
+    );
+
+    expect(personalitySection).toContain('controlClassName="sm:w-64"');
+    expect(personalitySection).toContain("hideOptionDescriptionsOnMobile");
+    expect(systemSettings).toContain("hideOptionDescriptionsOnMobile = false");
+    expect(systemSettings).toContain("hidden sm:block");
   });
 
   it("exposes image generation as a model capability in provider settings", () => {

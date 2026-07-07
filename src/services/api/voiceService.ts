@@ -13,6 +13,7 @@ import {
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
+  signedApiFetch,
 } from "../../lib/api/client";
 import {
   buildProviderRuntimeConfig,
@@ -51,7 +52,7 @@ export const transcribeAudio = async (
   settings: VoiceSettings,
 ): Promise<string> => {
   if (settings.sttProvider === "default") {
-    const response = await fetch("/api/voice/transcribe", {
+    const response = await signedApiFetch("/api/voice/transcribe", {
       method: "POST",
       body: (() => {
         const formData = new FormData();
@@ -103,7 +104,7 @@ export const transcribeAudio = async (
       );
       retryFormData.append("language", settings.sttLanguage || "auto");
 
-      return fetch("/api/voice/transcribe", {
+      return signedApiFetch("/api/voice/transcribe", {
         method: "POST",
         body: retryFormData,
       });
@@ -139,7 +140,7 @@ export const transcribeAudio = async (
       retryFormData.append("modelId", "mimo-v2.5-asr");
       retryFormData.append("language", settings.sttLanguage || "auto");
 
-      return fetch("/api/voice/transcribe", {
+      return signedApiFetch("/api/voice/transcribe", {
         method: "POST",
         body: retryFormData,
       });
@@ -172,7 +173,7 @@ export const transcribeAudio = async (
       retryFormData.append("modelId", retryModelId);
       retryFormData.append("language", settings.sttLanguage || "auto");
 
-      return fetch("/api/voice/transcribe", {
+      return signedApiFetch("/api/voice/transcribe", {
         method: "POST",
         body: retryFormData,
       });
@@ -253,7 +254,7 @@ export const synthesizeSpeech = async (
   if (settings.ttsProvider === "default") {
     if (!text.trim()) return;
 
-    const response = await fetch("/api/voice/synthesize", {
+    const response = await signedApiFetch("/api/voice/synthesize", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -283,7 +284,7 @@ export const synthesizeSpeech = async (
 
     const response = await fetchWithByokRetry(async () => {
       const apiKey = await resolveElevenLabsApiKey(settings);
-      return fetch("/api/voice/synthesize", {
+      return signedApiFetch("/api/voice/synthesize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -316,7 +317,7 @@ export const synthesizeSpeech = async (
 
     const response = await fetchWithByokRetry(async () => {
       const apiKey = await resolveMimoApiKey(settings);
-      return fetch("/api/voice/synthesize", {
+      return signedApiFetch("/api/voice/synthesize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -345,7 +346,7 @@ export const synthesizeSpeech = async (
 
     const response = await fetchWithByokRetry(async () => {
       const { modelProvider, modelId } = await getProviderForModel(ttsModel);
-      return fetch("/api/voice/synthesize", {
+      return signedApiFetch("/api/voice/synthesize", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

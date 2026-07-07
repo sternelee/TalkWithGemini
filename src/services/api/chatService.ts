@@ -51,6 +51,7 @@ import {
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
+  signedApiFetch,
 } from "../../lib/api/client";
 import {
   buildProviderRuntimeConfig,
@@ -230,7 +231,7 @@ export const executeCode = async (
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/execute-code", {
+      signedApiFetch("/api/chat/execute-code", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -283,7 +284,7 @@ export const generateChatTitle = async (
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/generate-title", {
+      signedApiFetch("/api/chat/generate-title", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -334,7 +335,7 @@ export const generateRelatedQuestions = async (
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/related-questions", {
+      signedApiFetch("/api/chat/related-questions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -388,7 +389,7 @@ export const generateRAGSearchQueries = async (
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/rag-queries", {
+      signedApiFetch("/api/chat/rag-queries", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -441,7 +442,7 @@ export const generateImage = async (
       ? await stripAttachmentsDisplayCacheForModel(options.attachments)
       : undefined;
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/generate-image", {
+      signedApiFetch("/api/chat/generate-image", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -756,7 +757,7 @@ export const streamChatResponse = async (
       toolCalls: ToolCall[];
     }> => {
       const response = await fetchWithByokRetry(async () =>
-        fetch("/api/chat", {
+        signedApiFetch("/api/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1298,7 +1299,7 @@ export const streamGenerateContent = async (
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat/generate", {
+      signedApiFetch("/api/chat/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1398,7 +1399,7 @@ export const streamGenerateToolCall = async (
 
   try {
     const response = await fetchWithByokRetry(async () =>
-      fetch("/api/chat", {
+      signedApiFetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

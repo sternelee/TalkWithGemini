@@ -1,0 +1,13 @@
+{
+  "title": "关于",
+  "client": "用户端",
+  "clientValue": "Web 应用",
+  "description": "Neo Chat 是一个本地优先、可自托管的 AI 对话工作台，用于管理模型供应商、会话、文件、知识库、插件、助理、记忆与运行时设置。",
+  "productInfo": "产品信息",
+  "website": "官网",
+  "officialRepo": "官方仓库",
+  "version": "版本",
+  "license": "开源协议",
+  "copyright": "版权声明",
+  "licensedUnder": "代码遵循 {license} 授权。"
+}

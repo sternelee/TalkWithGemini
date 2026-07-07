@@ -30,4 +30,29 @@ describe("provider outbound policy", () => {
       code: "HOSTED_PROXY_BLOCKED",
     });
   });
+
+  it("fails closed for custom provider SDK base URLs in hosted mode", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    const { ProviderFactory } = await import("../lib/providers/base");
+
+    expect(() =>
+      ProviderFactory.createOpenAIClient({
+        type: "OpenAI",
+        baseUrl: "https://proxy.example/v1",
+        apiKey: "key",
+      }),
+    ).toThrow(/Custom provider base URLs are disabled in hosted mode/i);
+  });
+
+  it("keeps official provider base URLs available in hosted mode", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    const { ProviderFactory } = await import("../lib/providers/base");
+
+    expect(() =>
+      ProviderFactory.createOpenAIClient({
+        type: "OpenAI",
+        apiKey: "key",
+      }),
+    ).not.toThrow();
+  });
 });

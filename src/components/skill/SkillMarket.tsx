@@ -386,12 +386,13 @@ const SkillEditorModal = ({
                 <button
                   key={tag}
                   type="button"
+                  aria-label={t("removeTagAria", { tag })}
                   onClick={() =>
                     updateDraft({
                       tags: draft.tags.filter((item) => item !== tag),
                     })
                   }
-                  className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 dark:bg-muted dark:text-foreground/80"
+                  className="rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:bg-muted dark:text-foreground/80"
                 >
                   {tag}
                 </button>
@@ -458,6 +459,7 @@ const SkillCard = ({
   mode,
   categoryLabel,
   isBusy = false,
+  isUninstallConfirming = false,
   onInstall,
   onUninstall,
   onEdit,
@@ -466,6 +468,7 @@ const SkillCard = ({
   mode: "installed" | "available";
   categoryLabel: string;
   isBusy?: boolean;
+  isUninstallConfirming?: boolean;
   onInstall?: () => void;
   onUninstall?: () => void;
   onEdit?: () => void;
@@ -531,7 +534,7 @@ const SkillCard = ({
                 className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:text-red-300 dark:hover:bg-red-900/20"
               >
                 <Trash2 size={13} aria-hidden="true" />
-                {t("uninstall")}
+                {isUninstallConfirming ? t("confirmUninstall") : t("uninstall")}
               </button>
             </>
           ) : (
@@ -584,6 +587,9 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingSkill, setEditingSkill] = useState<TextSkill | undefined>();
   const [showEditor, setShowEditor] = useState(false);
+  const [uninstallConfirmingSkillId, setUninstallConfirmingSkillId] = useState<
+    string | null
+  >(null);
   const isMountedRef = useRef(true);
   const requestRef = useRef(0);
   const searchInputId = useId();
@@ -632,6 +638,15 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
     () => new Set(installedSkills.map((skill) => skill.id)),
     [installedSkills],
   );
+  useEffect(() => {
+    if (
+      uninstallConfirmingSkillId &&
+      !installedIdSet.has(uninstallConfirmingSkillId)
+    ) {
+      setUninstallConfirmingSkillId(null);
+    }
+  }, [installedIdSet, uninstallConfirmingSkillId]);
+
   const installingIdSet = useMemo(
     () => new Set(installingSkillIds),
     [installingSkillIds],
@@ -681,6 +696,7 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
 
   const handleInstallSkill = async (skill: SkillCatalogEntry) => {
     setInstallError("");
+    setUninstallConfirmingSkillId(null);
     setInstallingSkillIds((current) =>
       current.includes(skill.id) ? current : [...current, skill.id],
     );
@@ -706,6 +722,16 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
         );
       }
     }
+  };
+
+  const confirmUninstallSkill = (skillId: string) => {
+    setInstallError("");
+    if (uninstallConfirmingSkillId === skillId) {
+      uninstallSkill(skillId);
+      setUninstallConfirmingSkillId(null);
+      return;
+    }
+    setUninstallConfirmingSkillId(skillId);
   };
 
   const toggleCategory = (category: string) => {
@@ -898,8 +924,12 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
                     skill={skill}
                     mode="installed"
                     categoryLabel={formatCategoryName(skill.category, t)}
-                    onUninstall={() => uninstallSkill(skill.id)}
+                    isUninstallConfirming={
+                      uninstallConfirmingSkillId === skill.id
+                    }
+                    onUninstall={() => confirmUninstallSkill(skill.id)}
                     onEdit={() => {
+                      setUninstallConfirmingSkillId(null);
                       setEditingSkill(skill);
                       setShowEditor(true);
                     }}

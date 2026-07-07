@@ -7,11 +7,11 @@ import {
 describe("chat panel URL state", () => {
   it("parses valid panel and settings tab query params", () => {
     const state = parseChatPanelUrlState(
-      new URLSearchParams("panel=settings&settingsTab=memory&keep=1"),
+      new URLSearchParams("panel=settings&settingsTab=about&keep=1"),
     );
 
     expect(state.panel).toBe("settings");
-    expect(state.settingsTab).toBe("memory");
+    expect(state.settingsTab).toBe("about");
     expect(state.needsReplace).toBe(false);
   });
 

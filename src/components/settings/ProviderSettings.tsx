@@ -30,6 +30,7 @@ import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
+  signedApiFetch,
 } from "@/lib/api/client";
 import {
   buildProviderRuntimeConfig,
@@ -166,7 +167,7 @@ const ProviderSettings = () => {
     setFetchError(null);
     try {
       const response = await fetchWithByokRetry(async () =>
-        fetch("/api/providers/models", {
+        signedApiFetch("/api/providers/models", {
           method: "POST",
           signal: controller.signal,
           headers: {

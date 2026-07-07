@@ -36,6 +36,7 @@ describe("app config normalization", () => {
     expect(normalizeChatConfig({})).toEqual(DEFAULT_CHAT_CONFIG);
     expect(normalizeSystemSettings({})).toEqual(DEFAULT_SYSTEM_SETTINGS);
     expect(DEFAULT_SYSTEM_SETTINGS.enableHtmlVisualPrompt).toBe(true);
+    expect(DEFAULT_SYSTEM_SETTINGS.personality).toBe("default");
   });
 
   it("migrates legacy reasoning booleans to reasoning modes", () => {
@@ -94,6 +95,23 @@ describe("app config normalization", () => {
     );
     expect(normalizeSystemSettings({ fontSize: "huge" }).fontSize).toBe(
       DEFAULT_SYSTEM_SETTINGS.fontSize,
+    );
+  });
+
+  it("normalizes system personality without legacy reply style fields", () => {
+    expect(normalizeSystemSettings({ personality: "efficient" })).toMatchObject(
+      {
+        personality: "efficient",
+      },
+    );
+    expect(normalizeSystemSettings({ personality: "verbose" })).toMatchObject({
+      personality: DEFAULT_SYSTEM_SETTINGS.personality,
+    });
+    expect(
+      normalizeSystemSettings({ replyStyle: "concise" }),
+    ).not.toHaveProperty("replyStyle");
+    expect(normalizeSystemSettings({ replyTone: "direct" })).not.toHaveProperty(
+      "replyTone",
     );
   });
 });

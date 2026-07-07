@@ -122,12 +122,19 @@ export function hasDocumentParseCredential(
     | "serverDocumentProcessingAvailable"
   >,
 ): boolean {
-  return Boolean(
-    hasMineruApiToken(rag) ||
-    trimSecret(rag.llamaParseApiKey) ||
-    hasLocalSecret(rag.llamaParseApiKeySecret) ||
-    (rag.useDefaultDocumentProcessing && rag.serverDocumentProcessingAvailable),
+  const hasServerDefault = Boolean(
+    rag.useDefaultDocumentProcessing && rag.serverDocumentProcessingAvailable,
   );
+
+  if (rag.documentParseProvider === "llamaParse") {
+    return Boolean(
+      trimSecret(rag.llamaParseApiKey) ||
+      hasLocalSecret(rag.llamaParseApiKeySecret) ||
+      hasServerDefault,
+    );
+  }
+
+  return Boolean(hasMineruApiToken(rag) || hasServerDefault);
 }
 
 export async function resolveMineruApiToken(

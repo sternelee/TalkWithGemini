@@ -45,6 +45,21 @@ function normalizeFontSize(
     : fallback;
 }
 
+function normalizeSystemPersonality(
+  value: unknown,
+  fallback: SystemSettings["personality"],
+): SystemSettings["personality"] {
+  return value === "default" ||
+    value === "professional" ||
+    value === "friendly" ||
+    value === "direct" ||
+    value === "imaginative" ||
+    value === "efficient" ||
+    value === "snarky"
+    ? value
+    : fallback;
+}
+
 export function normalizeChatConfig(config: unknown): ChatConfig {
   const raw =
     config && typeof config === "object" ? (config as Partial<ChatConfig>) : {};
@@ -86,6 +101,10 @@ export function normalizeSystemSettings(
       raw.systemPrompt,
       SYSTEM_SETTINGS_LIMITS.maxSystemPromptChars,
       defaults.systemPrompt,
+    ),
+    personality: normalizeSystemPersonality(
+      raw.personality,
+      defaults.personality,
     ),
     enableAutoTitle:
       typeof raw.enableAutoTitle === "boolean"

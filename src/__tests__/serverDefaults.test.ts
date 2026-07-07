@@ -225,9 +225,7 @@ describe("server default configuration", () => {
       enableHtmlVisualPrompt: true,
       compressionThreshold: 12,
     });
-    expect(config.limits.attachments.maxFileBytes).toBe(
-      10 * 1024 * 1024,
-    );
+    expect(config.limits.attachments.maxFileBytes).toBe(10 * 1024 * 1024);
 
     for (const secret of [
       "provider-secret",
@@ -350,6 +348,14 @@ describe("server default configuration", () => {
       trustedProxyHeaders: true,
       byokStableKeyConfigured: true,
       byokEphemeralAllowed: false,
+      apiProof: {
+        required: true,
+        enabled: true,
+        configured: true,
+        protectedHighCostApis: true,
+        windowSeconds: 60,
+        sessionTtlSeconds: 600,
+      },
       rateLimitStore: "shared",
       documentParseJobStore: "shared",
       pluginRegistryStore: "shared",
@@ -648,6 +654,84 @@ describe("server default configuration", () => {
       expect.any(Object),
     );
     expect(JSON.stringify(await response.json())).not.toContain("rag-secret");
+  });
+
+  it("rejects custom namespaces when query requests use the server default RAG token", async () => {
+    setEnv({
+      DEFAULT_RAG_BASE_URL: "https://rag.internal/api",
+      DEFAULT_RAG_TOKEN: "rag-secret",
+      DEFAULT_RAG_NAMESPACE: "hosted",
+    });
+
+    const { POST } = await import("../app/api/rag/query/route");
+    const response = await POST(
+      new Request("https://neo.test/api/rag/query", {
+        method: "POST",
+        body: JSON.stringify({
+          text: "What is Neo?",
+          namespace: "other-tenant",
+          useDefault: true,
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Custom RAG namespace requires user-provided credentials",
+    });
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects custom namespaces when upsert requests use the server default RAG token", async () => {
+    setEnv({
+      DEFAULT_RAG_BASE_URL: "https://rag.internal/api",
+      DEFAULT_RAG_TOKEN: "rag-secret",
+      DEFAULT_RAG_NAMESPACE: "hosted",
+    });
+
+    const { POST } = await import("../app/api/rag/upsert/route");
+    const response = await POST(
+      new Request("https://neo.test/api/rag/upsert", {
+        method: "POST",
+        body: JSON.stringify({
+          items: [{ id: "id-1", data: "Knowledge" }],
+          namespace: "other-tenant",
+          useDefault: true,
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Custom RAG namespace requires user-provided credentials",
+    });
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
+  });
+
+  it("rejects custom namespaces when delete requests use the server default RAG token", async () => {
+    setEnv({
+      DEFAULT_RAG_BASE_URL: "https://rag.internal/api",
+      DEFAULT_RAG_TOKEN: "rag-secret",
+      DEFAULT_RAG_NAMESPACE: "hosted",
+    });
+
+    const { POST } = await import("../app/api/rag/delete/route");
+    const response = await POST(
+      new Request("https://neo.test/api/rag/delete", {
+        method: "POST",
+        body: JSON.stringify({
+          ids: ["id-1"],
+          namespace: "other-tenant",
+          useDefault: true,
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Custom RAG namespace requires user-provided credentials",
+    });
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
   });
 
   it("uses the server LlamaParse key when document parsing requests opt into defaults", async () => {

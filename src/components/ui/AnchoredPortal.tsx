@@ -42,6 +42,7 @@ interface AnchoredPortalProps {
   role?: string;
   ariaLabel?: string;
   ariaLabelledBy?: string;
+  "aria-activedescendant"?: string;
   placement?: Placement;
   offset?: number;
   matchAnchorWidth?: boolean;
@@ -154,6 +155,7 @@ export default function AnchoredPortal({
   role,
   ariaLabel,
   ariaLabelledBy,
+  "aria-activedescendant": ariaActiveDescendant,
   placement = "bottom-start",
   offset = 8,
   matchAnchorWidth = false,
@@ -244,6 +246,7 @@ export default function AnchoredPortal({
       role={role}
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
+      aria-activedescendant={ariaActiveDescendant}
       style={isPositioned ? style : HIDDEN_PORTAL_STYLE}
       className={className}
     >

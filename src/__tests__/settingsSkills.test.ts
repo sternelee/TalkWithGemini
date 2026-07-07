@@ -155,4 +155,43 @@ describe("settings skill installation", () => {
       persisted.skillDefinitionTimestamps["en:clarity-rewrite.json"],
     ).toBeGreaterThan(0);
   });
+
+  it("preserves Japanese skill catalog caches during persisted settings migration", async () => {
+    const { useSettingsStore } = await import("../store/core/settingsStore");
+    const skill = makeSkill("jp-writing", "JP Writing");
+    const catalog: SkillCatalog = {
+      schemaVersion: "skills-v1",
+      generatedAt: "2026-07-04",
+      locale: "ja",
+      datasetName: "Skills",
+      description: "Text skills",
+      intendedRuntime: {
+        environment: "browser-or-web-app",
+        storage: "public-json",
+        executionModel: "load catalog and selected definitions",
+        supportsScripts: false,
+        supportsExternalTools: false,
+        supportsNetwork: false,
+      },
+      globalPolicy: {},
+      skillCount: 1,
+      categories: ["writing"],
+      skills: [{ ...skill, file: "jp-writing.json" }],
+    };
+    const migrate = (useSettingsStore as any).persist.getOptions().migrate;
+
+    const migrated = await migrate(
+      {
+        skillCatalogs: { ja: catalog },
+        skillCatalogTimestamps: { ja: 1_700_000_000_000 },
+      },
+      0,
+    );
+
+    expect(migrated.skillCatalogs.ja).toMatchObject({
+      locale: "ja",
+      skills: [expect.objectContaining({ id: "jp-writing" })],
+    });
+    expect(migrated.skillCatalogTimestamps.ja).toBe(1_700_000_000_000);
+  });
 });

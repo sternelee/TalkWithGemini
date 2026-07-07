@@ -1,9 +1,17 @@
 "use client";
 import React, { useState, useRef, useEffect, useId } from "react";
 import { useTranslations } from "next-intl";
-import { Session, Message, Workspace, SessionMessageTree } from "@/types";
+import {
+  AppSettings,
+  Session,
+  Message,
+  Workspace,
+  SessionMessageTree,
+} from "@/types";
 import { Logo } from "../ui/Icons";
 import { useChatStore } from "@/store/core/chatStore";
+import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
+import { useSetLocale } from "@/i18n/useSetLocale";
 import { appDb } from "@/store/storage/storageConfig";
 import Tooltip from "../ui/Tooltip";
 import WorkspaceSettingsModal from "./WorkspaceSettingsModal";
@@ -37,6 +45,10 @@ import {
   Folder,
   PanelLeftClose,
   PanelLeftOpen,
+  Sun,
+  Moon,
+  Laptop,
+  Languages,
 } from "lucide-react";
 import { CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { sanitizeDownloadFilename } from "@/lib/utils/filename";
@@ -153,6 +165,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   const t = useTranslations("Sidebar");
   const chatT = useTranslations("ChatApp");
   const { workspaces, createSession, moveSessionToWorkspace } = useChatStore();
+  const { theme, setTheme, language } = useCoreSettingsStore();
+  const setLocale = useSetLocale();
+  const themeDisplayLabel = {
+    light: t("themeLight"),
+    dark: t("themeDark"),
+    system: t("themeSystem"),
+  }[theme];
+  const languageDisplayLabel = {
+    en: t("langEnglish"),
+    zh: t("langChinese"),
+    ja: t("langJapanese"),
+    auto: t("langSystem"),
+  }[language];
 
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{
@@ -169,6 +194,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     string | null
   >(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
   const [expandedWorkspaceSessionLists, setExpandedWorkspaceSessionLists] =
     useState<Record<string, boolean>>({});
   const [expandedRootSessionLists, setExpandedRootSessionLists] = useState(
@@ -735,11 +761,11 @@ const Sidebar: React.FC<SidebarProps> = ({
       tabIndex={isModal ? -1 : undefined}
       onKeyDown={handleSidebarKeyDown}
       className={`
-      glass-shell border-r border-gray-200 dark:border-sidebar-border flex flex-col shrink-0 h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-[width,transform] duration-300 ease-in-out md:pb-0 md:pt-0
+      glass-shell border-r border-gray-200 dark:border-sidebar-border flex flex-col shrink-0 h-full w-72 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-200 ease-out will-change-transform md:pb-0 md:pt-0 lg:transition-[width,transform] lg:duration-300
       fixed inset-y-0 left-0 z-40
-      ${isOpen ? "translate-x-0 w-72" : "-translate-x-full w-72"}
-      md:translate-x-0 md:relative
-      ${isOpen ? "md:w-72" : "md:w-16"}
+      ${isOpen ? "translate-x-0" : "-translate-x-full md:-translate-x-56"}
+      lg:translate-x-0 lg:relative
+      ${isOpen ? "lg:w-72" : "lg:w-16"}
     `}
     >
       {showWorkspaceModal && (
@@ -753,701 +779,849 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <div
-        className={`px-3 py-3 flex shrink-0 transition-[height,padding] duration-300 ${
-          isOpen ? "h-14 items-center gap-2" : "items-center justify-center"
-        }`}
+        className={`flex h-full flex-col ${isOpen ? "w-full" : "ml-auto w-16 lg:ml-0 lg:w-full"}`}
       >
-        {isOpen ? (
-          <>
-            <button
-              type="button"
-              aria-label={t("goHomeAria")}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-lg font-bold text-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-foreground"
-              onClick={onLogoClick}
-            >
-              <div className="w-8 h-8 flex items-center justify-center shrink-0">
-                <Logo className="w-7 h-7" />
-              </div>
-              <span className="truncate bg-clip-text text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)] animate-in fade-in duration-300 whitespace-nowrap">
-                Neo Chat
-              </span>
-            </button>
-            <Tooltip content={chatT("closeSidebar")} position="left">
+        <div
+          className={`px-3 py-3 flex shrink-0 transition-[height,padding] duration-300 ${
+            isOpen ? "h-14 items-center gap-2" : "items-center justify-center"
+          }`}
+        >
+          {isOpen ? (
+            <>
               <button
                 type="button"
-                aria-label={chatT("closeSidebarAria")}
-                onClick={toggleSidebar}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-[background-color,color,box-shadow] hover:bg-gray-200/70 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground"
+                aria-label={t("goHomeAria")}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-lg font-bold text-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-foreground"
+                onClick={onLogoClick}
               >
-                <PanelLeftClose size={18} aria-hidden="true" />
+                <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                  <Logo className="w-7 h-7" />
+                </div>
+                <span className="truncate bg-clip-text text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)] animate-in fade-in duration-300 whitespace-nowrap">
+                  Neo Chat
+                </span>
+              </button>
+              <Tooltip content={chatT("closeSidebar")} position="left">
+                <button
+                  type="button"
+                  aria-label={chatT("closeSidebarAria")}
+                  onClick={toggleSidebar}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-[background-color,color,box-shadow] hover:bg-gray-200/70 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-muted-foreground dark:hover:bg-muted/80 dark:hover:text-foreground"
+                >
+                  <PanelLeftClose size={18} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </>
+          ) : (
+            <Tooltip content={chatT("openSidebar")} position="right">
+              <button
+                type="button"
+                aria-label={chatT("openSidebarAria")}
+                className="group relative flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 transition-[background-color,color,box-shadow] hover:bg-gray-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-foreground dark:hover:bg-muted/60"
+                onClick={toggleSidebar}
+              >
+                <div className="absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-200 group-hover:scale-90 group-hover:opacity-0 group-focus-visible:scale-90 group-focus-visible:opacity-0">
+                  <Logo className="w-7 h-7" />
+                </div>
+                <PanelLeftOpen
+                  size={18}
+                  aria-hidden="true"
+                  className="scale-75 opacity-0 transition-[opacity,transform] duration-200 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100"
+                />
               </button>
             </Tooltip>
-          </>
-        ) : (
-          <Tooltip content={chatT("openSidebar")} position="right">
+          )}
+        </div>
+
+        <div className="px-3 pb-2 space-y-1 shrink-0">
+          <Tooltip
+            content={t("assistantHub")}
+            position="right"
+            className={isOpen ? "w-full" : "w-full justify-center"}
+          >
             <button
               type="button"
-              aria-label={chatT("openSidebarAria")}
-              className="group relative flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 transition-[background-color,color,box-shadow] hover:bg-gray-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:text-foreground dark:hover:bg-muted/60"
-              onClick={toggleSidebar}
+              aria-label={t("openAssistantHub")}
+              aria-current={isAssistantHubOpen ? "page" : undefined}
+              onClick={onOpenAssistantHub}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 ${
+                isAssistantHubOpen
+                  ? "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
+                  : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+              } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
             >
-              <div className="absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-200 group-hover:scale-90 group-hover:opacity-0 group-focus-visible:scale-90 group-focus-visible:opacity-0">
-                <Logo className="w-7 h-7" />
-              </div>
-              <PanelLeftOpen
+              <BotMessageSquare
                 size={18}
+                className={`shrink-0 ${isAssistantHubOpen ? "text-rose-500" : "text-gray-500"}`}
                 aria-hidden="true"
-                className="scale-75 opacity-0 transition-[opacity,transform] duration-200 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100"
               />
+              {isOpen && <span className="truncate">{t("assistantHub")}</span>}
             </button>
           </Tooltip>
-        )}
-      </div>
 
-      <div className="px-3 pb-2 space-y-1 shrink-0">
-        <Tooltip
-          content={t("assistantHub")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
-          <button
-            type="button"
-            aria-label={t("openAssistantHub")}
-            aria-current={isAssistantHubOpen ? "page" : undefined}
-            onClick={onOpenAssistantHub}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 ${
-              isAssistantHubOpen
-                ? "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
-                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+          <Tooltip
+            content={t("skillMarket")}
+            position="right"
+            className={isOpen ? "w-full" : "w-full justify-center"}
           >
-            <BotMessageSquare
-              size={18}
-              className={`shrink-0 ${isAssistantHubOpen ? "text-rose-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("assistantHub")}</span>}
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              aria-label={t("openSkillMarket")}
+              aria-current={isSkillMarketOpen ? "page" : undefined}
+              onClick={onOpenSkillMarket}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
+                isSkillMarketOpen
+                  ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                  : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+              } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+            >
+              <Sparkles
+                size={18}
+                className={`shrink-0 ${isSkillMarketOpen ? "text-emerald-500" : "text-gray-500"}`}
+                aria-hidden="true"
+              />
+              {isOpen && <span className="truncate">{t("skillMarket")}</span>}
+            </button>
+          </Tooltip>
 
-        <Tooltip
-          content={t("skillMarket")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
-          <button
-            type="button"
-            aria-label={t("openSkillMarket")}
-            aria-current={isSkillMarketOpen ? "page" : undefined}
-            onClick={onOpenSkillMarket}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
-              isSkillMarketOpen
-                ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
-                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+          <Tooltip
+            content={t("pluginMarket")}
+            position="right"
+            className={isOpen ? "w-full" : "w-full justify-center"}
           >
-            <Sparkles
-              size={18}
-              className={`shrink-0 ${isSkillMarketOpen ? "text-emerald-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("skillMarket")}</span>}
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              aria-label={t("openPluginMarket")}
+              aria-current={isPluginMarketOpen ? "page" : undefined}
+              onClick={onOpenPluginMarket}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
+                isPluginMarketOpen
+                  ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                  : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+              } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+            >
+              <Blocks
+                size={18}
+                className={`shrink-0 ${isPluginMarketOpen ? "text-blue-500" : "text-gray-500"}`}
+                aria-hidden="true"
+              />
+              {isOpen && <span className="truncate">{t("pluginMarket")}</span>}
+            </button>
+          </Tooltip>
 
-        <Tooltip
-          content={t("pluginMarket")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
-          <button
-            type="button"
-            aria-label={t("openPluginMarket")}
-            aria-current={isPluginMarketOpen ? "page" : undefined}
-            onClick={onOpenPluginMarket}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
-              isPluginMarketOpen
-                ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
-                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+          <Tooltip
+            content={t("knowledgeBase")}
+            position="right"
+            className={isOpen ? "w-full" : "w-full justify-center"}
           >
-            <Blocks
-              size={18}
-              className={`shrink-0 ${isPluginMarketOpen ? "text-blue-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("pluginMarket")}</span>}
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              aria-label={t("openKnowledgeBase")}
+              aria-current={isKnowledgeBaseOpen ? "page" : undefined}
+              onClick={onOpenKnowledgeBase}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${
+                isKnowledgeBaseOpen
+                  ? "bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
+                  : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+              } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+            >
+              <Library
+                size={18}
+                className={`shrink-0 ${isKnowledgeBaseOpen ? "text-purple-500" : "text-gray-500"}`}
+                aria-hidden="true"
+              />
+              {isOpen && <span className="truncate">{t("knowledgeBase")}</span>}
+            </button>
+          </Tooltip>
+        </div>
 
-        <Tooltip
-          content={t("knowledgeBase")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
-          <button
-            type="button"
-            aria-label={t("openKnowledgeBase")}
-            aria-current={isKnowledgeBaseOpen ? "page" : undefined}
-            onClick={onOpenKnowledgeBase}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 ${
-              isKnowledgeBaseOpen
-                ? "bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
-                : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
-          >
-            <Library
-              size={18}
-              className={`shrink-0 ${isKnowledgeBaseOpen ? "text-purple-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("knowledgeBase")}</span>}
-          </button>
-        </Tooltip>
-      </div>
+        <div className="shrink-0">
+          <SidebarSearch
+            isOpen={isOpen}
+            inputId={searchInputId}
+            inputRef={searchInputRef}
+            value={searchTerm}
+            onChange={setSearchTerm}
+            onCollapsedSearchClick={handleSearchIconClick}
+          />
+          {isOpen && exportError && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="mx-3 mb-2 mt-0 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+            >
+              {exportError}
+            </div>
+          )}
+        </div>
 
-      <div className="shrink-0">
-        <SidebarSearch
-          isOpen={isOpen}
-          inputId={searchInputId}
-          inputRef={searchInputRef}
-          value={searchTerm}
-          onChange={setSearchTerm}
-          onCollapsedSearchClick={handleSearchIconClick}
-        />
-        {isOpen && exportError && (
-          <div
-            role="alert"
-            aria-live="polite"
-            className="mx-3 mb-2 mt-0 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-          >
-            {exportError}
-          </div>
-        )}
-      </div>
+        <div className="min-h-0 flex-1 px-3 pb-2 animate-in fade-in duration-300">
+          {isOpen ? (
+            <div
+              ref={sidebarListRegionRef}
+              className="flex h-full min-h-0 flex-col gap-2"
+            >
+              {/* Workspaces Section */}
+              <section className="flex min-h-0 shrink-0 flex-col">
+                <div
+                  ref={workspacePaneHeaderRef}
+                  className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group"
+                >
+                  <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground whitespace-nowrap">
+                    {t("workspaces")}
+                  </span>
+                  <Tooltip content={t("newWorkspace")} position="left">
+                    <button
+                      type="button"
+                      aria-label={t("createWorkspaceAria")}
+                      onClick={() => {
+                        setEditingWorkspace(undefined);
+                        setShowWorkspaceModal(true);
+                      }}
+                      className="p-1.5 text-gray-500 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-accent/80 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                    >
+                      <FolderPlus size={16} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </div>
 
-      <div className="min-h-0 flex-1 px-3 pb-2 animate-in fade-in duration-300">
-        {isOpen ? (
-          <div
-            ref={sidebarListRegionRef}
-            className="flex h-full min-h-0 flex-col gap-2"
-          >
-            {/* Workspaces Section */}
-            <section className="flex min-h-0 shrink-0 flex-col">
-              <div
-                ref={workspacePaneHeaderRef}
-                className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group"
-              >
-                <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground whitespace-nowrap">
-                  {t("workspaces")}
-                </span>
-                <Tooltip content={t("newWorkspace")} position="left">
-                  <button
-                    type="button"
-                    aria-label={t("createWorkspaceAria")}
-                    onClick={() => {
-                      setEditingWorkspace(undefined);
-                      setShowWorkspaceModal(true);
-                    }}
-                    className="p-1.5 text-gray-500 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-accent/80 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-                  >
-                    <FolderPlus size={16} aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </div>
+                <div
+                  className="min-h-0 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
+                  style={workspacePaneStyle}
+                >
+                  <div ref={workspacePaneContentRef} className="space-y-1 pb-1">
+                    {workspaces.map((ws) => {
+                      const wsSessions = workspaceSessionsMap.get(ws.id) || [];
+                      const visibleWorkspaceSessions =
+                        getVisibleWorkspaceSessions(ws.id, wsSessions);
+                      const workspaceListExpanded =
+                        !!expandedWorkspaceSessionLists[ws.id] ||
+                        isSearchingChats;
+                      const hiddenWorkspaceSessionCount = Math.max(
+                        wsSessions.length - WORKSPACE_SESSION_PREVIEW_LIMIT,
+                        0,
+                      );
+                      const isExpanded =
+                        isSearchingChats || expandedSections[ws.id];
+                      const folderColorClass = ws.color
+                        ? WORKSPACE_COLOR_MAP[ws.color]
+                        : "text-blue-500";
+                      const workspaceContentId = `${sidebarId}-workspace-${ws.id}`;
 
-              <div
-                className="min-h-0 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
-                style={workspacePaneStyle}
-              >
-                <div ref={workspacePaneContentRef} className="space-y-1 pb-1">
-                  {workspaces.map((ws) => {
-                    const wsSessions = workspaceSessionsMap.get(ws.id) || [];
-                    const visibleWorkspaceSessions =
-                      getVisibleWorkspaceSessions(ws.id, wsSessions);
-                    const workspaceListExpanded =
-                      !!expandedWorkspaceSessionLists[ws.id] ||
-                      isSearchingChats;
-                    const hiddenWorkspaceSessionCount = Math.max(
-                      wsSessions.length - WORKSPACE_SESSION_PREVIEW_LIMIT,
-                      0,
-                    );
-                    const isExpanded =
-                      isSearchingChats || expandedSections[ws.id];
-                    const folderColorClass = ws.color
-                      ? WORKSPACE_COLOR_MAP[ws.color]
-                      : "text-blue-500";
-                    const workspaceContentId = `${sidebarId}-workspace-${ws.id}`;
-
-                    return (
-                      <div key={ws.id}>
-                        <div
-                          className="group relative flex items-center justify-between rounded-lg py-1.5 pl-3 pr-2 transition-colors hover:bg-gray-100/50 dark:hover:bg-muted/30"
-                          onContextMenu={(e) =>
-                            handleWorkspaceContextMenu(e, ws.id)
-                          }
-                        >
-                          <button
-                            type="button"
-                            aria-expanded={isExpanded}
-                            aria-controls={workspaceContentId}
-                            className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-                            onClick={() => toggleSection(ws.id)}
-                          >
-                            {isExpanded ? (
-                              <FolderOpen
-                                size={14}
-                                className={`${folderColorClass} shrink-0`}
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <Folder
-                                size={14}
-                                className={`${folderColorClass} shrink-0`}
-                                aria-hidden="true"
-                              />
-                            )}
-                            <span className="text-sm text-gray-700 dark:text-foreground/85 truncate font-medium">
-                              {ws.name}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            aria-label={t("workspaceMoreActionsAria", {
-                              name: ws.name,
-                            })}
-                            onClick={(e) =>
+                      return (
+                        <div key={ws.id}>
+                          <div
+                            className="group relative flex items-center justify-between rounded-lg py-1.5 pl-3 pr-2 transition-colors hover:bg-gray-100/50 dark:hover:bg-muted/30"
+                            onContextMenu={(e) =>
                               handleWorkspaceContextMenu(e, ws.id)
                             }
-                            className={`p-1 text-gray-400 hover:text-gray-600 dark:hover:text-foreground/85 hover:bg-gray-200 dark:hover:bg-accent rounded transition-[opacity,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${workspaceMenu?.workspaceId === ws.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
                           >
-                            <EllipsisVertical size={14} aria-hidden="true" />
-                          </button>
-                        </div>
+                            <button
+                              type="button"
+                              aria-expanded={isExpanded}
+                              aria-controls={workspaceContentId}
+                              className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                              onClick={() => toggleSection(ws.id)}
+                            >
+                              {isExpanded ? (
+                                <FolderOpen
+                                  size={14}
+                                  className={`${folderColorClass} shrink-0`}
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <Folder
+                                  size={14}
+                                  className={`${folderColorClass} shrink-0`}
+                                  aria-hidden="true"
+                                />
+                              )}
+                              <span className="text-sm text-gray-700 dark:text-foreground/85 truncate font-medium">
+                                {ws.name}
+                              </span>
+                            </button>
 
-                        {isExpanded && (
-                          <div
-                            id={workspaceContentId}
-                            className="border-gray-200 dark:border-border space-y-0.5"
-                          >
-                            {wsSessions.length > 0 ? (
-                              <>
-                                {visibleWorkspaceSessions.map(
-                                  renderSessionItem,
-                                )}
-                                {!isSearchingChats &&
-                                  renderShowAllButton({
-                                    controlId: workspaceContentId,
-                                    expanded: workspaceListExpanded,
-                                    hiddenCount: hiddenWorkspaceSessionCount,
-                                    onToggle: () =>
-                                      setExpandedWorkspaceSessionLists(
-                                        (prev) => ({
-                                          ...prev,
-                                          [ws.id]: !prev[ws.id],
-                                        }),
-                                      ),
-                                  })}
-                              </>
-                            ) : (
-                              <div className="pl-3 pr-2 py-1.5 text-xs text-gray-400 italic">
-                                {t("noChats")}
-                              </div>
-                            )}
+                            <button
+                              type="button"
+                              aria-label={t("workspaceMoreActionsAria", {
+                                name: ws.name,
+                              })}
+                              onClick={(e) =>
+                                handleWorkspaceContextMenu(e, ws.id)
+                              }
+                              className={`p-1 text-gray-400 hover:text-gray-600 dark:hover:text-foreground/85 hover:bg-gray-200 dark:hover:bg-accent rounded transition-[opacity,color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${workspaceMenu?.workspaceId === ws.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
+                            >
+                              <EllipsisVertical size={14} aria-hidden="true" />
+                            </button>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+
+                          {isExpanded && (
+                            <div
+                              id={workspaceContentId}
+                              className="border-gray-200 dark:border-border space-y-0.5"
+                            >
+                              {wsSessions.length > 0 ? (
+                                <>
+                                  {visibleWorkspaceSessions.map(
+                                    renderSessionItem,
+                                  )}
+                                  {!isSearchingChats &&
+                                    renderShowAllButton({
+                                      controlId: workspaceContentId,
+                                      expanded: workspaceListExpanded,
+                                      hiddenCount: hiddenWorkspaceSessionCount,
+                                      onToggle: () =>
+                                        setExpandedWorkspaceSessionLists(
+                                          (prev) => ({
+                                            ...prev,
+                                            [ws.id]: !prev[ws.id],
+                                          }),
+                                        ),
+                                    })}
+                                </>
+                              ) : (
+                                <div className="pl-3 pr-2 py-1.5 text-xs text-gray-400 italic">
+                                  {t("noChats")}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            {/* Chat List Section */}
-            <section className="flex min-h-0 shrink-0 flex-col">
-              <div
-                ref={chatPaneHeaderRef}
-                className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group"
-              >
-                <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground whitespace-nowrap">
-                  {t("chatList")}
-                </span>
-                <Tooltip content={t("newChat")} position="left">
-                  <button
-                    type="button"
-                    aria-label={t("createChatAria")}
-                    onClick={onNewChat}
-                    className="p-1.5 text-gray-500 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-accent/80 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-                  >
-                    <MessageSquarePlus size={16} aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              </div>
+              {/* Chat List Section */}
+              <section className="flex min-h-0 shrink-0 flex-col">
+                <div
+                  ref={chatPaneHeaderRef}
+                  className="flex shrink-0 items-center justify-between pt-1 pl-3 pr-1 group"
+                >
+                  <span className="text-sm font-medium text-gray-600 dark:text-muted-foreground whitespace-nowrap">
+                    {t("chatList")}
+                  </span>
+                  <Tooltip content={t("newChat")} position="left">
+                    <button
+                      type="button"
+                      aria-label={t("createChatAria")}
+                      onClick={onNewChat}
+                      className="p-1.5 text-gray-500 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-accent/80 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                    >
+                      <MessageSquarePlus size={16} aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </div>
 
-              <div
-                id={`${sidebarId}-root-sessions`}
-                className="min-h-0 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
-                style={chatPaneStyle}
-              >
-                <div ref={chatPaneContentRef} className="pb-1">
-                  {renderSection(t("pinned"), "pinned", visiblePinnedSessions, {
-                    expanded: expandedRootSessionLists.pinned,
-                    hiddenCount: Math.max(
-                      pinnedSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
-                      0,
-                    ),
-                    onToggle: () =>
-                      setExpandedRootSessionLists((prev) => ({
-                        ...prev,
-                        pinned: !prev.pinned,
-                      })),
-                  })}
-                  {renderSection(t("recent"), "recent", visibleRecentSessions, {
-                    expanded: expandedRootSessionLists.recent,
-                    hiddenCount: Math.max(
-                      recentSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
-                      0,
-                    ),
-                    onToggle: () =>
-                      setExpandedRootSessionLists((prev) => ({
-                        ...prev,
-                        recent: !prev.recent,
-                      })),
-                  })}
-
-                  {visibleArchivedSessions.length > 0 &&
-                    renderSection(
-                      t("archived"),
-                      "archived",
-                      visibleArchivedSessions,
+                <div
+                  id={`${sidebarId}-root-sessions`}
+                  className="min-h-0 overflow-y-auto overscroll-contain pr-0.5 custom-scrollbar"
+                  style={chatPaneStyle}
+                >
+                  <div ref={chatPaneContentRef} className="pb-1">
+                    {renderSection(
+                      t("pinned"),
+                      "pinned",
+                      visiblePinnedSessions,
                       {
-                        expanded: expandedRootSessionLists.archived,
+                        expanded: expandedRootSessionLists.pinned,
                         hiddenCount: Math.max(
-                          archivedSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
+                          pinnedSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
                           0,
                         ),
                         onToggle: () =>
                           setExpandedRootSessionLists((prev) => ({
                             ...prev,
-                            archived: !prev.archived,
+                            pinned: !prev.pinned,
+                          })),
+                      },
+                    )}
+                    {renderSection(
+                      t("recent"),
+                      "recent",
+                      visibleRecentSessions,
+                      {
+                        expanded: expandedRootSessionLists.recent,
+                        hiddenCount: Math.max(
+                          recentSessions.length - ROOT_SESSION_PREVIEW_LIMIT,
+                          0,
+                        ),
+                        onToggle: () =>
+                          setExpandedRootSessionLists((prev) => ({
+                            ...prev,
+                            recent: !prev.recent,
                           })),
                       },
                     )}
 
-                  {rootSessions.length === 0 && (
-                    <div className="text-center text-gray-400 text-xs mt-4">
-                      {t("noChatsInList")}
-                    </div>
-                  )}
+                    {visibleArchivedSessions.length > 0 &&
+                      renderSection(
+                        t("archived"),
+                        "archived",
+                        visibleArchivedSessions,
+                        {
+                          expanded: expandedRootSessionLists.archived,
+                          hiddenCount: Math.max(
+                            archivedSessions.length -
+                              ROOT_SESSION_PREVIEW_LIMIT,
+                            0,
+                          ),
+                          onToggle: () =>
+                            setExpandedRootSessionLists((prev) => ({
+                              ...prev,
+                              archived: !prev.archived,
+                            })),
+                        },
+                      )}
+
+                    {rootSessions.length === 0 && (
+                      <div className="text-center text-gray-400 text-xs mt-4">
+                        {t("noChatsInList")}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </section>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1 items-center">
-            {/* Collapsed New Workspace Button */}
-            <Tooltip
-              content={t("newWorkspace")}
-              position="right"
-              className="justify-center"
-            >
-              <button
-                type="button"
-                aria-label={t("createWorkspaceAria")}
-                onClick={() => {
-                  setEditingWorkspace(undefined);
-                  setShowWorkspaceModal(true);
-                }}
-                className="p-2 text-gray-500 hover:bg-gray-100/80 dark:hover:bg-muted/60 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              </section>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1 items-center">
+              {/* Collapsed New Workspace Button */}
+              <Tooltip
+                content={t("newWorkspace")}
+                position="right"
+                className="justify-center"
               >
-                <FolderPlus size={18} aria-hidden="true" />
-              </button>
-            </Tooltip>
+                <button
+                  type="button"
+                  aria-label={t("createWorkspaceAria")}
+                  onClick={() => {
+                    setEditingWorkspace(undefined);
+                    setShowWorkspaceModal(true);
+                  }}
+                  className="p-2 text-gray-500 hover:bg-gray-100/80 dark:hover:bg-muted/60 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                >
+                  <FolderPlus size={18} aria-hidden="true" />
+                </button>
+              </Tooltip>
 
-            <Tooltip
-              content={t("newChat")}
-              position="right"
-              className="justify-center"
-            >
-              <button
-                type="button"
-                aria-label={t("createChatAria")}
-                onClick={onNewChat}
-                className="p-2 text-gray-500 hover:bg-gray-100/80 dark:hover:bg-muted/60 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              <Tooltip
+                content={t("newChat")}
+                position="right"
+                className="justify-center"
               >
-                <MessageSquarePlus size={18} aria-hidden="true" />
-              </button>
-            </Tooltip>
-          </div>
-        )}
-      </div>
+                <button
+                  type="button"
+                  aria-label={t("createChatAria")}
+                  onClick={onNewChat}
+                  className="p-2 text-gray-500 hover:bg-gray-100/80 dark:hover:bg-muted/60 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                >
+                  <MessageSquarePlus size={18} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+          )}
+        </div>
 
-      <div className="shrink-0 border-t border-gray-200/50 p-3 dark:border-border">
-        <Tooltip
-          content={t("settings")}
-          position="right"
-          className={isOpen ? "w-full" : "w-full justify-center"}
-        >
-          <button
-            type="button"
-            aria-label={t("openSettings")}
-            aria-current={isSettingsOpen ? "page" : undefined}
-            onClick={onOpenSettings}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
-              isSettingsOpen
-                ? "bg-slate-100 text-slate-700 dark:bg-sidebar-accent dark:text-sidebar-accent-foreground"
-                : "text-gray-600 hover:bg-gray-100/80 dark:text-muted-foreground dark:hover:bg-muted/60"
-            } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+        <div className="shrink-0 border-t border-gray-200/50 p-3 dark:border-border">
+          <DropdownMenu
+            open={isSettingsMenuOpen}
+            onOpenChange={setIsSettingsMenuOpen}
           >
-            <Settings
-              size={18}
-              className={`shrink-0 ${isSettingsOpen ? "text-blue-500" : "text-gray-500"}`}
-              aria-hidden="true"
-            />
-            {isOpen && <span className="truncate">{t("settings")}</span>}
-          </button>
-        </Tooltip>
-      </div>
-
-      {/* Session Context Menu */}
-      {contextMenu && (
-        <DropdownMenu
-          open
-          onOpenChange={(open) => {
-            if (open) return;
-            setContextMenu(null);
-            setPendingDeleteSessionId(null);
-          }}
-        >
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("chatActions")}
-              className="fixed z-50 h-px w-px opacity-0"
-              style={{ top: contextMenu.y, left: contextMenu.x }}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="bottom"
-            align="start"
-            sideOffset={0}
-            className="w-52 overflow-visible"
-          >
-            {(() => {
-              const session = sessions.find(
-                (s) => s.id === contextMenu.sessionId,
-              );
-              if (!session) return null;
-
-              const hasMessages = session.messageCount > 0;
-              const isConfirmingDelete = pendingDeleteSessionId === session.id;
-
-              return (
-                <>
-                  {hasMessages && (
-                    <>
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          onTogglePin?.(session.id);
-                          setContextMenu(null);
-                        }}
-                      >
-                        {session.pinned ? (
-                          <PinOff size={14} aria-hidden="true" />
-                        ) : (
-                          <Pin size={14} aria-hidden="true" />
-                        )}
-                        {session.pinned ? t("unpin") : t("pin")}
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          if (onDuplicate) void onDuplicate(session.id);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Copy size={14} aria-hidden="true" /> {t("duplicate")}
-                      </DropdownMenuItem>
-
-                      <DropdownMenuItem
-                        onSelect={() => {
-                          void handleExport(session.id);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <FileOutput size={14} aria-hidden="true" />
-                        {t("export")}
-                      </DropdownMenuItem>
-
-                      <DropdownMenuSeparator />
-                    </>
+            <Tooltip
+              content={t("settings")}
+              position="right"
+              className={isOpen ? "w-full" : "w-full justify-center"}
+            >
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t("openSettingsMenu")}
+                  aria-current={isSettingsOpen ? "page" : undefined}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
+                    isSettingsOpen
+                      ? "bg-slate-100 text-slate-700 dark:bg-sidebar-accent dark:text-sidebar-accent-foreground"
+                      : "text-gray-600 hover:bg-gray-100/80 dark:text-muted-foreground dark:hover:bg-muted/60"
+                  } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+                >
+                  <Settings
+                    size={18}
+                    className={`shrink-0 ${isSettingsOpen ? "text-blue-500" : "text-gray-500"}`}
+                    aria-hidden="true"
+                  />
+                  {isOpen && <span className="truncate">{t("settings")}</span>}
+                  {isOpen && (
+                    <ChevronDown
+                      size={14}
+                      className={`ml-auto text-muted-foreground transition-transform duration-200 ease-out ${
+                        isSettingsMenuOpen ? "rotate-180" : "rotate-0"
+                      }`}
+                      aria-hidden="true"
+                    />
                   )}
-
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      handleStartRename(session.id, session.title)
+                </button>
+              </DropdownMenuTrigger>
+            </Tooltip>
+            <DropdownMenuContent
+              side={isOpen ? "top" : "right"}
+              align={isOpen ? "start" : "end"}
+              className="w-52 overflow-visible"
+            >
+              <DropdownMenuItem onSelect={() => onOpenSettings()}>
+                <Settings size={14} aria-hidden="true" />
+                {t("settings")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="h-auto min-h-8">
+                  <Sun size={14} aria-hidden="true" />
+                  <span>{t("appearance")}</span>
+                  <span className="ml-auto max-w-20 truncate text-xs text-muted-foreground">
+                    {themeDisplayLabel}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-44">
+                  <DropdownMenuRadioGroup
+                    value={theme}
+                    onValueChange={(value) =>
+                      setTheme(value as AppSettings["theme"])
                     }
                   >
-                    <PenLine size={14} aria-hidden="true" /> {t("rename")}
-                  </DropdownMenuItem>
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="light"
+                      className={
+                        theme === "light" ? "font-medium text-brand" : undefined
+                      }
+                    >
+                      <Sun size={14} aria-hidden="true" />
+                      {t("themeLight")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="dark"
+                      className={
+                        theme === "dark" ? "font-medium text-brand" : undefined
+                      }
+                    >
+                      <Moon size={14} aria-hidden="true" />
+                      {t("themeDark")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="system"
+                      className={
+                        theme === "system"
+                          ? "font-medium text-brand"
+                          : undefined
+                      }
+                    >
+                      <Laptop size={14} aria-hidden="true" />
+                      {t("themeSystem")}
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="h-auto min-h-8">
+                  <Languages size={14} aria-hidden="true" />
+                  <span>{t("language")}</span>
+                  <span className="ml-auto max-w-20 truncate text-xs text-muted-foreground">
+                    {languageDisplayLabel}
+                  </span>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-44">
+                  <DropdownMenuRadioGroup
+                    value={language}
+                    onValueChange={(value) =>
+                      setLocale(value as AppSettings["language"])
+                    }
+                  >
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="en"
+                      className={
+                        language === "en" ? "font-medium text-brand" : undefined
+                      }
+                    >
+                      {t("langEnglish")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="zh"
+                      className={
+                        language === "zh" ? "font-medium text-brand" : undefined
+                      }
+                    >
+                      {t("langChinese")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="ja"
+                      className={
+                        language === "ja" ? "font-medium text-brand" : undefined
+                      }
+                    >
+                      {t("langJapanese")}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem
+                      indicatorPosition="right"
+                      value="auto"
+                      className={
+                        language === "auto"
+                          ? "font-medium text-brand"
+                          : undefined
+                      }
+                    >
+                      {t("langSystem")}
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-                  {hasMessages && (
+        {/* Session Context Menu */}
+        {contextMenu && (
+          <DropdownMenu
+            open
+            onOpenChange={(open) => {
+              if (open) return;
+              setContextMenu(null);
+              setPendingDeleteSessionId(null);
+            }}
+          >
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("chatActions")}
+                className="fixed z-50 h-px w-px opacity-0"
+                style={{ top: contextMenu.y, left: contextMenu.x }}
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="bottom"
+              align="start"
+              sideOffset={0}
+              className="w-52 overflow-visible"
+            >
+              {(() => {
+                const session = sessions.find(
+                  (s) => s.id === contextMenu.sessionId,
+                );
+                if (!session) return null;
+
+                const hasMessages = session.messageCount > 0;
+                const isConfirmingDelete =
+                  pendingDeleteSessionId === session.id;
+
+                return (
+                  <>
+                    {hasMessages && (
+                      <>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            onTogglePin?.(session.id);
+                            setContextMenu(null);
+                          }}
+                        >
+                          {session.pinned ? (
+                            <PinOff size={14} aria-hidden="true" />
+                          ) : (
+                            <Pin size={14} aria-hidden="true" />
+                          )}
+                          {session.pinned ? t("unpin") : t("pin")}
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            if (onDuplicate) void onDuplicate(session.id);
+                            setContextMenu(null);
+                          }}
+                        >
+                          <Copy size={14} aria-hidden="true" /> {t("duplicate")}
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            void handleExport(session.id);
+                            setContextMenu(null);
+                          }}
+                        >
+                          <FileOutput size={14} aria-hidden="true" />
+                          {t("export")}
+                        </DropdownMenuItem>
+
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
+
                     <DropdownMenuItem
-                      className="text-purple-600 dark:text-purple-400"
-                      onSelect={() => {
-                        onSmartRename?.(session.id);
-                        setContextMenu(null);
-                      }}
+                      onSelect={() =>
+                        handleStartRename(session.id, session.title)
+                      }
                     >
-                      <Sparkles size={14} aria-hidden="true" />
-                      {t("aiRename")}
+                      <PenLine size={14} aria-hidden="true" /> {t("rename")}
                     </DropdownMenuItem>
-                  )}
 
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>
-                      <FolderInput size={14} aria-hidden="true" />
-                      <span>{t("moveTo")}</span>
-                      <ChevronDown
-                        size={12}
-                        className="ml-auto -rotate-90"
-                        aria-hidden="true"
-                      />
-                    </DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent
-                      className="max-h-60 w-52 overflow-y-auto custom-scrollbar"
-                      aria-label={t("moveToWorkspaceAria")}
-                    >
-                      <DropdownMenuRadioGroup
-                        value={session.workspaceId ?? ""}
-                        onValueChange={(workspaceId) => {
-                          moveSessionToWorkspace(
-                            session.id,
-                            workspaceId || null,
-                          );
+                    {hasMessages && (
+                      <DropdownMenuItem
+                        className="text-purple-600 dark:text-purple-400"
+                        onSelect={() => {
+                          onSmartRename?.(session.id);
                           setContextMenu(null);
                         }}
                       >
-                        <DropdownMenuRadioItem value="">
-                          <MessageSquarePlus
-                            size={14}
-                            className="text-gray-400"
-                            aria-hidden="true"
-                          />
-                          {t("chatListRoot")}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuSeparator />
-                        {workspaces.map((ws) => (
-                          <DropdownMenuRadioItem key={ws.id} value={ws.id}>
-                            <Folder
+                        <Sparkles size={14} aria-hidden="true" />
+                        {t("aiRename")}
+                      </DropdownMenuItem>
+                    )}
+
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <FolderInput size={14} aria-hidden="true" />
+                        <span>{t("moveTo")}</span>
+                        <ChevronDown
+                          size={12}
+                          className="ml-auto -rotate-90"
+                          aria-hidden="true"
+                        />
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent
+                        className="max-h-60 w-52 overflow-y-auto custom-scrollbar"
+                        aria-label={t("moveToWorkspaceAria")}
+                      >
+                        <DropdownMenuRadioGroup
+                          value={session.workspaceId ?? ""}
+                          onValueChange={(workspaceId) => {
+                            moveSessionToWorkspace(
+                              session.id,
+                              workspaceId || null,
+                            );
+                            setContextMenu(null);
+                          }}
+                        >
+                          <DropdownMenuRadioItem value="">
+                            <MessageSquarePlus
                               size={14}
-                              className="shrink-0 text-blue-500"
+                              className="text-gray-400"
                               aria-hidden="true"
                             />
-                            <span className="truncate">{ws.name}</span>
+                            {t("chatListRoot")}
                           </DropdownMenuRadioItem>
-                        ))}
-                        {workspaces.length === 0 && (
-                          <div className="px-4 py-2 text-xs italic text-gray-400">
-                            {t("noWorkspaces")}
-                          </div>
-                        )}
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
+                          <DropdownMenuSeparator />
+                          {workspaces.map((ws) => (
+                            <DropdownMenuRadioItem key={ws.id} value={ws.id}>
+                              <Folder
+                                size={14}
+                                className="shrink-0 text-blue-500"
+                                aria-hidden="true"
+                              />
+                              <span className="truncate">{ws.name}</span>
+                            </DropdownMenuRadioItem>
+                          ))}
+                          {workspaces.length === 0 && (
+                            <div className="px-4 py-2 text-xs italic text-gray-400">
+                              {t("noWorkspaces")}
+                            </div>
+                          )}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
 
-                  <DropdownMenuSeparator />
+                    <DropdownMenuSeparator />
 
-                  <DropdownMenuItem
-                    aria-label={
-                      isConfirmingDelete
-                        ? t("confirmDeleteAria", { title: session.title })
-                        : t("deleteAria", { title: session.title })
-                    }
-                    variant="destructive"
-                    className={
-                      isConfirmingDelete
-                        ? "bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-200"
-                        : undefined
-                    }
-                    onSelect={(event) => {
-                      if (!isConfirmingDelete) {
-                        event.preventDefault();
-                        setPendingDeleteSessionId(session.id);
-                        return;
+                    <DropdownMenuItem
+                      aria-label={
+                        isConfirmingDelete
+                          ? t("confirmDeleteAria", { title: session.title })
+                          : t("deleteAria", { title: session.title })
                       }
+                      variant="destructive"
+                      className={
+                        isConfirmingDelete
+                          ? "bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-200"
+                          : undefined
+                      }
+                      onSelect={(event) => {
+                        if (!isConfirmingDelete) {
+                          event.preventDefault();
+                          setPendingDeleteSessionId(session.id);
+                          return;
+                        }
 
-                      void onDeleteSession(session.id);
-                      setContextMenu(null);
-                      setPendingDeleteSessionId(null);
-                    }}
-                  >
-                    {isConfirmingDelete ? (
-                      <Check size={14} aria-hidden="true" />
-                    ) : (
-                      <Trash2 size={14} aria-hidden="true" />
-                    )}
-                    {isConfirmingDelete ? t("confirmDelete") : t("delete")}
-                  </DropdownMenuItem>
-                </>
-              );
-            })()}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+                        void onDeleteSession(session.id);
+                        setContextMenu(null);
+                        setPendingDeleteSessionId(null);
+                      }}
+                    >
+                      {isConfirmingDelete ? (
+                        <Check size={14} aria-hidden="true" />
+                      ) : (
+                        <Trash2 size={14} aria-hidden="true" />
+                      )}
+                      {isConfirmingDelete ? t("confirmDelete") : t("delete")}
+                    </DropdownMenuItem>
+                  </>
+                );
+              })()}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
-      {/* Workspace Context Menu */}
-      {workspaceMenu && (
-        <DropdownMenu
-          open
-          onOpenChange={(open) => {
-            if (!open) setWorkspaceMenu(null);
-          }}
-        >
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={t("workspaceActions")}
-              className="fixed z-50 h-px w-px opacity-0"
-              style={{ top: workspaceMenu.y, left: workspaceMenu.x }}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            side="bottom"
-            align="start"
-            sideOffset={0}
-            className="w-48"
+        {/* Workspace Context Menu */}
+        {workspaceMenu && (
+          <DropdownMenu
+            open
+            onOpenChange={(open) => {
+              if (!open) setWorkspaceMenu(null);
+            }}
           >
-            <DropdownMenuItem
-              onSelect={() => {
-                const ws = workspaces.find(
-                  (w) => w.id === workspaceMenu.workspaceId,
-                );
-                if (ws) handleNewChatInWorkspace(ws);
-                setWorkspaceMenu(null);
-              }}
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label={t("workspaceActions")}
+                className="fixed z-50 h-px w-px opacity-0"
+                style={{ top: workspaceMenu.y, left: workspaceMenu.x }}
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="bottom"
+              align="start"
+              sideOffset={0}
+              className="w-48"
             >
-              <MessageSquarePlus size={14} aria-hidden="true" />
-              {t("newChat")}
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  const ws = workspaces.find(
+                    (w) => w.id === workspaceMenu.workspaceId,
+                  );
+                  if (ws) handleNewChatInWorkspace(ws);
+                  setWorkspaceMenu(null);
+                }}
+              >
+                <MessageSquarePlus size={14} aria-hidden="true" />
+                {t("newChat")}
+              </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onSelect={() => {
-                const ws = workspaces.find(
-                  (w) => w.id === workspaceMenu.workspaceId,
-                );
-                setEditingWorkspace(ws);
-                setShowWorkspaceModal(true);
-                setWorkspaceMenu(null);
-              }}
-            >
-              <FolderCog size={14} aria-hidden="true" />
-              {t("editWorkspace")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+              <DropdownMenuItem
+                onSelect={() => {
+                  const ws = workspaces.find(
+                    (w) => w.id === workspaceMenu.workspaceId,
+                  );
+                  setEditingWorkspace(ws);
+                  setShowWorkspaceModal(true);
+                  setWorkspaceMenu(null);
+                }}
+              >
+                <FolderCog size={14} aria-hidden="true" />
+                {t("editWorkspace")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </div>
   );
 };

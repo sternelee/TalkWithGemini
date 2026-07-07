@@ -7,7 +7,7 @@ import {
   getPluginFunctionPathError,
 } from "./manifest";
 import { safeFetchText } from "../security/safeFetch";
-import { getSafeUrlPolicy } from "../security/urlPolicy";
+import { getSafeUrlPolicy, validateOutboundUrl } from "../security/urlPolicy";
 import type { Plugin, PluginFunction } from "../../types";
 import {
   AGNES_IMAGE_PLUGIN_ID,
@@ -119,6 +119,20 @@ function prepareAgnesVideoResultPath(
   return null;
 }
 
+function getJinaReaderTargetError(
+  args: Record<string, unknown>,
+): string | null {
+  const targetUrl = getTrimmedStringArg(args, "url");
+  if (!targetUrl) return null;
+
+  try {
+    validateOutboundUrl(targetUrl, getSafeUrlPolicy("plugin"));
+    return null;
+  } catch {
+    return "Jina reader URL is not allowed";
+  }
+}
+
 export async function executePluginFunctionRequest({
   plugin,
   functionDef,
@@ -166,6 +180,12 @@ export async function executePluginFunctionRequest({
   }
 
   const outboundArgs = prepareOutboundArgs(plugin, functionDef, args);
+  if (plugin.id === "jina-web-reader") {
+    const jinaTargetError = getJinaReaderTargetError(outboundArgs);
+    if (jinaTargetError) {
+      return NextResponse.json({ error: jinaTargetError }, { status: 400 });
+    }
+  }
   let path = functionDef.path.startsWith("/")
     ? functionDef.path
     : `/${functionDef.path}`;

@@ -186,9 +186,12 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     nameInputRef.current?.focus({ preventScroll: true });
 
     return () => {
+      document.body.style.overflow = previousBodyOverflow;
       isMountedRef.current = false;
       optimizeRunRef.current += 1;
       fileUploadRunRef.current += 1;
@@ -494,7 +497,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-9999 flex min-h-[100dvh] items-center justify-center overscroll-contain bg-black/50 p-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(event) => {
         if (event.target === event.currentTarget) {
           void handleCloseRequest();
@@ -508,7 +511,7 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={handleModalKeyDown}
-        className="bg-white dark:bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-gray-200 dark:border-border flex flex-col overflow-hidden max-h-[90vh]"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-border dark:bg-card sm:max-h-[90vh]"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-border">
           <h2
@@ -717,7 +720,12 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                             alt=""
                             fallback={<Blocks size={12} aria-hidden="true" />}
                           />
-                          {plugin.title}
+                          <span
+                            className="min-w-0 truncate max-w-36"
+                            title={plugin.title}
+                          >
+                            {plugin.title}
+                          </span>
                           {activePlugins.includes(plugin.id) && (
                             <Check size={12} aria-hidden="true" />
                           )}
@@ -810,7 +818,12 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                           : "bg-gray-50 dark:bg-muted border-gray-200 dark:border-border text-gray-600 dark:text-muted-foreground hover:border-gray-300 dark:hover:border-border"
                       }`}
                     >
-                      {col.name}
+                      <span
+                        className="min-w-0 truncate max-w-36"
+                        title={col.name}
+                      >
+                        {col.name}
+                      </span>
                     </button>
                   ))
                 ) : (

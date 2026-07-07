@@ -211,6 +211,23 @@ describe("plugin execute route", () => {
     });
   });
 
+  it("rejects Jina reader requests for blocked nested target URLs", async () => {
+    const { POST } = await import("../app/api/plugins/execute/route");
+    const response = await POST(
+      createRequest({
+        pluginId: "jina-web-reader",
+        functionName: "read_webpage",
+        args: { url: "http://localhost:3000/admin" },
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "Jina reader URL is not allowed",
+    });
+    expect(safeFetchTextMock).not.toHaveBeenCalled();
+  });
+
   it("normalizes Agnes image generation results", async () => {
     decryptOptionalSecretMock.mockResolvedValue("agnes-secret");
     safeFetchTextMock.mockResolvedValue({

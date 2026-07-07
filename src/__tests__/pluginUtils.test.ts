@@ -16,6 +16,16 @@ vi.mock("../store/core/settingsStore", () => ({
   },
 }));
 
+vi.mock("../lib/api/client", async () => {
+  const actual = await vi.importActual("../lib/api/client");
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, init),
+    ),
+  };
+});
+
 const plugin: Plugin = {
   id: "test-plugin",
   title: "Test Plugin",

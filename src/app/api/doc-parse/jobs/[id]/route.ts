@@ -13,11 +13,7 @@ interface RouteContext {
 }
 
 function getJobSecret(request: Request): string {
-  return (
-    request.headers.get("x-doc-parse-job-secret") ||
-    new URL(request.url).searchParams.get("jobSecret") ||
-    ""
-  );
+  return request.headers.get("x-doc-parse-job-secret") || "";
 }
 
 function forbiddenJobResponse() {

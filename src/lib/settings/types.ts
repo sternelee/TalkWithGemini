@@ -15,6 +15,14 @@ export type {
 } from "../memory/types";
 
 export type DocumentParseProvider = "mineru" | "llamaParse";
+export type SystemPersonality =
+  | "default"
+  | "professional"
+  | "friendly"
+  | "direct"
+  | "imaginative"
+  | "efficient"
+  | "snarky";
 
 export interface RAGConfig {
   enabled: boolean;
@@ -46,6 +54,7 @@ export interface DefaultModels {
 
 export interface SystemSettings {
   systemPrompt: string;
+  personality: SystemPersonality;
   enableAutoTitle: boolean;
   enableRelatedQuestions: boolean;
   enableAutoCompression: boolean;

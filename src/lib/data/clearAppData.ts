@@ -4,7 +4,8 @@ import type { Collection, RAGConfig } from "../../types";
 import { buildKnowledgeVectorIds } from "../utils/knowledgeVectors";
 import { appDb, STORAGE_KEYS } from "../../store/storage/storageConfig";
 import { deleteOPFSDirectory } from "../../utils/opfs";
-import { encryptSecret } from "../byok/client";
+import { encryptSecret, fetchWithByokRetry } from "../byok/client";
+import { signedApiFetch } from "../api/client";
 import { BYOK_CONTEXTS } from "../byok/shared";
 import { logDevWarn } from "../utils/devLogger";
 import {
@@ -14,6 +15,22 @@ import {
 import { deleteLocalSecretMasterKey } from "../security/localSecrets";
 
 const APP_OPFS_DIRECTORIES = ["knowledge-base", "workspaces", "images", "chat"];
+const SESSION_MESSAGES_PREFIX = "session_messages_";
+
+export type BrowserAppDataSource =
+  | "cache"
+  | "settings"
+  | "chats"
+  | "chatFiles"
+  | "workspaceFiles"
+  | "knowledge"
+  | "memory"
+  | "media";
+
+export interface ClearBrowserAppDataSourcesOptions {
+  sources: BrowserAppDataSource[];
+  rag: RAGConfig;
+}
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -34,6 +51,40 @@ function parsePersistedState<T>(value: unknown): T | null {
     return (maybeState.state || parsed) as T;
   } catch {
     return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function updatePersistedAppDbState(
+  key: string,
+  updater: (state: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  const storedValue = await appDb.getItem<unknown>(key);
+  if (!storedValue) return;
+
+  try {
+    const parsed =
+      typeof storedValue === "string" ? JSON.parse(storedValue) : storedValue;
+    if (!isRecord(parsed)) return;
+
+    const currentState = isRecord(parsed.state) ? parsed.state : parsed;
+    const nextState = updater(currentState);
+    const nextValue = isRecord(parsed.state)
+      ? { ...parsed, state: nextState }
+      : nextState;
+
+    await appDb.setItem(
+      key,
+      typeof storedValue === "string" ? JSON.stringify(nextValue) : nextValue,
+    );
+  } catch (error) {
+    logDevWarn(
+      `Failed to update persisted state "${key}" during clear:`,
+      error,
+    );
   }
 }
 
@@ -62,19 +113,21 @@ async function deleteRAGIds(
 
   for (const batch of chunkArray(ids, RAG_LIMITS.maxItemsPerRequest)) {
     try {
-      const response = await fetch("/api/rag/delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ids: batch,
-          namespace,
-          url: rag.url,
-          useDefault,
-          tokenSecret,
+      const response = await fetchWithByokRetry(() =>
+        signedApiFetch("/api/rag/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ids: batch,
+            namespace,
+            url: rag.url,
+            useDefault,
+            tokenSecret,
+          }),
         }),
-      });
+      );
 
       if (!response.ok) {
         logDevWarn("Failed to delete persisted RAG vectors during clear.");
@@ -107,10 +160,108 @@ async function cleanupPersistedKnowledgeVectors(rag: RAGConfig): Promise<void> {
 
 async function cleanupOPFSDirectories(): Promise<void> {
   for (const directory of APP_OPFS_DIRECTORIES) {
-    try {
-      await deleteOPFSDirectory(directory);
-    } catch (error) {
-      logDevWarn(`Failed to delete OPFS directory "${directory}":`, error);
+    await cleanupOPFSDirectory(directory);
+  }
+}
+
+async function cleanupOPFSDirectory(directory: string): Promise<void> {
+  try {
+    await deleteOPFSDirectory(directory);
+  } catch (error) {
+    logDevWarn(`Failed to delete OPFS directory "${directory}":`, error);
+  }
+}
+
+async function clearCacheData(): Promise<void> {
+  await updatePersistedAppDbState(STORAGE_KEYS.SETTINGS, (state) => ({
+    ...state,
+    marketPlugins: [],
+    marketPluginsTimestamp: 0,
+    marketAgents: [],
+    marketAgentsTimestamp: 0,
+    marketAgentsLocale: "",
+    skillCatalogs: {},
+    skillCatalogTimestamps: {},
+    skillDefinitions: {},
+    skillDefinitionTimestamps: {},
+    modelMetadata: {},
+    modelMetadataTimestamp: 0,
+  }));
+}
+
+async function clearSettingsAndSecrets(): Promise<void> {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(STORAGE_KEYS.CORE_SETTINGS);
+    window.localStorage.removeItem(STORAGE_KEYS.SETTINGS);
+  }
+  await appDb.removeItem(STORAGE_KEYS.SETTINGS);
+  await deleteLocalSecretMasterKey();
+}
+
+async function clearChatMetadataAndMessages(): Promise<void> {
+  await appDb.removeItem(STORAGE_KEYS.CHAT);
+  let keys: string[] = [];
+  try {
+    keys = await appDb.keys();
+  } catch (error) {
+    logDevWarn("Failed to list chat message records during clear:", error);
+  }
+
+  for (const key of keys) {
+    if (key.startsWith(SESSION_MESSAGES_PREFIX)) {
+      await appDb.removeItem(key);
+    }
+  }
+}
+
+async function clearKnowledgeData(rag: RAGConfig): Promise<void> {
+  await cleanupPersistedKnowledgeVectors(rag);
+  await cleanupOPFSDirectory("knowledge-base");
+  await appDb.removeItem(STORAGE_KEYS.KNOWLEDGE);
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(STORAGE_KEYS.KNOWLEDGE);
+  }
+}
+
+async function clearMemoryData(): Promise<void> {
+  await appDb.removeItem(STORAGE_KEYS.MEMORY);
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(STORAGE_KEYS.MEMORY);
+  }
+}
+
+export async function clearBrowserAppDataSources({
+  sources,
+  rag,
+}: ClearBrowserAppDataSourcesOptions): Promise<void> {
+  const uniqueSources = Array.from(new Set(sources));
+
+  for (const source of uniqueSources) {
+    switch (source) {
+      case "cache":
+        await clearCacheData();
+        break;
+      case "settings":
+        await clearSettingsAndSecrets();
+        break;
+      case "chats":
+        await clearChatMetadataAndMessages();
+        break;
+      case "chatFiles":
+        await cleanupOPFSDirectory("chat");
+        break;
+      case "workspaceFiles":
+        await cleanupOPFSDirectory("workspaces");
+        break;
+      case "knowledge":
+        await clearKnowledgeData(rag);
+        break;
+      case "memory":
+        await clearMemoryData();
+        break;
+      case "media":
+        await cleanupOPFSDirectory("images");
+        break;
     }
   }
 }

@@ -10,6 +10,7 @@ import { getSafeUrlPolicy } from "@/lib/security/urlPolicy";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptSecretEnvelope } from "@/lib/byok/server";
 import { getDefaultRagRuntimeConfig } from "@/lib/defaultConfig/server";
+import { resolveRagNamespace } from "../../../../lib/api/ragNamespace";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
 const RAGDeleteSchema = z
@@ -55,7 +56,18 @@ export async function POST(request: NextRequest) {
     } = RAGDeleteSchema.parse(await readJsonRequestBody(request));
     const defaultRag = useDefault ? getDefaultRagRuntimeConfig() : null;
     const effectiveUrl = defaultRag?.url || url || "";
-    const effectiveNamespace = namespace || defaultRag?.namespace || "";
+    const resolvedNamespace = resolveRagNamespace({
+      useDefault: Boolean(defaultRag),
+      requestedNamespace: namespace,
+      defaultNamespace: defaultRag?.namespace,
+    });
+    if (!resolvedNamespace.ok) {
+      return NextResponse.json(
+        { error: resolvedNamespace.error },
+        { status: 400 },
+      );
+    }
+    const effectiveNamespace = resolvedNamespace.namespace;
     const token =
       defaultRag?.token ||
       (tokenSecret

@@ -196,6 +196,22 @@ const DeploymentHealth: React.FC = () => {
           : t("byokMissing"),
     },
     {
+      key: "apiProof",
+      label: t("apiProof"),
+      state:
+        runtimeState("apiProof") ||
+        (deployment?.apiProof?.enabled
+          ? "ok"
+          : deployment?.apiProof?.required
+            ? "blocked"
+            : "warning"),
+      detail: deployment?.apiProof?.enabled
+        ? t("apiProofEnabled")
+        : deployment?.apiProof?.required
+          ? t("apiProofMissing")
+          : t("apiProofLocal"),
+    },
+    {
       key: "stores",
       label: t("sharedStores"),
       state:

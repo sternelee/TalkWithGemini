@@ -1,4 +1,5 @@
 import { getDeploymentMode } from "./deployment";
+import { safeFetchSharedStoreJson } from "./sharedStoreFetch";
 
 export interface RateLimitResult {
   count: number;
@@ -81,7 +82,9 @@ class UpstashRateLimitStore implements RateLimitStore {
   }
 
   async get(key: string, now = Date.now()): Promise<RateLimitResult | null> {
-    const response = await fetch(this.endpoint, {
+    const { response, data } = await safeFetchSharedStoreJson<
+      Array<{ result?: unknown }>
+    >(this.endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -91,14 +94,12 @@ class UpstashRateLimitStore implements RateLimitStore {
         ["GET", key],
         ["PTTL", key],
       ]),
-      cache: "no-store",
     });
 
     if (!response.ok) {
       throw new Error(`Rate limit store failed with status ${response.status}`);
     }
 
-    const data = (await response.json()) as Array<{ result?: unknown }>;
     const count = Number(data[0]?.result);
     const ttlMs = Number(data[1]?.result);
     if (
@@ -118,7 +119,9 @@ class UpstashRateLimitStore implements RateLimitStore {
     windowMs: number,
     now = Date.now(),
   ): Promise<RateLimitResult> {
-    const response = await fetch(this.endpoint, {
+    const { response, data } = await safeFetchSharedStoreJson<
+      Array<{ result?: unknown }>
+    >(this.endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
@@ -129,14 +132,12 @@ class UpstashRateLimitStore implements RateLimitStore {
         ["PEXPIRE", key, String(windowMs), "NX"],
         ["PTTL", key],
       ]),
-      cache: "no-store",
     });
 
     if (!response.ok) {
       throw new Error(`Rate limit store failed with status ${response.status}`);
     }
 
-    const data = (await response.json()) as Array<{ result?: unknown }>;
     const count = Number(data[0]?.result);
     const ttlMs = Number(data[2]?.result);
 
@@ -150,12 +151,11 @@ class UpstashRateLimitStore implements RateLimitStore {
   }
 
   async reset(key: string): Promise<void> {
-    await fetch(
+    await safeFetchSharedStoreJson(
       `${this.url.replace(/\/+$/, "")}/del/${encodeURIComponent(key)}`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${this.token}` },
-        cache: "no-store",
       },
     );
   }

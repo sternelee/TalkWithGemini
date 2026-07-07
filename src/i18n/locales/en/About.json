@@ -1,0 +1,13 @@
+{
+  "title": "About",
+  "client": "Client",
+  "clientValue": "Web application",
+  "description": "Neo Chat is a local-first, self-hostable AI chat workspace for model providers, conversations, files, knowledge, plugins, assistants, memory, and runtime settings.",
+  "productInfo": "Product Information",
+  "website": "Website",
+  "officialRepo": "Official Repository",
+  "version": "Version",
+  "license": "License",
+  "copyright": "Copyright",
+  "licensedUnder": "Code licensed under {license}."
+}

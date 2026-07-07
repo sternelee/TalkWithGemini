@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
-import { LOCALE_COOKIE } from "./request";
+import { LOCALE_COOKIE } from "./constants";
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 

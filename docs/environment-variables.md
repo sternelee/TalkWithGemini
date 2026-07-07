@@ -83,8 +83,8 @@ registry lookups survive across instances.
 
 ## Upload Limits
 
-| Variable                    | Purpose                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------- |
+| Variable                    | Purpose                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------- |
 | `MAX_ATTACHMENT_FILE_BYTES` | Maximum chat attachment file size in bytes. Defaults to `10485760` and is clamped internally. |
 
 ## Public URLs

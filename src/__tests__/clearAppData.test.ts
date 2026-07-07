@@ -21,8 +21,19 @@ const {
   const removeMock = vi.fn(() => Promise.resolve());
   return {
     appDbMock: {
-      getItem: vi.fn(),
-      clear: vi.fn(() => Promise.resolve()),
+      getItem: vi.fn(async (key: string) => {
+        void key;
+        return undefined as unknown;
+      }),
+      setItem: vi.fn(async (key: string, value: unknown) => {
+        void key;
+        void value;
+      }),
+      removeItem: vi.fn(async (key: string) => {
+        void key;
+      }),
+      keys: vi.fn(async (): Promise<string[]> => []),
+      clear: vi.fn(async () => undefined),
     },
     dirMock: vi.fn(() => ({
       exists: vi.fn(() => Promise.resolve(true)),
@@ -60,9 +71,21 @@ vi.mock("../store/storage/storageConfig", () => ({
 
 vi.mock("../lib/byok/client", () => ({
   encryptSecret: encryptSecretMock,
+  fetchWithByokRetry: vi.fn((requestFactory) => requestFactory()),
 }));
 
-const { clearBrowserAppData } = await import("../lib/data/clearAppData");
+vi.mock("../lib/api/client", async () => {
+  const actual = await vi.importActual("../lib/api/client");
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, init),
+    ),
+  };
+});
+
+const { clearBrowserAppData, clearBrowserAppDataSources } =
+  await import("../lib/data/clearAppData");
 const { deleteOPFSDirectory } = await import("../utils/opfs");
 
 const ragConfig: RAGConfig = {
@@ -157,6 +180,93 @@ describe("clear app data", () => {
     expect(dirMock).toHaveBeenCalledWith("knowledge-base");
     expect(localforageClearMock).toHaveBeenCalled();
     expect(appDbMock.clear).toHaveBeenCalled();
+  });
+
+  it("clears cache metadata without clearing user settings or stores", async () => {
+    appDbMock.getItem.mockResolvedValueOnce(
+      JSON.stringify({
+        state: {
+          marketPlugins: [{ id: "cached-plugin" }],
+          marketPluginsTimestamp: 123,
+          marketAgents: [{ identifier: "cached-agent" }],
+          marketAgentsTimestamp: 456,
+          marketAgentsLocale: "zh",
+          skillCatalogs: { en: { skills: [] } },
+          skillCatalogTimestamps: { en: 789 },
+          skillDefinitions: { "en:test.json": { id: "test" } },
+          skillDefinitionTimestamps: { "en:test.json": 999 },
+          modelMetadata: { "gpt-test": { id: "gpt-test" } },
+          modelMetadataTimestamp: 321,
+          installedPlugins: [{ id: "keep-plugin" }],
+        },
+        version: 4,
+      }),
+    );
+
+    await clearBrowserAppDataSources({
+      sources: ["cache"],
+      rag: ragConfig,
+    });
+
+    expect(appDbMock.clear).not.toHaveBeenCalled();
+    expect(localforageClearMock).not.toHaveBeenCalled();
+    expect(appDbMock.removeItem).not.toHaveBeenCalled();
+    expect(appDbMock.setItem).toHaveBeenCalledWith(
+      "neo-chat-settings",
+      expect.stringContaining('"installedPlugins":[{"id":"keep-plugin"}]'),
+    );
+    const saved = JSON.parse(appDbMock.setItem.mock.calls[0][1] as string);
+    expect(saved.state).toMatchObject({
+      marketPlugins: [],
+      marketPluginsTimestamp: 0,
+      marketAgents: [],
+      marketAgentsTimestamp: 0,
+      marketAgentsLocale: "",
+      skillCatalogs: {},
+      skillCatalogTimestamps: {},
+      skillDefinitions: {},
+      skillDefinitionTimestamps: {},
+      modelMetadata: {},
+      modelMetadataTimestamp: 0,
+    });
+  });
+
+  it("clears chat metadata and per-session message records when requested", async () => {
+    appDbMock.keys.mockResolvedValueOnce([
+      "neo-chat-storage",
+      "session_messages_a",
+      "session_messages_b",
+      "unrelated",
+    ]);
+
+    await clearBrowserAppDataSources({
+      sources: ["chats"],
+      rag: ragConfig,
+    });
+
+    expect(appDbMock.removeItem).toHaveBeenCalledWith("neo-chat-storage");
+    expect(appDbMock.removeItem).toHaveBeenCalledWith("session_messages_a");
+    expect(appDbMock.removeItem).toHaveBeenCalledWith("session_messages_b");
+    expect(appDbMock.removeItem).not.toHaveBeenCalledWith("unrelated");
+    expect(appDbMock.clear).not.toHaveBeenCalled();
+  });
+
+  it("clears knowledge metadata, vectors, and OPFS knowledge files when requested", async () => {
+    await clearBrowserAppDataSources({
+      sources: ["knowledge"],
+      rag: ragConfig,
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/rag/delete",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"namespace":"collection-1"'),
+      }),
+    );
+    expect(dirMock).toHaveBeenCalledWith("knowledge-base");
+    expect(appDbMock.removeItem).toHaveBeenCalledWith("knowledge-storage");
+    expect(appDbMock.clear).not.toHaveBeenCalled();
   });
 
   it("rejects unsafe OPFS directory paths", async () => {

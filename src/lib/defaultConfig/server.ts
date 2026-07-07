@@ -34,6 +34,7 @@ import {
   isElevenLabsTTSModel,
 } from "../utils/voiceModels";
 import { normalizeDocumentParseProvider } from "../settings/searchRag";
+import { getApiProofPublicStatus } from "../security/requestProof";
 
 const DEFAULT_PROVIDER_NAME = "Default";
 const DEFAULT_ELEVENLABS_STT_MODEL = "scribe_v2";
@@ -640,6 +641,7 @@ export function getPublicServerConfig(): PublicServerConfig {
       trustedProxyHeaders: envBool("TRUST_PROXY_HEADERS") === true,
       byokStableKeyConfigured: Boolean(env("BYOK_PRIVATE_KEY_PEM")),
       byokEphemeralAllowed: envBool("BYOK_ALLOW_EPHEMERAL_KEY") === true,
+      apiProof: getApiProofPublicStatus(),
       rateLimitStore: getPublicStoreState("RATE_LIMIT_STORE"),
       documentParseJobStore: getPublicStoreState("DOCUMENT_PARSE_JOB_STORE"),
       pluginRegistryStore: getPublicStoreState("PLUGIN_REGISTRY_STORE"),

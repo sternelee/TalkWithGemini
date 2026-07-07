@@ -10,6 +10,7 @@ import { normalizeSearchSources } from "@/lib/search/results";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptSecretEnvelope } from "@/lib/byok/server";
 import { getDefaultRagRuntimeConfig } from "@/lib/defaultConfig/server";
+import { resolveRagNamespace } from "../../../../lib/api/ragNamespace";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
 export async function POST(request: NextRequest) {
@@ -18,7 +19,18 @@ export async function POST(request: NextRequest) {
     const { text, namespace = "", url, tokenSecret, useDefault } = body;
     const defaultRag = useDefault ? getDefaultRagRuntimeConfig() : null;
     const effectiveUrl = defaultRag?.url || url || "";
-    const effectiveNamespace = namespace || defaultRag?.namespace || "";
+    const resolvedNamespace = resolveRagNamespace({
+      useDefault: Boolean(defaultRag),
+      requestedNamespace: namespace,
+      defaultNamespace: defaultRag?.namespace,
+    });
+    if (!resolvedNamespace.ok) {
+      return NextResponse.json(
+        { error: resolvedNamespace.error },
+        { status: 400 },
+      );
+    }
+    const effectiveNamespace = resolvedNamespace.namespace;
     const topK = body.topK || defaultRag?.topK || 10;
     const token =
       defaultRag?.token ||

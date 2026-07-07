@@ -36,6 +36,7 @@ describe("service health status", () => {
 
     expect(health.deploymentMode).toBe("hosted");
     expect(health.services.byok.status).toBe("available");
+    expect(health.services.apiProof.status).toBe("available");
     expect(health.services.rateLimitStore.status).toBe("available");
     expect(health.services.pluginRegistry.status).toBe("available");
     expect(health.services.defaultModel.status).toBe("available");
@@ -100,6 +101,48 @@ describe("service health status", () => {
     expect(health.services.pluginRegistry).toMatchObject({
       status: "policy_blocked",
       code: "SHARED_STORE_REQUIRED",
+    });
+  });
+
+  it("marks public deployments left in local mode as policy blocked", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "local");
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://chat.example.com");
+
+    const { getServiceHealthStatus } =
+      await import("../lib/services/serviceHealth");
+    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
+
+    expect(health.services.hostedMode).toMatchObject({
+      status: "policy_blocked",
+      code: "PUBLIC_LOCAL_MODE",
+    });
+  });
+
+  it("keeps localhost local mode marked as local only", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "local");
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "http://localhost:3000");
+
+    const { getServiceHealthStatus } =
+      await import("../lib/services/serviceHealth");
+    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
+
+    expect(health.services.hostedMode).toMatchObject({
+      status: "local_only",
+      code: "LOCAL_MODE",
+    });
+  });
+
+  it("marks hosted API request proof as missing when BYOK is not configured", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("BYOK_PRIVATE_KEY_PEM", "");
+
+    const { getServiceHealthStatus } =
+      await import("../lib/services/serviceHealth");
+    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
+
+    expect(health.services.apiProof).toMatchObject({
+      status: "missing_key",
+      code: "API_PROOF_BYOK_MISSING",
     });
   });
 });

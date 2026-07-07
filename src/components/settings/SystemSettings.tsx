@@ -1,16 +1,391 @@
 import React from "react";
-import { Download, Loader2, Sun, Moon, Laptop } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Download,
+  Laptop,
+  Loader2,
+  Moon,
+  Sun,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSettingsStore } from "@/store/core/settingsStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useSetLocale } from "@/i18n/useSetLocale";
 import { SegmentedControl, SimpleSwitch } from "./SettingsUI";
-import { AppSettings } from "@/types";
+import { AppSettings, SystemPersonality } from "@/types";
 import { SYSTEM_SETTINGS_LIMITS } from "@/config/limits";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { BrowserAppDataSource } from "@/lib/data/clearAppData";
+
+type TranslationOption<T extends string> = {
+  value: T;
+  labelKey: string;
+  descriptionKey?: string;
+  icon?: LucideIcon;
+};
+
+type DataSourceOption = {
+  id: BrowserAppDataSource;
+  labelKey: string;
+  descriptionKey: string;
+  locationKey: string;
+};
+
+type DataSourceGroup = {
+  labelKey: string;
+  descriptionKey: string;
+  sources: BrowserAppDataSource[];
+};
+
+const DEFAULT_SELECTED_DATA_SOURCES: BrowserAppDataSource[] = ["cache"];
+
+const THEME_OPTIONS: Array<TranslationOption<AppSettings["theme"]>> = [
+  { value: "light", labelKey: "themeLight", icon: Sun },
+  { value: "dark", labelKey: "themeDark", icon: Moon },
+  { value: "system", labelKey: "themeSystem", icon: Laptop },
+];
+
+const INTERFACE_LANGUAGE_OPTIONS: Array<
+  TranslationOption<AppSettings["language"]>
+> = [
+  { value: "en", labelKey: "langEnglish" },
+  { value: "zh", labelKey: "langChinese" },
+  { value: "ja", labelKey: "langJapanese" },
+  { value: "auto", labelKey: "langSystem" },
+];
+
+const FONT_SIZE_OPTIONS: Array<
+  TranslationOption<AppSettings["system"]["fontSize"]>
+> = [
+  { value: "small", labelKey: "fontSmall" },
+  { value: "medium", labelKey: "fontMedium" },
+  { value: "large", labelKey: "fontLarge" },
+];
+
+const PERSONALITY_OPTIONS: Array<TranslationOption<SystemPersonality>> = [
+  {
+    value: "default",
+    labelKey: "personalityDefault",
+    descriptionKey: "personalityDefaultDesc",
+  },
+  {
+    value: "professional",
+    labelKey: "personalityProfessional",
+    descriptionKey: "personalityProfessionalDesc",
+  },
+  {
+    value: "friendly",
+    labelKey: "personalityFriendly",
+    descriptionKey: "personalityFriendlyDesc",
+  },
+  {
+    value: "direct",
+    labelKey: "personalityDirect",
+    descriptionKey: "personalityDirectDesc",
+  },
+  {
+    value: "imaginative",
+    labelKey: "personalityImaginative",
+    descriptionKey: "personalityImaginativeDesc",
+  },
+  {
+    value: "efficient",
+    labelKey: "personalityEfficient",
+    descriptionKey: "personalityEfficientDesc",
+  },
+  {
+    value: "snarky",
+    labelKey: "personalitySnarky",
+    descriptionKey: "personalitySnarkyDesc",
+  },
+];
+
+const DATA_SOURCE_OPTIONS: DataSourceOption[] = [
+  {
+    id: "cache",
+    labelKey: "dataSourceCache",
+    descriptionKey: "dataSourceCacheDesc",
+    locationKey: "dataSourceCacheLocation",
+  },
+  {
+    id: "settings",
+    labelKey: "dataSourceSettings",
+    descriptionKey: "dataSourceSettingsDesc",
+    locationKey: "dataSourceSettingsLocation",
+  },
+  {
+    id: "chats",
+    labelKey: "dataSourceChats",
+    descriptionKey: "dataSourceChatsDesc",
+    locationKey: "dataSourceChatsLocation",
+  },
+  {
+    id: "chatFiles",
+    labelKey: "dataSourceChatFiles",
+    descriptionKey: "dataSourceChatFilesDesc",
+    locationKey: "dataSourceChatFilesLocation",
+  },
+  {
+    id: "workspaceFiles",
+    labelKey: "dataSourceWorkspaceFiles",
+    descriptionKey: "dataSourceWorkspaceFilesDesc",
+    locationKey: "dataSourceWorkspaceFilesLocation",
+  },
+  {
+    id: "knowledge",
+    labelKey: "dataSourceKnowledge",
+    descriptionKey: "dataSourceKnowledgeDesc",
+    locationKey: "dataSourceKnowledgeLocation",
+  },
+  {
+    id: "memory",
+    labelKey: "dataSourceMemory",
+    descriptionKey: "dataSourceMemoryDesc",
+    locationKey: "dataSourceMemoryLocation",
+  },
+  {
+    id: "media",
+    labelKey: "dataSourceMedia",
+    descriptionKey: "dataSourceMediaDesc",
+    locationKey: "dataSourceMediaLocation",
+  },
+];
+
+const DATA_SOURCE_BY_ID = Object.fromEntries(
+  DATA_SOURCE_OPTIONS.map((source) => [source.id, source]),
+) as Record<BrowserAppDataSource, DataSourceOption>;
+
+const DATA_SOURCE_GROUPS: DataSourceGroup[] = [
+  {
+    labelKey: "dataGroupStorage",
+    descriptionKey: "dataGroupStorageDesc",
+    sources: ["cache", "settings"],
+  },
+  {
+    labelKey: "dataGroupConversations",
+    descriptionKey: "dataGroupConversationsDesc",
+    sources: ["chats", "chatFiles", "media"],
+  },
+  {
+    labelKey: "dataGroupKnowledge",
+    descriptionKey: "dataGroupKnowledgeDesc",
+    sources: ["workspaceFiles", "knowledge", "memory"],
+  },
+];
+
+const resolveLanguageValue = (language: string): AppSettings["language"] =>
+  INTERFACE_LANGUAGE_OPTIONS.some((option) => option.value === language)
+    ? (language as AppSettings["language"])
+    : "auto";
+
+function SystemSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border/70 px-4 py-4 sm:px-5">
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+          {description}
+        </p>
+      </div>
+      <div className="divide-y divide-border/70">{children}</div>
+    </section>
+  );
+}
+
+function SettingRow({
+  title,
+  description,
+  children,
+  align = "center",
+  controlClassName = "",
+}: {
+  title: string;
+  description?: React.ReactNode;
+  children: React.ReactNode;
+  align?: "center" | "start";
+  controlClassName?: string;
+}) {
+  return (
+    <div
+      className={`grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,auto)] sm:gap-6 sm:px-5 ${
+        align === "start" ? "sm:items-start" : "sm:items-center"
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-foreground">{title}</div>
+        {description ? (
+          <div className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </div>
+        ) : null}
+      </div>
+      <div className={`min-w-0 ${controlClassName}`}>{children}</div>
+    </div>
+  );
+}
+
+function ToggleRow({
+  title,
+  description,
+  ariaLabel,
+  name,
+  checked,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  ariaLabel: string;
+  name: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <SettingRow title={title} description={description}>
+      <div className="flex justify-start sm:justify-end">
+        <SimpleSwitch
+          ariaLabel={ariaLabel}
+          name={name}
+          checked={checked}
+          onChange={onChange}
+        />
+      </div>
+    </SettingRow>
+  );
+}
+
+function RadioDropdown<T extends string>({
+  ariaLabel,
+  options,
+  value,
+  onChange,
+  contentClassName = "w-[min(22rem,calc(100vw-2rem))]",
+  hideOptionDescriptionsOnMobile = false,
+}: {
+  ariaLabel: string;
+  options: Array<{
+    value: T;
+    label: string;
+    description?: string;
+    icon?: LucideIcon;
+  }>;
+  value: T;
+  onChange: (value: T) => void;
+  contentClassName?: string;
+  hideOptionDescriptionsOnMobile?: boolean;
+}) {
+  const selected =
+    options.find((option) => option.value === value) ?? options[0];
+  const SelectedIcon = selected.icon;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-input bg-background px-3 py-2 text-left text-sm text-foreground shadow-sm transition-[border-color,background-color,box-shadow] hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            {SelectedIcon ? (
+              <SelectedIcon
+                size={16}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            ) : null}
+            <span className="min-w-0">
+              <span className="block truncate font-medium">
+                {selected.label}
+              </span>
+              {selected.description ? (
+                <span
+                  className={`mt-0.5 truncate text-xs text-muted-foreground ${
+                    hideOptionDescriptionsOnMobile ? "hidden sm:block" : "block"
+                  }`}
+                >
+                  {selected.description}
+                </span>
+              ) : null}
+            </span>
+          </span>
+          <ChevronDown
+            size={15}
+            className="shrink-0 text-muted-foreground"
+            aria-hidden="true"
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className={`${contentClassName} rounded-xl p-1.5`}
+      >
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(nextValue) => onChange(nextValue as T)}
+        >
+          {options.map((option) => {
+            const Icon = option.icon;
+            return (
+              <DropdownMenuRadioItem
+                key={option.value}
+                value={option.value}
+                indicatorPosition="right"
+                indicator={<Check size={16} aria-hidden="true" />}
+                className="h-auto min-h-10 rounded-lg px-3 py-2 pr-9 text-left data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground"
+              >
+                <span className="flex min-w-0 items-start gap-2">
+                  {Icon ? (
+                    <Icon
+                      size={16}
+                      className="mt-0.5 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {option.label}
+                    </span>
+                    {option.description ? (
+                      <span
+                        className={`mt-0.5 text-xs leading-5 text-muted-foreground ${
+                          hideOptionDescriptionsOnMobile
+                            ? "hidden sm:block"
+                            : "block"
+                        }`}
+                      >
+                        {option.description}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 const SystemSettings = () => {
   const t = useTranslations("System");
-  const { clearAllData, exportAllData, system, updateSystemSettings } =
+  const { clearDataSources, exportAllData, system, updateSystemSettings } =
     useSettingsStore();
   const [isExportingData, setIsExportingData] = React.useState(false);
   const [exportDataError, setExportDataError] = React.useState<string | null>(
@@ -21,12 +396,17 @@ const SystemSettings = () => {
   const [clearDataError, setClearDataError] = React.useState<string | null>(
     null,
   );
+  const [selectedDataSources, setSelectedDataSources] = React.useState<
+    BrowserAppDataSource[]
+  >(DEFAULT_SELECTED_DATA_SOURCES);
+  const [isDataCleanupOpen, setIsDataCleanupOpen] = React.useState(false);
   const clearConfirmTimerRef = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
 
   const { theme, setTheme, language } = useCoreSettingsStore();
   const setLocale = useSetLocale();
+  const selectedLanguage = resolveLanguageValue(language);
 
   React.useEffect(() => {
     return () => {
@@ -45,8 +425,18 @@ const SystemSettings = () => {
     setIsClearConfirming(false);
   };
 
-  const handleClearAllData = async () => {
-    if (isClearingData) return;
+  const toggleDataSource = (source: BrowserAppDataSource) => {
+    setSelectedDataSources((current) =>
+      current.includes(source)
+        ? current.filter((item) => item !== source)
+        : [...current, source],
+    );
+    clearClearConfirmation();
+    setClearDataError(null);
+  };
+
+  const handleClearSelectedData = async () => {
+    if (isClearingData || selectedDataSources.length === 0) return;
 
     if (!isClearConfirming) {
       setClearDataError(null);
@@ -65,7 +455,7 @@ const SystemSettings = () => {
     setIsClearingData(true);
     setClearDataError(null);
     try {
-      await clearAllData();
+      await clearDataSources(selectedDataSources);
     } catch (error) {
       setClearDataError(
         error instanceof Error ? error.message : t("clearError"),
@@ -103,317 +493,293 @@ const SystemSettings = () => {
     }
   };
 
+  const themeOptions = THEME_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+    icon: option.icon,
+  }));
+  const languageOptions = INTERFACE_LANGUAGE_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }));
+  const fontSizeOptions = FONT_SIZE_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }));
+  const personalityOptions = PERSONALITY_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+    description: option.descriptionKey ? t(option.descriptionKey) : undefined,
+  }));
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      {/* Appearance */}
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
-          {t("appearance")}
-        </h3>
-        <SegmentedControl
-          ariaLabel={t("appearanceThemeAria")}
-          options={[
-            { value: "light", label: t("themeLight"), icon: Sun },
-            { value: "dark", label: t("themeDark"), icon: Moon },
-            { value: "system", label: t("themeSystem"), icon: Laptop },
-          ]}
-          value={theme}
-          onChange={(val) => setTheme(val as AppSettings["theme"])}
-        />
-      </section>
-
-      {/* Language */}
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
-          {t("language")}
-        </h3>
-        <SegmentedControl
-          ariaLabel={t("interfaceLanguageAria")}
-          options={[
-            { value: "en", label: t("langEnglish") },
-            { value: "zh", label: t("langChinese") },
-            { value: "ja", label: t("langJapanese") },
-            { value: "auto", label: t("langSystem") },
-          ]}
-          value={language}
-          onChange={(val) => setLocale(val as AppSettings["language"])}
-        />
-      </section>
-
-      {/* Font Size */}
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
-          {t("fontSize")}
-        </h3>
-        <SegmentedControl
-          ariaLabel={t("fontSizeAria")}
-          options={[
-            { value: "small", label: t("fontSmall") },
-            { value: "medium", label: t("fontMedium") },
-            { value: "large", label: t("fontLarge") },
-          ]}
-          value={system.fontSize}
-          onChange={(val) =>
-            updateSystemSettings({
-              fontSize: val as AppSettings["system"]["fontSize"],
-            })
-          }
-        />
-      </section>
-
-      {/* System Prompt */}
-      <section className="space-y-4">
-        <h3
-          id="system-prompt-heading"
-          className="text-lg font-semibold text-gray-800 dark:text-foreground"
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <SystemSection
+        title={t("systemInterfaceTitle")}
+        description={t("systemInterfaceDesc")}
+      >
+        <SettingRow
+          title={t("appearance")}
+          description={t("appearanceThemeDesc")}
+          controlClassName="sm:w-80"
         >
-          {t("systemPrompt")}
-        </h3>
-        <div className="space-y-2">
-          <p
-            id="system-prompt-description"
-            className="text-xs text-gray-500 dark:text-muted-foreground"
-          >
-            {t.rich("systemPromptDesc", {
-              code: () => <code>{`<user-system-prompt>`}</code>,
-            })}
-          </p>
+          <SegmentedControl
+            ariaLabel={t("appearanceThemeAria")}
+            options={themeOptions}
+            value={theme}
+            onChange={(val) => setTheme(val as AppSettings["theme"])}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title={t("language")}
+          description={t("interfaceLanguageDesc")}
+          controlClassName="sm:w-72"
+        >
+          <RadioDropdown
+            ariaLabel={t("interfaceLanguageAria")}
+            options={languageOptions}
+            value={selectedLanguage}
+            onChange={(val) => setLocale(val)}
+          />
+        </SettingRow>
+
+        <SettingRow
+          title={t("fontSize")}
+          description={t("fontSizeDesc")}
+          controlClassName="sm:w-72"
+        >
+          <SegmentedControl
+            ariaLabel={t("fontSizeAria")}
+            options={fontSizeOptions}
+            value={system.fontSize}
+            onChange={(val) =>
+              updateSystemSettings({
+                fontSize: val as AppSettings["system"]["fontSize"],
+              })
+            }
+          />
+        </SettingRow>
+      </SystemSection>
+
+      <SystemSection
+        title={t("systemAssistantTitle")}
+        description={t("systemAssistantDesc")}
+      >
+        <SettingRow
+          title={t("personalization")}
+          description={t("personalizationDesc")}
+          controlClassName="sm:w-64"
+        >
+          <RadioDropdown
+            ariaLabel={t("personalityDropdown")}
+            options={personalityOptions}
+            value={system.personality}
+            contentClassName="w-[min(18rem,calc(100vw-2rem))]"
+            hideOptionDescriptionsOnMobile
+            onChange={(value) =>
+              updateSystemSettings({
+                personality: value as SystemPersonality,
+              })
+            }
+          />
+        </SettingRow>
+
+        <SettingRow
+          title={t("systemPrompt")}
+          description={t.rich("systemPromptDesc", {
+            code: () => <code>{`<user-system-prompt>`}</code>,
+          })}
+          align="start"
+          controlClassName="sm:w-[min(28rem,42vw)]"
+        >
           <textarea
             name="systemPrompt"
-            aria-labelledby="system-prompt-heading"
-            aria-describedby="system-prompt-description"
+            aria-label={t("systemPrompt")}
             value={system.systemPrompt}
-            onChange={(e) =>
-              updateSystemSettings({ systemPrompt: e.target.value })
+            onChange={(event) =>
+              updateSystemSettings({ systemPrompt: event.target.value })
             }
             maxLength={SYSTEM_SETTINGS_LIMITS.maxSystemPromptChars}
             autoComplete="off"
             spellCheck={false}
-            className="w-full h-32 p-3 bg-white dark:bg-muted border border-gray-200 dark:border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-mono custom-scrollbar resize-none text-gray-700 dark:text-foreground"
+            className="h-36 w-full resize-none rounded-lg border border-input bg-background p-3 font-mono text-sm text-foreground shadow-sm transition-[border-color,box-shadow] focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             placeholder={t("systemPromptPlaceholder")}
           />
-        </div>
-      </section>
+        </SettingRow>
+      </SystemSection>
 
-      {/* Advanced Parameters */}
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
-          {t("advancedParameters")}
-        </h3>
-        <div className="bg-gray-50/50 dark:bg-muted/30 border border-gray-200 dark:border-border rounded-xl divide-y divide-gray-100 dark:divide-border">
-          {/* Auto Title */}
-          <div className="flex items-center justify-between p-4">
-            <div>
-              <div className="text-sm font-medium text-gray-700 dark:text-foreground">
-                {t("autoTitle")}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-muted-foreground">
-                {t("autoTitleDesc")}
-              </div>
-            </div>
-            <SimpleSwitch
-              ariaLabel={t("autoTitleAria")}
-              name="enableAutoTitle"
-              checked={system.enableAutoTitle}
-              onChange={() =>
-                updateSystemSettings({
-                  enableAutoTitle: !system.enableAutoTitle,
-                })
-              }
-            />
-          </div>
+      <SystemSection
+        title={t("systemAutomationTitle")}
+        description={t("systemAutomationDesc")}
+      >
+        <ToggleRow
+          title={t("autoTitle")}
+          description={t("autoTitleDesc")}
+          ariaLabel={t("autoTitleAria")}
+          name="enableAutoTitle"
+          checked={system.enableAutoTitle}
+          onChange={() =>
+            updateSystemSettings({
+              enableAutoTitle: !system.enableAutoTitle,
+            })
+          }
+        />
 
-          {/* Related Questions */}
-          <div className="flex items-center justify-between p-4">
-            <div>
-              <div className="text-sm font-medium text-gray-700 dark:text-foreground">
-                {t("relatedQuestions")}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-muted-foreground">
-                {t("relatedQuestionsDesc")}
-              </div>
-            </div>
-            <SimpleSwitch
-              ariaLabel={t("relatedQuestionsAria")}
-              name="enableRelatedQuestions"
-              checked={system.enableRelatedQuestions}
-              onChange={() =>
-                updateSystemSettings({
-                  enableRelatedQuestions: !system.enableRelatedQuestions,
-                })
-              }
-            />
-          </div>
+        <ToggleRow
+          title={t("relatedQuestions")}
+          description={t("relatedQuestionsDesc")}
+          ariaLabel={t("relatedQuestionsAria")}
+          name="enableRelatedQuestions"
+          checked={system.enableRelatedQuestions}
+          onChange={() =>
+            updateSystemSettings({
+              enableRelatedQuestions: !system.enableRelatedQuestions,
+            })
+          }
+        />
 
-          {/* Auto Collapse Code */}
-          <div className="flex items-center justify-between p-4">
-            <div>
-              <div className="text-sm font-medium text-gray-700 dark:text-foreground">
-                {t("autoCollapseCode")}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-muted-foreground">
-                {t("autoCollapseCodeDesc")}
-              </div>
-            </div>
-            <SimpleSwitch
-              ariaLabel={t("autoCollapseCodeAria")}
-              name="enableCodeCollapse"
-              checked={system.enableCodeCollapse}
-              onChange={() =>
-                updateSystemSettings({
-                  enableCodeCollapse: !system.enableCodeCollapse,
-                })
-              }
-            />
-          </div>
+        <ToggleRow
+          title={t("autoCollapseCode")}
+          description={t("autoCollapseCodeDesc")}
+          ariaLabel={t("autoCollapseCodeAria")}
+          name="enableCodeCollapse"
+          checked={system.enableCodeCollapse}
+          onChange={() =>
+            updateSystemSettings({
+              enableCodeCollapse: !system.enableCodeCollapse,
+            })
+          }
+        />
 
-          {/* HTML Visual Prompt */}
-          <div className="flex items-center justify-between p-4">
-            <div>
-              <div className="text-sm font-medium text-gray-700 dark:text-foreground">
-                {t("htmlVisualPrompt")}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-muted-foreground">
-                {t("htmlVisualPromptDesc")}
-              </div>
-            </div>
-            <SimpleSwitch
-              ariaLabel={t("htmlVisualPromptAria")}
-              name="enableHtmlVisualPrompt"
-              checked={system.enableHtmlVisualPrompt}
-              onChange={() =>
-                updateSystemSettings({
-                  enableHtmlVisualPrompt: !system.enableHtmlVisualPrompt,
-                })
-              }
-            />
-          </div>
+        <ToggleRow
+          title={t("htmlVisualPrompt")}
+          description={t("htmlVisualPromptDesc")}
+          ariaLabel={t("htmlVisualPromptAria")}
+          name="enableHtmlVisualPrompt"
+          checked={system.enableHtmlVisualPrompt}
+          onChange={() =>
+            updateSystemSettings({
+              enableHtmlVisualPrompt: !system.enableHtmlVisualPrompt,
+            })
+          }
+        />
 
-          {/* Context Compression */}
-          <div className="flex flex-col p-4 gap-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium text-gray-700 dark:text-foreground">
-                  {t("autoCompress")}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-muted-foreground">
-                  {t("autoCompressDesc")}
-                </div>
-              </div>
-              <SimpleSwitch
-                ariaLabel={t("autoCompressAria")}
-                name="enableAutoCompression"
-                checked={system.enableAutoCompression}
-                onChange={() =>
-                  updateSystemSettings({
-                    enableAutoCompression: !system.enableAutoCompression,
-                  })
-                }
-              />
-            </div>
-
-            {system.enableAutoCompression && (
-              <div className="pl-4 pr-2 space-y-4 animate-in slide-in-from-top-2">
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-gray-600 dark:text-muted-foreground">
-                    <label
-                      htmlFor="compression-threshold"
-                      className="font-medium"
-                    >
-                      {t("compressionThreshold")}
-                    </label>
-                    <span className="font-mono">
-                      {system.compressionThreshold}
-                    </span>
-                  </div>
-                  <input
-                    id="compression-threshold"
-                    name="compressionThreshold"
-                    type="range"
-                    min={SYSTEM_SETTINGS_LIMITS.minCompressionThreshold}
-                    max={SYSTEM_SETTINGS_LIMITS.maxCompressionThreshold}
-                    step="1"
-                    value={system.compressionThreshold}
-                    onChange={(e) =>
-                      updateSystemSettings({
-                        compressionThreshold: parseInt(e.target.value, 10),
-                      })
-                    }
-                    aria-describedby="compression-threshold-bounds"
-                    className="w-full h-1.5 bg-gray-200 dark:bg-accent rounded-lg appearance-none cursor-pointer accent-orange-500"
-                  />
-                  <div
-                    id="compression-threshold-bounds"
-                    className="flex justify-between text-[10px] text-gray-400"
-                  >
-                    <span>
-                      {SYSTEM_SETTINGS_LIMITS.minCompressionThreshold}
-                    </span>
-                    <span>
-                      {SYSTEM_SETTINGS_LIMITS.maxCompressionThreshold}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-gray-600 dark:text-muted-foreground">
-                    <label htmlFor="history-keep-count" className="font-medium">
-                      {t("keepHistory")}
-                    </label>
-                    <span className="font-mono">{system.historyKeepCount}</span>
-                  </div>
-                  <input
-                    id="history-keep-count"
-                    name="historyKeepCount"
-                    type="range"
-                    min={SYSTEM_SETTINGS_LIMITS.minHistoryKeepCount}
-                    max={SYSTEM_SETTINGS_LIMITS.maxHistoryKeepCount}
-                    step="1"
-                    value={system.historyKeepCount}
-                    onChange={(e) =>
-                      updateSystemSettings({
-                        historyKeepCount: parseInt(e.target.value, 10),
-                      })
-                    }
-                    aria-describedby="history-keep-count-bounds"
-                    className="w-full h-1.5 bg-gray-200 dark:bg-accent rounded-lg appearance-none cursor-pointer accent-orange-500"
-                  />
-                  <div
-                    id="history-keep-count-bounds"
-                    className="flex justify-between text-[10px] text-gray-400"
-                  >
-                    <span>{SYSTEM_SETTINGS_LIMITS.minHistoryKeepCount}</span>
-                    <span>{SYSTEM_SETTINGS_LIMITS.maxHistoryKeepCount}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Data Management */}
-      <section className="space-y-4 pt-4 border-t border-gray-100 dark:border-border">
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
-          {t("dataManagement")}
-        </h3>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-border dark:bg-card">
-          <div className="flex items-center justify-between gap-4">
+        <div className="px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <div className="font-medium text-gray-800 dark:text-foreground">
-                {t("exportAllData")}
+              <div className="text-sm font-medium text-foreground">
+                {t("autoCompress")}
               </div>
-              <div className="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
-                {t("exportAllDataDesc")}
+              <div className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                {t("autoCompressDesc")}
               </div>
             </div>
+            <SimpleSwitch
+              ariaLabel={t("autoCompressAria")}
+              name="enableAutoCompression"
+              checked={system.enableAutoCompression}
+              onChange={() =>
+                updateSystemSettings({
+                  enableAutoCompression: !system.enableAutoCompression,
+                })
+              }
+            />
+          </div>
+
+          {system.enableAutoCompression ? (
+            <div className="mt-4 grid gap-4 rounded-lg bg-muted/45 p-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <div className="flex justify-between gap-3 text-xs text-muted-foreground">
+                  <label
+                    htmlFor="compression-threshold"
+                    className="font-medium"
+                  >
+                    {t("compressionThreshold")}
+                  </label>
+                  <span className="font-mono text-foreground">
+                    {system.compressionThreshold}
+                  </span>
+                </div>
+                <input
+                  id="compression-threshold"
+                  name="compressionThreshold"
+                  type="range"
+                  min={SYSTEM_SETTINGS_LIMITS.minCompressionThreshold}
+                  max={SYSTEM_SETTINGS_LIMITS.maxCompressionThreshold}
+                  step="1"
+                  value={system.compressionThreshold}
+                  onChange={(event) =>
+                    updateSystemSettings({
+                      compressionThreshold: parseInt(event.target.value, 10),
+                    })
+                  }
+                  aria-describedby="compression-threshold-bounds"
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-input accent-brand"
+                />
+                <div
+                  id="compression-threshold-bounds"
+                  className="flex justify-between text-[10px] text-muted-foreground"
+                >
+                  <span>{SYSTEM_SETTINGS_LIMITS.minCompressionThreshold}</span>
+                  <span>{SYSTEM_SETTINGS_LIMITS.maxCompressionThreshold}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between gap-3 text-xs text-muted-foreground">
+                  <label htmlFor="history-keep-count" className="font-medium">
+                    {t("keepHistory")}
+                  </label>
+                  <span className="font-mono text-foreground">
+                    {system.historyKeepCount}
+                  </span>
+                </div>
+                <input
+                  id="history-keep-count"
+                  name="historyKeepCount"
+                  type="range"
+                  min={SYSTEM_SETTINGS_LIMITS.minHistoryKeepCount}
+                  max={SYSTEM_SETTINGS_LIMITS.maxHistoryKeepCount}
+                  step="1"
+                  value={system.historyKeepCount}
+                  onChange={(event) =>
+                    updateSystemSettings({
+                      historyKeepCount: parseInt(event.target.value, 10),
+                    })
+                  }
+                  aria-describedby="history-keep-count-bounds"
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-input accent-brand"
+                />
+                <div
+                  id="history-keep-count-bounds"
+                  className="flex justify-between text-[10px] text-muted-foreground"
+                >
+                  <span>{SYSTEM_SETTINGS_LIMITS.minHistoryKeepCount}</span>
+                  <span>{SYSTEM_SETTINGS_LIMITS.maxHistoryKeepCount}</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </SystemSection>
+
+      <SystemSection
+        title={t("systemDataTitle")}
+        description={t("systemDataDesc")}
+      >
+        <SettingRow
+          title={t("exportAllData")}
+          description={t("exportAllDataDesc")}
+        >
+          <div className="flex justify-start sm:justify-end">
             <button
               type="button"
               onClick={handleExportAllData}
               disabled={isExportingData}
               aria-busy={isExportingData}
               aria-label={t("exportAria")}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border dark:bg-muted dark:text-foreground dark:hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {isExportingData ? (
                 <Loader2
@@ -436,68 +802,148 @@ const SystemSettings = () => {
               {exportDataError}
             </div>
           ) : null}
-        </div>
-      </section>
+        </SettingRow>
 
-      {/* Danger Zone */}
-      <section className="space-y-4 pt-4 border-t border-gray-100 dark:border-border">
-        <h3 className="text-lg font-semibold text-red-600">
-          {t("dangerZone")}
-        </h3>
-        <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="font-medium text-red-800 dark:text-red-300">
-                {t("clearAllData")}
-              </div>
-              <div className="text-xs text-red-600/70 dark:text-red-400/70 mt-1">
-                {t("clearAllDataDesc")}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleClearAllData}
-              disabled={isClearingData}
-              aria-busy={isClearingData}
-              aria-label={
-                isClearConfirming ? t("clearConfirmAria") : t("clearAria")
-              }
-              className="inline-flex items-center gap-2 bg-white dark:bg-muted border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white dark:hover:text-white disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-white dark:disabled:hover:bg-muted disabled:hover:text-red-600 dark:disabled:hover:text-red-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
-            >
-              {isClearingData && (
-                <Loader2
-                  size={14}
-                  className="animate-spin"
-                  aria-hidden="true"
-                />
-              )}
-              {isClearingData
-                ? t("clearing")
-                : isClearConfirming
-                  ? t("confirmClear")
-                  : t("clearData")}
-            </button>
-          </div>
-          {isClearConfirming && !isClearingData ? (
+        <div>
+          <button
+            type="button"
+            aria-expanded={isDataCleanupOpen}
+            aria-controls="system-data-cleanup-panel"
+            onClick={() => setIsDataCleanupOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition-colors hover:bg-muted/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-5"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-foreground">
+                {t("dataCleanup")}
+              </span>
+              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                {t("dataCleanupDesc")}
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">
+              {isDataCleanupOpen ? t("hideDataCleanup") : t("showDataCleanup")}
+              <ChevronDown
+                size={16}
+                className={`transition-transform ${isDataCleanupOpen ? "rotate-180" : ""}`}
+                aria-hidden="true"
+              />
+            </span>
+          </button>
+
+          {isDataCleanupOpen ? (
             <div
-              role="status"
-              aria-live="polite"
-              className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+              id="system-data-cleanup-panel"
+              className="border-t border-border/70 bg-muted/25"
             >
-              {t("clearConfirmHint")}
-            </div>
-          ) : null}
-          {clearDataError ? (
-            <div
-              role="alert"
-              aria-live="polite"
-              className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-            >
-              {clearDataError}
+              <div className="grid gap-3 p-4 sm:p-5">
+                {DATA_SOURCE_GROUPS.map((group) => (
+                  <div
+                    key={group.labelKey}
+                    className="overflow-hidden rounded-lg border border-border bg-card"
+                  >
+                    <div className="border-b border-border/70 bg-muted/45 px-4 py-3">
+                      <div className="text-sm font-medium text-foreground">
+                        {t(group.labelKey)}
+                      </div>
+                      <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {t(group.descriptionKey)}
+                      </div>
+                    </div>
+                    <div className="divide-y divide-border/70">
+                      {group.sources.map((sourceId) => {
+                        const source = DATA_SOURCE_BY_ID[sourceId];
+                        const isSelected = selectedDataSources.includes(
+                          source.id,
+                        );
+
+                        return (
+                          <label
+                            key={source.id}
+                            className="flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/45"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleDataSource(source.id)}
+                              className="mt-1 h-4 w-4 rounded border-input bg-background text-brand focus:ring-brand"
+                              aria-label={t(source.labelKey)}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-sm font-medium text-foreground">
+                                  {t(source.labelKey)}
+                                </span>
+                                <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+                                  {t(source.locationKey)}
+                                </span>
+                              </span>
+                              <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                                {t(source.descriptionKey)}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-border/70 bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="text-xs text-muted-foreground">
+                  {t("selectedDataSources", {
+                    count: selectedDataSources.length,
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSelectedData}
+                  disabled={isClearingData || selectedDataSources.length === 0}
+                  aria-busy={isClearingData}
+                  aria-label={
+                    isClearConfirming ? t("clearConfirmAria") : t("clearAria")
+                  }
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-red-200 bg-background px-4 py-2 text-sm font-medium text-red-600 shadow-sm transition-colors hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-background disabled:hover:text-red-600 dark:border-red-800 dark:text-red-400 dark:hover:text-white dark:disabled:hover:bg-background dark:disabled:hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
+                >
+                  {isClearingData ? (
+                    <Loader2
+                      size={14}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {isClearingData
+                    ? t("clearing")
+                    : isClearConfirming
+                      ? t("confirmClear")
+                      : t("clearSelectedData")}
+                </button>
+              </div>
+
+              {isClearConfirming && !isClearingData ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="mx-4 mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+                >
+                  {t("clearConfirmHint", {
+                    count: selectedDataSources.length,
+                  })}
+                </div>
+              ) : null}
+              {clearDataError ? (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="mx-4 mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+                >
+                  {clearDataError}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
-      </section>
+      </SystemSection>
     </div>
   );
 };

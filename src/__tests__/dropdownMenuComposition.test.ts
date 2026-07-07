@@ -50,4 +50,23 @@ describe("dropdown menu composition", () => {
       expect(source, file).not.toContain('role="menuitemradio"');
     }
   });
+
+  it("wires the about settings tab to a product-info layout", () => {
+    const panelState = read("src/lib/chat/panelUrlState.ts");
+    const settingsPage = read("src/components/settings/SettingsPage.tsx");
+    const aboutSettings = read("src/components/settings/AboutSettings.tsx");
+
+    expect(panelState).toContain('"about"');
+    expect(settingsPage).toContain("AboutSettings");
+    expect(settingsPage).toContain('id: "about"');
+    expect(aboutSettings).toContain("aboutHero");
+    expect(aboutSettings).toContain("aboutProductInfo");
+    expect(aboutSettings).toContain("https://neo.u14.app");
+    expect(aboutSettings).toContain("https://github.com/u14app/neo-chat");
+    expect(aboutSettings).not.toContain('label: t("copyright")');
+    expect(aboutSettings).not.toContain('label: t("client")');
+    expect(aboutSettings).not.toContain("configuredSiteUrl");
+    expect(aboutSettings).not.toContain("runtimeOrigin");
+    expect(aboutSettings).toContain("MIT License");
+  });
 });

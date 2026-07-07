@@ -1,6 +1,7 @@
 import { BUILT_IN_PLUGINS } from "../../config/plugins";
 import type { Plugin } from "../../types";
 import { getDeploymentMode } from "../security/deployment";
+import { safeFetchSharedStoreJson } from "../security/sharedStoreFetch";
 
 declare global {
   var __neoChatServerPluginRegistry: Map<string, Plugin> | undefined;
@@ -38,33 +39,29 @@ class UpstashServerPluginRegistryStore implements ServerPluginRegistryStore {
   }
 
   async get(pluginId: string): Promise<Plugin | undefined> {
-    const response = await fetch(
-      this.endpoint(`get/${encodeURIComponent(this.key(pluginId))}`),
-      {
-        headers: { Authorization: `Bearer ${this.token}` },
-        cache: "no-store",
-      },
-    );
+    const { response, data } = await safeFetchSharedStoreJson<{
+      result?: string | null;
+    }>(this.endpoint(`get/${encodeURIComponent(this.key(pluginId))}`), {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
     if (!response.ok) {
       throw new Error(
         `Plugin registry store failed with status ${response.status}`,
       );
     }
 
-    const data = (await response.json()) as { result?: string | null };
     if (!data.result) return undefined;
     return JSON.parse(data.result) as Plugin;
   }
 
   async set(plugin: Plugin): Promise<void> {
-    const response = await fetch(this.endpoint("set"), {
+    const { response } = await safeFetchSharedStoreJson(this.endpoint("set"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify([this.key(plugin.id), JSON.stringify(plugin)]),
-      cache: "no-store",
     });
     if (!response.ok) {
       throw new Error(

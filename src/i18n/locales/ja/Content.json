@@ -27,6 +27,7 @@
   "memoryImportance": "重要度 {value}",
   "labelSearching": "検索中…",
   "labelSearchFailed": "検索に失敗しました",
+  "tableScrollRegion": "横スクロール可能な表",
   "labelSources": "情報源",
   "labelSourcesAndImages": "情報源と画像",
   "labelImages": "画像",

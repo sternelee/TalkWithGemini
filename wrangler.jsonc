@@ -27,5 +27,6 @@
   "vars": {
     // Keep only non-sensitive deployment defaults here. Set per-deployment
     // secrets and user-specific defaults in the Cloudflare dashboard.
+    "DEPLOYMENT_MODE": "hosted",
   },
 }

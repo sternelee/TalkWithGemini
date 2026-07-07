@@ -76,6 +76,16 @@ vi.mock("@/lib/utils/voiceModels", async () =>
   vi.importActual("../lib/utils/voiceModels"),
 );
 
+vi.mock("../lib/api/client", async () => {
+  const actual = await vi.importActual("../lib/api/client");
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, init),
+    ),
+  };
+});
+
 const providerWithoutLocalKey: ModelProvider = {
   id: "env-provider",
   name: "Env Gemini",

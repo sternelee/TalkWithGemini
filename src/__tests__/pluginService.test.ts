@@ -21,6 +21,16 @@ vi.mock("../lib/utils/devLogger", () => ({
   logDevWarn: vi.fn(),
 }));
 
+vi.mock("../lib/api/client", async () => {
+  const actual = await vi.importActual("../lib/api/client");
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, init),
+    ),
+  };
+});
+
 const pluginA: Plugin = {
   id: "example.com:alpha",
   title: "Alpha",
@@ -45,6 +55,10 @@ const jsonResponse = (body: unknown, init?: ResponseInit) =>
     headers: { "content-type": "application/json" },
     ...init,
   });
+
+function getFetchCalls(fetchMock: ReturnType<typeof vi.fn>) {
+  return fetchMock.mock.calls as Array<[RequestInfo | URL, RequestInit?]>;
+}
 
 describe("plugin market service cache", () => {
   beforeEach(() => {
@@ -100,7 +114,7 @@ describe("plugin market service cache", () => {
     const { fetchApiGuruList } = await import("../services/api/pluginService");
     const plugins = await fetchApiGuruList();
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/plugins/list");
+    expect(getFetchCalls(fetchMock)[0]?.[0]).toBe("/api/plugins/list");
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginB);
   });
@@ -114,7 +128,7 @@ describe("plugin market service cache", () => {
     const { fetchApiGuruList } = await import("../services/api/pluginService");
     const plugins = await fetchApiGuruList(true);
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/plugins/list");
+    expect(getFetchCalls(fetchMock)[0]?.[0]).toBe("/api/plugins/list");
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginB);
     expect(storeMock.state.setMarketPlugins).toHaveBeenCalledWith([
