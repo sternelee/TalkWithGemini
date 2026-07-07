@@ -42,6 +42,7 @@ export const DEFAULT_MODEL_PARAMS = {
 export const DEFAULT_CHAT_CONFIG = {
   useSearch: false,
   useReasoning: false,
+  reasoningMode: "off",
   useRAG: false,
   temperature: 0.7,
 } as const satisfies ChatConfig;

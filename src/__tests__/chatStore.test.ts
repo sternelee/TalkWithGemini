@@ -115,6 +115,7 @@ describe("chat store persistence", () => {
       chatConfig: {
         useSearch: false,
         useReasoning: false,
+        reasoningMode: "off",
         temperature: 0.7,
       },
     });
@@ -137,6 +138,7 @@ describe("chat store persistence", () => {
         chatConfig: {
           useSearch: false,
           useReasoning: false,
+          reasoningMode: "off",
           temperature: 0.7,
         },
       },
@@ -231,6 +233,31 @@ describe("chat store persistence", () => {
     expect(sessionId).toBe("matching");
     expect(useChatStore.getState().currentSessionId).toBe("matching");
     expect(useChatStore.getState().sessions).toHaveLength(3);
+  });
+
+  it("migrates legacy chat config reasoning booleans during hydration", async () => {
+    const migrate = (useChatStore as any).persist.getOptions().migrate;
+
+    const migrated = await migrate(
+      {
+        sessions: [],
+        workspaces: [],
+        currentSessionId: null,
+        activeMessages: [],
+        selectedModel: "model",
+        chatConfig: {
+          useSearch: false,
+          useReasoning: true,
+          temperature: 0.7,
+        },
+      },
+      3,
+    );
+
+    expect(migrated.chatConfig).toMatchObject({
+      useReasoning: true,
+      reasoningMode: "high",
+    });
   });
 
   it("does not reuse empty chats with different active skill presets", () => {

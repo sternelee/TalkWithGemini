@@ -1,6 +1,7 @@
 {
   "thinking": "思考中…",
   "thoughtProcess": "思考プロセス",
+  "thoughtDuration": "思考時間: {duration}",
   "copied": "コピーしました",
   "copyFailed": "コピーに失敗しました",
   "thoughtProcessDetails": "思考プロセスの詳細",

@@ -1,6 +1,7 @@
 {
   "thinking": "Thinking…",
   "thoughtProcess": "Thought Process",
+  "thoughtDuration": "Thought duration: {duration}",
   "copied": "Copied",
   "copyFailed": "Copy failed",
   "thoughtProcessDetails": "Thought process details",

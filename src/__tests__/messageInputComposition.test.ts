@@ -65,6 +65,25 @@ describe("MessageInput composition", () => {
       "text-blue-500 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20",
     );
     expect(messageInput).toContain("handlePolishInput");
+    expect(messageInput).toContain("reasoningOptions");
+    expect(messageInput).toContain("reasoningMode");
+    expect(messageInput).toContain("DropdownMenuRadioGroup");
+    expect(messageInput).toContain('t("reasoningModeAuto")');
+    expect(messageInput).toContain('t("reasoningModeHigh")');
+    expect(messageInput).toContain("w-40 p-1.5 md:w-72");
+    expect(messageInput).toContain(
+      "h-auto min-h-8 rounded-md px-2 py-1.5 pr-8",
+    );
+    expect(messageInput).toContain("hover:bg-accent");
+    expect(messageInput).toContain("data-[state=checked]:bg-accent");
+    expect(messageInput).not.toContain(
+      "data-[state=checked]:border-violet-300",
+    );
+    expect(messageInput).toContain("hidden text-[11px]");
+    expect(messageInput).toContain("md:block");
+    expect(messageInput).not.toContain(
+      "setChatConfig({ useReasoning: !chatConfig.useReasoning })",
+    );
     expect(messageInput).toContain("createChatDocumentAttachment");
     expect(messageInput).toContain("isParsingAttachments");
     expect(messageInput).toContain("isDragUploadActive");
@@ -82,9 +101,8 @@ describe("MessageInput composition", () => {
     expect(messageInput).not.toContain(
       "dark:text-amber-300 dark:hover:bg-amber-900/20",
     );
-    expect(messageInput).toContain(
-      '<Library size={14} className="text-purple-500 dark:text-purple-400"',
-    );
+    expect(messageInput).toContain("<Library");
+    expect(messageInput).toContain("text-purple-500 dark:text-purple-400");
     expect(messageInput).toContain('<span>{t("knowledgeBase")}</span>');
     expect(messageInput).toContain("open={showAttachMenu}");
     expect(messageInput).not.toContain("showAttachMenu && hasAttachmentMenu");

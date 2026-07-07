@@ -788,6 +788,9 @@ export const streamChatResponse = async (
             throw new Error(parsed.error);
 
           case "done":
+            if (outputBlockBuilder.finalizeActiveReasoning()) {
+              emitOutputBlocks();
+            }
             return true;
 
           default:
@@ -845,6 +848,9 @@ export const streamChatResponse = async (
         }
       }
 
+      if (outputBlockBuilder.finalizeActiveReasoning()) {
+        emitOutputBlocks();
+      }
       return {
         content: fullContent,
         reasoning: fullReasoning,

@@ -348,6 +348,12 @@ describe("server default configuration", () => {
             reasoning: false,
             tool_call: true,
           },
+          reasoning_options: [
+            {
+              type: "effort",
+              values: ["low", "high", "xhigh", "minimal"],
+            },
+          ],
         },
         { id: "gpt-4o", name: "Duplicate" },
       ]),
@@ -365,6 +371,7 @@ describe("server default configuration", () => {
         name: "GPT-4o Hosted",
         attachment: true,
         reasoning: false,
+        reasoning_options: [{ type: "effort", values: ["low", "high"] }],
         tool_call: true,
         modalities: { input: ["image", "audio", "text"] },
       },

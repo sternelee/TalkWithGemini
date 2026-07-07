@@ -54,6 +54,38 @@ function normalizeModalities(value: unknown): string[] | undefined {
   return modalities.length > 0 ? modalities : undefined;
 }
 
+function normalizeReasoningOptions(
+  value: unknown,
+): ModelMetadata["reasoning_options"] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const values: Array<"low" | "medium" | "high"> = [];
+  const seen = new Set<string>();
+  let hasEffortOption = false;
+
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const option = item as Record<string, unknown>;
+    if (trimString(option.type, 40).toLowerCase() !== "effort") continue;
+
+    hasEffortOption = true;
+    if (!Array.isArray(option.values)) continue;
+
+    for (const rawValue of option.values) {
+      const effort = trimString(rawValue, 40).toLowerCase();
+      if (effort !== "low" && effort !== "medium" && effort !== "high") {
+        continue;
+      }
+      if (seen.has(effort)) continue;
+
+      values.push(effort);
+      seen.add(effort);
+    }
+  }
+
+  return hasEffortOption ? [{ type: "effort", values }] : undefined;
+}
+
 export function normalizeModelMetadata(
   value: unknown,
   fallbackId?: string,
@@ -125,6 +157,11 @@ export function normalizeModelMetadata(
       ...(inputModalities ? { input: inputModalities } : {}),
       ...(outputModalities ? { output: outputModalities } : {}),
     };
+  }
+
+  const reasoningOptions = normalizeReasoningOptions(raw.reasoning_options);
+  if (reasoningOptions) {
+    metadata.reasoning_options = reasoningOptions;
   }
 
   const normalizedCost: NonNullable<ModelMetadata["cost"]> = {

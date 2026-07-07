@@ -50,10 +50,14 @@ describe("MessageItem composition", () => {
     expect(reasoningBlock).toContain(
       "w-full flex items-center gap-2 px-3 py-2 text-xs font-medium",
     );
+    expect(reasoningBlock).toContain("formatReasoningDuration");
+    expect(reasoningBlock).toContain("durationMs?: number");
+    expect(reasoningBlock).toContain("LoaderCircle");
+    expect(reasoningBlock).not.toContain("bg-violet-100");
+    expect(reasoningBlock).not.toContain("dark:bg-violet-900/30");
     expect(reasoningBlock).toContain(
-      "rounded bg-violet-100 p-1 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400",
+      "flex min-w-0 flex-1 items-center gap-2 text-left",
     );
-    expect(reasoningBlock).toContain("flex-1 text-left truncate");
     expect(reasoningBlock).toContain("bg-white/40 dark:bg-card/40");
     expect(reasoningBlock).not.toContain("mr-2 rounded p-1");
     expect(reasoningBlock).not.toContain("Languages");

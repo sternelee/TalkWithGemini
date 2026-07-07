@@ -7,6 +7,7 @@ import {
   DEFAULT_SYSTEM_SETTINGS,
 } from "../../config/defaults";
 import type { ChatConfig, SystemSettings } from "../../types";
+import { normalizeReasoningMode, isReasoningEnabled } from "../chat/reasoning";
 
 function clampInteger(
   value: unknown,
@@ -47,16 +48,19 @@ function normalizeFontSize(
 export function normalizeChatConfig(config: unknown): ChatConfig {
   const raw =
     config && typeof config === "object" ? (config as Partial<ChatConfig>) : {};
+  const reasoningMode = normalizeReasoningMode(
+    raw.reasoningMode,
+    raw.useReasoning,
+    DEFAULT_CHAT_CONFIG.reasoningMode,
+  );
 
   return {
     useSearch:
       typeof raw.useSearch === "boolean"
         ? raw.useSearch
         : DEFAULT_CHAT_CONFIG.useSearch,
-    useReasoning:
-      typeof raw.useReasoning === "boolean"
-        ? raw.useReasoning
-        : DEFAULT_CHAT_CONFIG.useReasoning,
+    useReasoning: isReasoningEnabled(reasoningMode),
+    reasoningMode,
     useRAG:
       typeof raw.useRAG === "boolean" ? raw.useRAG : DEFAULT_CHAT_CONFIG.useRAG,
     temperature: clampNumber(

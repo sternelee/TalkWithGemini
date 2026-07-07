@@ -2,7 +2,7 @@
  * 统一的聊天处理器
  */
 
-import { Message } from "@/types";
+import type { Message, ReasoningMode } from "@/types";
 import { ProviderFactory, ProviderConfig } from "../providers/base";
 import { streamGeminiResponse } from "../streaming/gemini";
 import {
@@ -37,6 +37,7 @@ export interface ChatHandlerOptions {
   config?: {
     temperature?: number;
     useReasoning?: boolean;
+    reasoningMode?: ReasoningMode;
   };
   systemInstruction?: string;
   tools?: any[];
@@ -171,6 +172,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           temperature: config?.temperature,
           tools: convertToolsToOpenAIResponses(tools),
           useReasoning: config?.useReasoning,
+          reasoningMode: config?.reasoningMode,
           enableWebSearch: enableOpenAIWebSearch,
           onChunk: send,
         });
@@ -199,6 +201,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           temperature: config?.temperature,
           tools,
           useReasoning: config?.useReasoning,
+          reasoningMode: config?.reasoningMode,
           onChunk: send,
         });
       } else {
@@ -271,6 +274,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           tools: geminiTools,
           enableGoogleSearch,
           useReasoning: config?.useReasoning,
+          reasoningMode: config?.reasoningMode,
           onChunk: send,
         });
       }

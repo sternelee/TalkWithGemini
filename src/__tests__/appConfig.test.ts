@@ -15,12 +15,14 @@ describe("app config normalization", () => {
       normalizeChatConfig({
         useSearch: "yes",
         useReasoning: true,
+        reasoningMode: "medium",
         useRAG: true,
         temperature: 99,
       }),
     ).toEqual({
       useSearch: false,
       useReasoning: true,
+      reasoningMode: "medium",
       useRAG: true,
       temperature: CHAT_CONFIG_LIMITS.maxTemperature,
     });
@@ -34,6 +36,28 @@ describe("app config normalization", () => {
     expect(normalizeChatConfig({})).toEqual(DEFAULT_CHAT_CONFIG);
     expect(normalizeSystemSettings({})).toEqual(DEFAULT_SYSTEM_SETTINGS);
     expect(DEFAULT_SYSTEM_SETTINGS.enableHtmlVisualPrompt).toBe(true);
+  });
+
+  it("migrates legacy reasoning booleans to reasoning modes", () => {
+    expect(normalizeChatConfig({ useReasoning: true }).reasoningMode).toBe(
+      "high",
+    );
+    expect(normalizeChatConfig({ useReasoning: false }).reasoningMode).toBe(
+      "off",
+    );
+    expect(
+      normalizeChatConfig({
+        useReasoning: false,
+        reasoningMode: "auto",
+      }),
+    ).toMatchObject({
+      useReasoning: true,
+      reasoningMode: "auto",
+    });
+    expect(normalizeChatConfig({ reasoningMode: "xhigh" })).toMatchObject({
+      useReasoning: false,
+      reasoningMode: "off",
+    });
   });
 
   it("normalizes system settings text and numeric ranges", () => {

@@ -216,6 +216,29 @@ describe("api schemas", () => {
     ).not.toThrow();
   });
 
+  it("accepts supported chat reasoning modes and rejects unsupported values", () => {
+    const baseRequest = {
+      provider: { type: "Gemini", apiKeySecret: encryptedSecret },
+      modelName: "gemini-test",
+      history: [],
+      newMessage: "hello",
+    };
+
+    expect(() =>
+      ChatRequestSchema.parse({
+        ...baseRequest,
+        config: { reasoningMode: "auto" },
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      ChatRequestSchema.parse({
+        ...baseRequest,
+        config: { reasoningMode: "xhigh" },
+      }),
+    ).toThrow();
+  });
+
   it("rejects simple generation requests with oversized model or prompt fields", () => {
     const baseRequest = {
       provider: { type: "Gemini", apiKeySecret: encryptedSecret },

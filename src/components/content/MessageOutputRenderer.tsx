@@ -88,6 +88,7 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
                 key={block.id}
                 reasoning={block.content}
                 isThinking={isThinking && index === blocks.length - 1}
+                durationMs={block.durationMs}
               />
             );
           case "search":

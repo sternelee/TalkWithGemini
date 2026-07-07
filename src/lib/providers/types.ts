@@ -32,6 +32,10 @@ export interface ModelMetadata {
   };
   structured_output?: boolean;
   open_weights?: boolean;
+  reasoning_options?: Array<{
+    type: "effort";
+    values: Array<"low" | "medium" | "high">;
+  }>;
   cost?: {
     input: number;
     output: number;

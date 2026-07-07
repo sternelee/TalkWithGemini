@@ -8,11 +8,20 @@ import { extractReasoningTitle } from "@/lib/utils/reasoningDisplay";
 interface ReasoningBlockProps {
   reasoning: string;
   isThinking: boolean;
+  durationMs?: number;
+}
+
+function formatReasoningDuration(durationMs?: number): string | null {
+  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) {
+    return null;
+  }
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
   reasoning,
   isThinking,
+  durationMs,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
@@ -24,6 +33,9 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
   const reasoningLabel = isThinking
     ? dynamicTitle || t("thinking")
     : t("thoughtProcess");
+  const durationLabel = !isThinking
+    ? formatReasoningDuration(durationMs)
+    : null;
 
   if (!reasoning) return null;
 
@@ -37,7 +49,7 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 dark:text-muted-foreground hover:bg-gray-100/50 dark:hover:bg-accent/30 transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
       >
-        <span className="rounded bg-violet-100 p-1 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded text-violet-600 dark:text-violet-400">
           {isThinking ? (
             <LoaderCircle
               size={12}
@@ -49,7 +61,17 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
           )}
         </span>
 
-        <span className="flex-1 text-left truncate">{reasoningLabel}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <span className="truncate">{reasoningLabel}</span>
+          {durationLabel ? (
+            <span
+              className="shrink-0 text-[11px] font-normal tabular-nums text-muted-foreground"
+              aria-label={t("thoughtDuration", { duration: durationLabel })}
+            >
+              {durationLabel}
+            </span>
+          ) : null}
+        </span>
 
         <ChevronDown
           size={14}

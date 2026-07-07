@@ -2,7 +2,7 @@
 
 import React, { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronDown, LoaderCircle, Search } from "lucide-react";
+import { ChevronDown, LoaderCircle, Brain } from "lucide-react";
 import type { ToolCall } from "@/types";
 
 interface MemorySearchBlockProps {
@@ -105,7 +105,7 @@ const MemorySearchBlock: React.FC<MemorySearchBlockProps> = ({ toolCalls }) => {
             aria-hidden="true"
           />
         ) : (
-          <Search
+          <Brain
             size={13}
             className="shrink-0 text-blue-500"
             aria-hidden="true"
@@ -145,7 +145,7 @@ const MemorySearchBlock: React.FC<MemorySearchBlockProps> = ({ toolCalls }) => {
                       <span className="text-gray-400 dark:text-muted-foreground">
                         {t("memorySearchQuery")}{" "}
                       </span>
-                      <span className="break-words">{query}</span>
+                      <span className="wrap-break-word">{query}</span>
                     </div>
                   ) : null}
                   {limit !== undefined ? (
@@ -177,7 +177,7 @@ const MemorySearchBlock: React.FC<MemorySearchBlockProps> = ({ toolCalls }) => {
                         </span>
                       ) : null}
                     </div>
-                    <div className="whitespace-pre-wrap break-words leading-relaxed">
+                    <div className="whitespace-pre-wrap wrap-break-word leading-relaxed">
                       {memory.content}
                     </div>
                     {memory.tags && memory.tags.length > 0 ? (

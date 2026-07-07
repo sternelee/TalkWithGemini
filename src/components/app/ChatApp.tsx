@@ -82,6 +82,10 @@ import {
   setChatPanelUrlState,
 } from "@/lib/chat/panelUrlState";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
+import {
+  isReasoningEnabled,
+  resolveReasoningModeForModel,
+} from "@/lib/chat/reasoning";
 
 const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
@@ -980,7 +984,19 @@ const ChatApp = () => {
       );
       if (!isGenerationRunActive(generation)) return;
 
-      const effectiveConfig = { ...chatConfig };
+      const { modelName: selectedModelId } = parseModelString(selectedModel);
+      const selectedModelMetadata =
+        customModelMetadata[selectedModelId] || modelMetadata[selectedModelId];
+      const effectiveReasoningMode = resolveReasoningModeForModel(
+        chatConfig.reasoningMode,
+        selectedModelMetadata,
+        chatConfig.useReasoning,
+      );
+      const effectiveConfig = {
+        ...chatConfig,
+        reasoningMode: effectiveReasoningMode,
+        useReasoning: isReasoningEnabled(effectiveReasoningMode),
+      };
       const skillResolution = await resolveSkillsForMessage({
         message: text,
         selectedModel,

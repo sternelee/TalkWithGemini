@@ -132,6 +132,7 @@ function modelMetadataFromEnvObject(
       name: value.name,
       attachment: readProviderModelCapability(capabilities, "attachment"),
       reasoning: readProviderModelCapability(capabilities, "reasoning"),
+      reasoning_options: value.reasoning_options,
       tool_call: readProviderModelCapability(capabilities, "tool_call"),
       ...(inputModalities.length > 0
         ? { modalities: { input: inputModalities } }

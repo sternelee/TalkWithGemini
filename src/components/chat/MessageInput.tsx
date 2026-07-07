@@ -31,7 +31,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Attachment } from "@/types";
+import type { Attachment, ReasoningMode } from "@/types";
 import { localizePluginMeta } from "@/lib/plugin/localizedMeta";
 import type { ModelInfo } from "@/services/api/chatService";
 import Tooltip from "../ui/Tooltip";
@@ -89,6 +89,12 @@ import {
   shouldSubmitOnEnter,
   truncateMiddle,
 } from "@/lib/utils/messageInputHelpers";
+import {
+  getAvailableReasoningModes,
+  isReasoningEnabled,
+  normalizeReasoningMode,
+  resolveReasoningModeForModel,
+} from "@/lib/chat/reasoning";
 
 type MessageInputVariant = "default" | "hero";
 
@@ -143,6 +149,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [showModelSelect, setShowModelSelect] = useState(false);
     const [showSkillSelect, setShowSkillSelect] = useState(false);
     const [showPluginSelect, setShowPluginSelect] = useState(false);
+    const [showReasoningSelect, setShowReasoningSelect] = useState(false);
     const [showAttachMenu, setShowAttachMenu] = useState(false);
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
@@ -338,6 +345,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         setShowAttachMenu(false);
         setShowSkillSelect(false);
         setShowPluginSelect(false);
+        setShowReasoningSelect(false);
         setShowModelSelect(false);
       };
 
@@ -465,6 +473,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       return groups;
     }, [availableModels]);
 
+    const selectedModelMetadata = useMemo(() => {
+      if (!selectedModel) return undefined;
+
+      const { modelName: modelId } = parseModelString(selectedModel);
+      return customModelMetadata[modelId] || modelMetadata[modelId];
+    }, [selectedModel, modelMetadata, customModelMetadata]);
+
     // --- Capabilities Resolution ---
     const modelCapabilities = useMemo(() => {
       if (!selectedModel)
@@ -475,26 +490,23 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           reasoning: false,
         };
 
-      const { modelName: modelId } = parseModelString(selectedModel);
-      // Prioritize custom metadata overrides
-      const meta = customModelMetadata[modelId] || modelMetadata[modelId];
-
       return {
-        vision: meta?.modalities?.input?.includes("image") ?? false,
-        attachment: meta?.attachment ?? false,
-        audio: meta?.modalities?.input?.includes("audio") ?? false,
-        reasoning: meta?.reasoning ?? false,
+        vision:
+          selectedModelMetadata?.modalities?.input?.includes("image") ?? false,
+        attachment: selectedModelMetadata?.attachment ?? false,
+        audio:
+          selectedModelMetadata?.modalities?.input?.includes("audio") ?? false,
+        reasoning: selectedModelMetadata?.reasoning ?? false,
       };
-    }, [selectedModel, modelMetadata, customModelMetadata]);
+    }, [selectedModel, selectedModelMetadata]);
 
     const isReasoningSupported = useMemo(() => {
       if (!selectedModel) return false;
       const { modelName: modelId } = parseModelString(selectedModel);
 
-      // Check custom metadata first, then global metadata
-      const meta = customModelMetadata[modelId] || modelMetadata[modelId];
-
-      if (meta && meta.reasoning !== undefined) return meta.reasoning;
+      if (selectedModelMetadata?.reasoning !== undefined) {
+        return selectedModelMetadata.reasoning;
+      }
 
       // Fallback to name heuristic
       const lower = modelId.toLowerCase();
@@ -504,7 +516,55 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         lower.includes("o1") ||
         lower.includes("r1")
       );
-    }, [selectedModel, modelMetadata, customModelMetadata]);
+    }, [selectedModel, selectedModelMetadata]);
+
+    const currentReasoningMode = resolveReasoningModeForModel(
+      chatConfig.reasoningMode,
+      selectedModelMetadata,
+      chatConfig.useReasoning,
+    );
+    const isReasoningEnabledForMode = isReasoningEnabled(currentReasoningMode);
+    const reasoningOptionLabels = useMemo<
+      Record<ReasoningMode, { label: string; description: string }>
+    >(
+      () => ({
+        off: {
+          label: t("reasoningModeOff"),
+          description: t("reasoningModeOffDescription"),
+        },
+        auto: {
+          label: t("reasoningModeAuto"),
+          description: t("reasoningModeAutoDescription"),
+        },
+        low: {
+          label: t("reasoningModeLow"),
+          description: t("reasoningModeLowDescription"),
+        },
+        medium: {
+          label: t("reasoningModeMedium"),
+          description: t("reasoningModeMediumDescription"),
+        },
+        high: {
+          label: t("reasoningModeHigh"),
+          description: t("reasoningModeHighDescription"),
+        },
+      }),
+      [t],
+    );
+    const reasoningOptions = useMemo<
+      Array<{ value: ReasoningMode; label: string; description: string }>
+    >(
+      () =>
+        getAvailableReasoningModes(selectedModelMetadata).map((value) => ({
+          value,
+          ...reasoningOptionLabels[value],
+        })),
+      [selectedModelMetadata, reasoningOptionLabels],
+    );
+    const currentReasoningOption =
+      reasoningOptions.find(
+        (option) => option.value === currentReasoningMode,
+      ) || reasoningOptions[0];
 
     // Filter plugins to show only those ready for use
     const validPlugins = useMemo(() => {
@@ -1227,6 +1287,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onOpenChange={(open) => {
                   setShowSkillSelect(false);
                   setShowPluginSelect(false);
+                  setShowReasoningSelect(false);
                   setShowModelSelect(false);
                   setShowAttachMenu(open);
                 }}
@@ -1326,6 +1387,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onOpenChange={(open) => {
                   setShowAttachMenu(false);
                   setShowPluginSelect(false);
+                  setShowReasoningSelect(false);
                   setShowModelSelect(false);
                   setShowSkillSelect(open);
                 }}
@@ -1409,6 +1471,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 onOpenChange={(open) => {
                   setShowAttachMenu(false);
                   setShowSkillSelect(false);
+                  setShowReasoningSelect(false);
                   setShowModelSelect(false);
                   setShowPluginSelect(open);
                 }}
@@ -1503,32 +1566,82 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
             {/* Reasoning Button (Conditional) */}
             {isReasoningSupported && (
-              <div>
-                <Tooltip
-                  content={
-                    chatConfig.useReasoning
-                      ? t("disableReasoning")
-                      : t("enableReasoning")
-                  }
-                  position="top"
+              <div className="relative">
+                <DropdownMenu
+                  open={showReasoningSelect}
+                  onOpenChange={(open) => {
+                    setShowAttachMenu(false);
+                    setShowSkillSelect(false);
+                    setShowPluginSelect(false);
+                    setShowModelSelect(false);
+                    setShowReasoningSelect(open);
+                  }}
                 >
-                  <button
-                    type="button"
-                    aria-label={
-                      chatConfig.useReasoning
-                        ? t("disableReasoningAria")
-                        : t("enableReasoningAria")
-                    }
-                    aria-pressed={chatConfig.useReasoning}
-                    className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${chatConfig.useReasoning ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
-                    onClick={() =>
-                      setChatConfig({ useReasoning: !chatConfig.useReasoning })
-                    }
-                    disabled={isInputBusy}
+                  <Tooltip
+                    content={t("reasoningModeTooltip", {
+                      mode: currentReasoningOption.label,
+                    })}
+                    position="top"
                   >
-                    <Lightbulb size={16} aria-hidden="true" />
-                  </button>
-                </Tooltip>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t("reasoningModeAria", {
+                          mode: currentReasoningOption.label,
+                        })}
+                        aria-pressed={isReasoningEnabledForMode}
+                        className={`${iconButtonBaseClass} transition-colors ${iconButtonFocusClass} ${
+                          isReasoningEnabledForMode
+                            ? "text-violet-500 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20"
+                            : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"
+                        }`}
+                        disabled={isInputBusy}
+                      >
+                        <Lightbulb size={16} aria-hidden="true" />
+                      </button>
+                    </DropdownMenuTrigger>
+                  </Tooltip>
+
+                  <DropdownMenuContent
+                    side="top"
+                    align="start"
+                    className="w-40 p-1.5 md:w-72"
+                  >
+                    <DropdownMenuLabel>
+                      {t("reasoningModeLabel")}
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      className="space-y-0.5 md:space-y-1"
+                      value={currentReasoningMode}
+                      onValueChange={(value) => {
+                        const reasoningMode = normalizeReasoningMode(value);
+                        setChatConfig({
+                          reasoningMode,
+                          useReasoning: isReasoningEnabled(reasoningMode),
+                        });
+                        setShowReasoningSelect(false);
+                      }}
+                    >
+                      {reasoningOptions.map((option) => (
+                        <DropdownMenuRadioItem
+                          key={option.value}
+                          value={option.value}
+                          indicatorPosition="right"
+                          className="h-auto min-h-8 rounded-md px-2 py-1.5 pr-8 text-left transition-[background-color,color] hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground md:py-2"
+                        >
+                          <span className="flex min-w-0 flex-col gap-1">
+                            <span className="truncate text-sm font-medium leading-5">
+                              {option.label}
+                            </span>
+                            <span className="hidden text-[11px] font-normal leading-4 text-muted-foreground md:block">
+                              {option.description}
+                            </span>
+                          </span>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
 
@@ -1577,6 +1690,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                   setShowAttachMenu(false);
                   setShowSkillSelect(false);
                   setShowPluginSelect(false);
+                  setShowReasoningSelect(false);
                   setShowModelSelect(open && availableModels.length > 0);
                 }}
               >

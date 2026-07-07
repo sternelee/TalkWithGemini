@@ -26,6 +26,10 @@ import {
   normalizeWorkspace,
 } from "../../lib/chat/entities";
 import { DEFAULT_CHAT_CONFIG } from "../../config/defaults";
+import {
+  isReasoningEnabled,
+  normalizeReasoningMode,
+} from "../../lib/chat/reasoning";
 import { deleteFromOPFS } from "@/utils/opfs";
 import { logDevError } from "../../lib/utils/devLogger";
 import {
@@ -391,12 +395,22 @@ const applySessionConfig = (
   sessionConfig?: SessionConfig,
 ): ChatConfig => {
   if (!sessionConfig) return currentConfig;
+  const hasReasoningConfig =
+    sessionConfig.reasoningMode !== undefined ||
+    sessionConfig.useReasoning !== undefined;
+  const reasoningMode = hasReasoningConfig
+    ? normalizeReasoningMode(
+        sessionConfig.reasoningMode,
+        sessionConfig.useReasoning,
+      )
+    : currentConfig.reasoningMode;
 
-  return {
+  return normalizeChatConfig({
     ...currentConfig,
     useSearch: sessionConfig.useSearch ?? currentConfig.useSearch,
-    useReasoning: sessionConfig.useReasoning ?? currentConfig.useReasoning,
-  };
+    useReasoning: isReasoningEnabled(reasoningMode),
+    reasoningMode,
+  });
 };
 
 export const useChatStore = create<ChatState>()(

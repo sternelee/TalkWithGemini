@@ -66,6 +66,9 @@ export type MessageOutputBlock =
       id: string;
       type: "reasoning";
       content: string;
+      startedAt?: number;
+      endedAt?: number;
+      durationMs?: number;
     }
   | {
       id: string;
@@ -230,6 +233,7 @@ export type ChatGenerationEvent =
 export interface SessionConfig {
   useSearch?: boolean;
   useReasoning?: boolean;
+  reasoningMode?: ReasoningMode;
   activePlugins?: string[];
   activeSkills?: string[];
 }
@@ -281,6 +285,9 @@ export interface Assistant {
 export interface ChatConfig {
   useSearch: boolean;
   useReasoning: boolean;
+  reasoningMode: ReasoningMode;
   useRAG?: boolean;
   temperature: number;
 }
+
+export type ReasoningMode = "off" | "auto" | "low" | "medium" | "high";

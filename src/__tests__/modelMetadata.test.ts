@@ -69,6 +69,43 @@ describe("model metadata normalization", () => {
     });
   });
 
+  it("sanitizes reasoning effort options to supported explicit strengths", () => {
+    const metadata = normalizeModelMetadata({
+      id: "gpt-effort",
+      name: "GPT Effort",
+      reasoning: true,
+      reasoning_options: [
+        {
+          type: "effort",
+          values: [
+            "none",
+            "low",
+            "medium",
+            "low",
+            "high",
+            "xhigh",
+            "minimal",
+            "max",
+            "default",
+          ],
+        },
+        { type: "budget_tokens", min: 1024, max: 8192 },
+      ],
+    });
+
+    expect(metadata).toMatchObject({
+      id: "gpt-effort",
+      name: "GPT Effort",
+      reasoning: true,
+      reasoning_options: [
+        {
+          type: "effort",
+          values: ["low", "medium", "high"],
+        },
+      ],
+    });
+  });
+
   it("extracts only known providers from external provider metadata", () => {
     const metadata = extractKnownProviderModelMetadata({
       openai: {

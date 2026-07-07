@@ -12,6 +12,12 @@ import {
   finalizeStreamedToolCall,
 } from "./toolCalls";
 import { normalizeSearchSources } from "../search/results";
+import type { ReasoningMode } from "../../types";
+import {
+  isExplicitReasoningEffort,
+  isReasoningEnabled,
+  normalizeReasoningMode,
+} from "../chat/reasoning";
 
 export interface OpenAIStreamOptions {
   client: OpenAI;
@@ -20,6 +26,7 @@ export interface OpenAIStreamOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningMode?: ReasoningMode;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -223,6 +230,7 @@ export interface OpenAIResponsesStreamOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningMode?: ReasoningMode;
   enableWebSearch?: boolean;
   onChunk: (message: SSEMessage) => void;
 }
@@ -233,6 +241,7 @@ interface ChatCompletionRequestOptions {
   temperature?: number;
   tools?: any[];
   useReasoning?: boolean;
+  reasoningMode?: ReasoningMode;
 }
 
 function normalizeChatCompletionMessages(messages: any[]): any[] {
@@ -262,7 +271,9 @@ function createChatCompletionRequestParams({
   temperature = 1,
   tools,
   useReasoning,
+  reasoningMode: rawReasoningMode,
 }: ChatCompletionRequestOptions): any {
+  const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
   const requestParams: any = {
     model,
     messages: normalizeChatCompletionMessages(messages),
@@ -279,9 +290,8 @@ function createChatCompletionRequestParams({
     }
   }
 
-  // Add reasoning effort for o1 models if useReasoning is enabled
-  if (isO1Model && useReasoning) {
-    requestParams.reasoning_effort = "high";
+  if (isExplicitReasoningEffort(reasoningMode)) {
+    requestParams.reasoning_effort = reasoningMode;
   }
 
   return requestParams;
@@ -391,8 +401,10 @@ export async function streamOpenAIChatCompletions(
     temperature = 1,
     tools,
     useReasoning,
+    reasoningMode: rawReasoningMode,
     onChunk,
   } = options;
+  const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
 
   const startTime = Date.now();
   const requestParams = createChatCompletionRequestParams({
@@ -401,13 +413,14 @@ export async function streamOpenAIChatCompletions(
     temperature,
     tools,
     useReasoning,
+    reasoningMode,
   });
 
   const stream = (await client.chat.completions.create(requestParams)) as any;
   await finishChatCompletionStream(
     stream,
     startTime,
-    Boolean(useReasoning),
+    isReasoningEnabled(reasoningMode),
     onChunk,
   );
 }
@@ -431,9 +444,11 @@ export async function streamOpenAIResponses(
     temperature,
     tools,
     useReasoning,
+    reasoningMode: rawReasoningMode,
     enableWebSearch,
     onChunk,
   } = options;
+  const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
 
   const startTime = Date.now();
   const requestParams: any = {
@@ -453,8 +468,10 @@ export async function streamOpenAIResponses(
     ];
   }
   if (requestTools.length > 0) requestParams.tools = requestTools;
-  if (useReasoning) {
-    requestParams.reasoning = { effort: "high", summary: "auto" };
+  if (reasoningMode === "auto") {
+    requestParams.reasoning = { summary: "auto" };
+  } else if (isExplicitReasoningEffort(reasoningMode)) {
+    requestParams.reasoning = { effort: reasoningMode, summary: "auto" };
   }
 
   const stream = (await client.responses.create(requestParams)) as any;
@@ -474,7 +491,7 @@ export async function streamOpenAIResponses(
       case "response.reasoning_summary_text.delta":
       case "response.reasoning_text.delta": {
         const reasoningContent = extractTextValue(event.delta);
-        if (useReasoning && reasoningContent) {
+        if (isReasoningEnabled(reasoningMode) && reasoningContent) {
           hasStreamedReasoning = true;
           onChunk({ type: "reasoning", content: reasoningContent });
         }
@@ -512,7 +529,7 @@ export async function streamOpenAIResponses(
         if (item?.type === "reasoning") {
           if (!hasStreamedReasoning) {
             const reasoningContent = extractReasoningSummary(item);
-            if (useReasoning && reasoningContent) {
+            if (isReasoningEnabled(reasoningMode) && reasoningContent) {
               onChunk({ type: "reasoning", content: reasoningContent });
             }
           }

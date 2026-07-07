@@ -1,6 +1,7 @@
 {
   "thinking": "思考中…",
   "thoughtProcess": "思考过程",
+  "thoughtDuration": "思考时长：{duration}",
   "copied": "已复制",
   "copyFailed": "复制失败",
   "thoughtProcessDetails": "思考过程详情",

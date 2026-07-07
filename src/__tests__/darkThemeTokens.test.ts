@@ -27,7 +27,7 @@ describe("dark theme token contract", () => {
     expect(globals).toContain("--brand:");
     expect(globals).toContain("--brand-foreground:");
     expect(globals).toContain("--brand-soft:");
-    expect(globals).toContain("--brand: #1D88E1;");
+    expect(globals).toContain("--brand: #1d88e1;");
     expect(globals).not.toContain("#d23f31");
     expect(globals).not.toContain("--brand: oklch(0.637 0.237 25.331);");
     expect(globals).toContain("--html-visual-surface:");
@@ -161,8 +161,8 @@ describe("dark theme token contract", () => {
       "--markdown-soft-surface: rgb(249 250 251 / 0.9);",
       "--markdown-table-head: #f9fafb;",
       "--markdown-table-head-text: #374151;",
-      "--markdown-codeblock-surface: #fbfbfc;",
-      "--markdown-codeblock-header: #f9fafb;",
+      "--markdown-codeblock-surface: rgb(249 250 251 / 0.5);",
+      "--markdown-codeblock-header: rgb(255 255 255 / 0.42);",
       "--markdown-surface-muted: #f9fafb;",
       "--markdown-surface-hover: #f3f4f6;",
       "--html-visual-surface: #0b1220;",
@@ -186,7 +186,7 @@ describe("dark theme token contract", () => {
       "--markdown-soft-surface: rgb(17 24 39 / 0.74);",
       "--markdown-table-head: rgb(17 24 39 / 0.92);",
       "--markdown-table-head-text: #cbd5e1;",
-      "--markdown-codeblock-header: #111827;",
+      "--markdown-codeblock-header: rgb(63 63 70 / 0.18);",
       "--markdown-surface-muted: #111827;",
       "--markdown-surface-hover: #1f2937;",
     ]) {

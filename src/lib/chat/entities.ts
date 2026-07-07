@@ -8,6 +8,7 @@ import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
 import { normalizeCompressedContent } from "../utils/contextCompression";
+import { isReasoningEnabled, normalizeReasoningMode } from "./reasoning";
 
 const WORKSPACE_COLORS = new Set([
   "blue",
@@ -215,13 +216,26 @@ export function normalizeSessionConfig(
   const {
     activePlugins: rawActivePlugins,
     activeSkills: rawActiveSkills,
+    reasoningMode: rawReasoningMode,
+    useReasoning: rawUseReasoning,
     ...rest
   } = config;
   const activePlugins = normalizePluginIdRefs(rawActivePlugins);
   const activeSkills = normalizeSkillIdRefs(rawActiveSkills, []);
+  const hasReasoningConfig =
+    rawReasoningMode !== undefined || rawUseReasoning !== undefined;
+  const reasoningMode = hasReasoningConfig
+    ? normalizeReasoningMode(rawReasoningMode, rawUseReasoning)
+    : undefined;
 
   return {
     ...rest,
+    ...(reasoningMode
+      ? {
+          useReasoning: isReasoningEnabled(reasoningMode),
+          reasoningMode,
+        }
+      : {}),
     ...(activePlugins.length > 0 ? { activePlugins } : {}),
     ...(activeSkills.length > 0 ? { activeSkills } : {}),
   };

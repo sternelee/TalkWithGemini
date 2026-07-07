@@ -454,14 +454,62 @@ describe("streamed tool-call normalization", () => {
       client: client as any,
       model: "compat-model",
       messages: [],
-      useReasoning: true,
+      reasoningMode: "high",
       onChunk: (message) => messages.push(message),
     });
 
+    const request = (client.chat.completions.create as any).mock.calls[0][0];
+    expect(request.reasoning_effort).toBe("high");
     expect(
       reasoningMessages(messages).map((message) => message.content),
     ).toEqual(["Consider freshness. ", "Check sources."]);
     expect(messages).toContainEqual({ type: "content", content: "Answer" });
+  });
+
+  it("maps OpenAI Compatible reasoning modes to reasoning_effort only for explicit strengths", async () => {
+    const makeClient = () => ({
+      chat: {
+        completions: {
+          create: vi.fn(async () => asyncChunks([])),
+        },
+      },
+    });
+    const lowClient = makeClient();
+    const autoClient = makeClient();
+    const offClient = makeClient();
+
+    await streamOpenAIChatCompletions({
+      client: lowClient as any,
+      model: "compat-model",
+      messages: [],
+      reasoningMode: "low",
+      onChunk: () => undefined,
+    });
+    await streamOpenAIChatCompletions({
+      client: autoClient as any,
+      model: "compat-model",
+      messages: [],
+      reasoningMode: "auto",
+      onChunk: () => undefined,
+    });
+    await streamOpenAIChatCompletions({
+      client: offClient as any,
+      model: "compat-model",
+      messages: [],
+      reasoningMode: "off",
+      onChunk: () => undefined,
+    });
+
+    expect(
+      (lowClient.chat.completions.create as any).mock.calls[0][0]
+        .reasoning_effort,
+    ).toBe("low");
+    expect(
+      (autoClient.chat.completions.create as any).mock.calls[0][0],
+    ).not.toHaveProperty("reasoning_effort");
+    expect(
+      (offClient.chat.completions.create as any).mock.calls[0][0],
+    ).not.toHaveProperty("reasoning_effort");
   });
 
   it("separates DeepSeek think tags from visible OpenAI Compatible content", async () => {
@@ -675,7 +723,7 @@ describe("streamed tool-call normalization", () => {
       client: client as any,
       model: "gpt-test",
       input: [],
-      useReasoning: true,
+      reasoningMode: "high",
       enableWebSearch: true,
       onChunk: (message) => messages.push(message),
     });
@@ -709,6 +757,25 @@ describe("streamed tool-call normalization", () => {
         expect.objectContaining({ url: "https://example.com/b" }),
       ]),
     );
+  });
+
+  it("requests OpenAI Responses reasoning summaries without effort in auto mode", async () => {
+    const client = {
+      responses: {
+        create: vi.fn(async () => asyncChunks([])),
+      },
+    };
+
+    await streamOpenAIResponses({
+      client: client as any,
+      model: "gpt-test",
+      input: [],
+      reasoningMode: "auto",
+      onChunk: () => undefined,
+    });
+
+    const request = (client.responses.create as any).mock.calls[0][0];
+    expect(request.reasoning).toEqual({ summary: "auto" });
   });
 
   it("normalizes Gemini tool calls with unique IDs and argument errors", async () => {
@@ -798,7 +865,7 @@ describe("streamed tool-call normalization", () => {
       client: client as any,
       model: "gemini-test",
       contents: [],
-      useReasoning: false,
+      reasoningMode: "off",
       onChunk: (message) => messages.push(message),
     });
 
@@ -843,10 +910,13 @@ describe("streamed tool-call normalization", () => {
       client: client as any,
       model: "gemini-test",
       contents: [],
-      useReasoning: true,
+      reasoningMode: "auto",
       onChunk: (message) => messages.push(message),
     });
 
+    const request = (client.models.generateContentStream as any).mock
+      .calls[0][0];
+    expect(request.config.thinkingConfig).toEqual({ includeThoughts: true });
     expect(
       reasoningMessages(messages).map((message) => message.content),
     ).toEqual(["I should search. "]);
@@ -858,5 +928,51 @@ describe("streamed tool-call normalization", () => {
         content: "Grounded snippet",
       }),
     ]);
+  });
+
+  it("maps Gemini 2.5 reasoning modes to thinking budgets", async () => {
+    const client = {
+      models: {
+        generateContentStream: vi.fn(async () => asyncChunks([])),
+      },
+    };
+
+    await streamGeminiResponse({
+      client: client as any,
+      model: "gemini-2.5-flash",
+      contents: [],
+      reasoningMode: "medium",
+      onChunk: () => undefined,
+    });
+
+    const request = (client.models.generateContentStream as any).mock
+      .calls[0][0];
+    expect(request.config.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingBudget: 8192,
+    });
+  });
+
+  it("maps Gemini 3 reasoning modes to thinking levels", async () => {
+    const client = {
+      models: {
+        generateContentStream: vi.fn(async () => asyncChunks([])),
+      },
+    };
+
+    await streamGeminiResponse({
+      client: client as any,
+      model: "gemini-3-flash-preview",
+      contents: [],
+      reasoningMode: "low",
+      onChunk: () => undefined,
+    });
+
+    const request = (client.models.generateContentStream as any).mock
+      .calls[0][0];
+    expect(request.config.thinkingConfig).toEqual({
+      includeThoughts: true,
+      thinkingLevel: "LOW",
+    });
   });
 });

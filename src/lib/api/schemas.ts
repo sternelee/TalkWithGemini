@@ -82,6 +82,8 @@ export const ModelNameSchema = z
   .min(1)
   .max(API_INPUT_LIMITS.maxModelNameChars);
 
+const ReasoningModeSchema = z.enum(["off", "auto", "low", "medium", "high"]);
+
 export const AttachmentSchema = z.object({
   id: z.string().default(""),
   mimeType: z.string().min(1).max(ATTACHMENT_LIMITS.maxMimeTypeChars),
@@ -184,6 +186,7 @@ export const ChatRequestSchema = z
           .max(CHAT_CONFIG_LIMITS.maxTemperature)
           .optional(),
         useReasoning: z.boolean().optional(),
+        reasoningMode: ReasoningModeSchema.optional(),
         useSearch: z.boolean().optional(),
         useRAG: z.boolean().optional(),
       })
