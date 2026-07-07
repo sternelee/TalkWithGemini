@@ -58,5 +58,10 @@ export interface PublicServerConfig {
     documentParseJobStore: PublicDeploymentStoreState;
     pluginRegistryStore: PublicDeploymentStoreState;
   };
+  limits: {
+    attachments: {
+      maxFileBytes: number;
+    };
+  };
   system?: SystemSettings;
 }

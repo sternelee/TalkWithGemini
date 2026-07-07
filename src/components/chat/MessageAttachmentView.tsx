@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import type { Attachment } from "@/types";
 import { isOPFSUrl, resolveOPFSUrl } from "@/utils/opfs";
 import { resolveObjectUrlWithLifecycle } from "@/lib/utils/objectUrlLifecycle";
+import { useAttachmentDisplayUrl } from "@/lib/utils/useAttachmentDisplayUrl";
 import AudioPlayer from "./AudioPlayer";
 import {
   isKnowledgeCollectionAttachment,
@@ -16,6 +17,7 @@ interface MessageAttachmentViewProps {
   attachment: Attachment;
   onImageClick: () => void;
   onDocumentClick?: (attachment: Attachment) => void;
+  onAttachmentCached?: (attachment: Attachment) => void;
 }
 
 const actionButtonFocusClass =
@@ -28,6 +30,7 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
   attachment,
   onImageClick,
   onDocumentClick,
+  onAttachmentCached,
 }) => {
   const t = useTranslations("Message");
   const fallbackUrl =
@@ -41,6 +44,7 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
   } | null>(null);
 
   useEffect(() => {
+    if (attachment.mimeType.startsWith("image/")) return;
     if (!isOPFSUrl(attachment.url)) return;
 
     const source = attachment.url!;
@@ -53,7 +57,7 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
       onError: () => setResolvedOpfsUrl(null),
     });
     return () => resolution.cancel();
-  }, [attachment.url]);
+  }, [attachment.mimeType, attachment.url]);
 
   const resolvedUrl =
     attachment.url && isOPFSUrl(attachment.url)
@@ -61,6 +65,10 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
         ? resolvedOpfsUrl.url
         : ""
       : fallbackUrl;
+  const imageDisplayUrl = useAttachmentDisplayUrl(attachment, {
+    enableCacheBackfill: true,
+    onCacheReady: onAttachmentCached,
+  });
 
   if (
     isKnowledgeCollectionAttachment(attachment) ||
@@ -96,6 +104,25 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
     );
   }
 
+  if (attachment.mimeType.startsWith("video/")) {
+    return (
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-gray-200 bg-gray-50 shadow-sm dark:border-border dark:bg-muted">
+        <video
+          src={resolvedUrl}
+          controls
+          preload="metadata"
+          className="max-h-72 w-full bg-black"
+          aria-label={t("videoAttachmentAria", {
+            fileName: attachment.fileName,
+          })}
+        />
+        <div className="truncate px-3 py-2 text-xs font-medium text-gray-600 dark:text-muted-foreground">
+          {attachment.fileName}
+        </div>
+      </div>
+    );
+  }
+
   if (attachment.mimeType.startsWith("image/")) {
     return (
       <button
@@ -107,7 +134,7 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
         })}
       >
         <img
-          src={resolvedUrl}
+          src={imageDisplayUrl || resolvedUrl}
           alt={attachment.fileName}
           width={256}
           height={128}

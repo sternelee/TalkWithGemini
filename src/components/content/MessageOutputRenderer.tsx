@@ -1,14 +1,20 @@
 "use client";
 
 import React, { useMemo } from "react";
-import type { Message, MessageOutputBlock, Source } from "@/types";
+import { ImageOff } from "lucide-react";
+import type { Attachment, Message, MessageOutputBlock, Source } from "@/types";
 import { getMessageOutputBlocks } from "@/lib/chat/messageOutputBlocks";
 import type { MarkdownGeneratedFile } from "@/lib/utils/markdownFiles";
-import MarkdownRenderer from "./MarkdownRenderer";
+import { useUIStore } from "@/store/core/uiStore";
+import { useAttachmentDisplayUrl } from "@/lib/utils/useAttachmentDisplayUrl";
+import MarkdownRenderer, {
+  type MarkdownRendererProps,
+} from "./MarkdownRenderer";
 import ReasoningBlock from "./ReasoningBlock";
 import SourceBlock from "./SourceBlock";
 import ToolCallBlock from "./ToolCallBlock";
 import MemorySearchBlock from "./MemorySearchBlock";
+import SafeImage from "../ui/SafeImage";
 
 interface MessageOutputRendererProps {
   message: Message;
@@ -18,10 +24,58 @@ interface MessageOutputRendererProps {
   isErrorMessage?: boolean;
   searchSources: Source[];
   onFileClick?: (file: MarkdownGeneratedFile) => void;
+  forcedTheme?: MarkdownRendererProps["forcedTheme"];
+  forceExpandCodeBlocks?: boolean;
+  onImageCached?: (image: Attachment) => void;
 }
 
 const isMemorySearchTool = (name: string | undefined) =>
   name === "memory_search";
+
+const GeneratedImageBlock: React.FC<{
+  image: Attachment;
+  onImageCached?: (image: Attachment) => void;
+}> = ({ image, onImageCached }) => {
+  const openImagePreview = useUIStore((state) => state.openImagePreview);
+  const src = useAttachmentDisplayUrl(image, {
+    enableCacheBackfill: true,
+    onCacheReady: onImageCached,
+  });
+  const canPreview = Boolean(src);
+
+  return (
+    <button
+      type="button"
+      disabled={!canPreview}
+      onClick={() => {
+        if (!src) return;
+        openImagePreview(
+          [
+            {
+              url: src,
+              alt: image.fileName,
+              description: image.fileName,
+            },
+          ],
+          0,
+        );
+      }}
+      className="my-3 block max-w-full overflow-hidden rounded-lg border border-border bg-muted/30 text-left shadow-sm transition-shadow enabled:cursor-pointer enabled:hover:shadow-md disabled:cursor-default"
+      aria-label={image.fileName}
+    >
+      <SafeImage
+        src={src}
+        alt={image.fileName}
+        className="max-h-[70vh] max-w-full object-contain"
+        fallback={
+          <div className="flex h-40 w-72 max-w-full items-center justify-center text-muted-foreground">
+            <ImageOff size={24} aria-hidden="true" />
+          </div>
+        }
+      />
+    </button>
+  );
+};
 
 function trimTextBlocksForStreaming(
   blocks: MessageOutputBlock[],
@@ -55,6 +109,9 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
   isErrorMessage = false,
   searchSources,
   onFileClick,
+  forcedTheme,
+  forceExpandCodeBlocks,
+  onImageCached,
 }) => {
   const blocks = useMemo(() => {
     const orderedBlocks = getMessageOutputBlocks(message);
@@ -80,6 +137,8 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
                 searchSources={searchSources}
                 onFileClick={onFileClick}
                 isStreaming={isTyping}
+                forcedTheme={forcedTheme}
+                forceExpandCodeBlocks={forceExpandCodeBlocks}
               />
             );
           case "reasoning":
@@ -99,6 +158,14 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
                 images={block.images}
                 isSearching={block.isSearching}
                 error={block.error}
+              />
+            );
+          case "image":
+            return (
+              <GeneratedImageBlock
+                key={block.id}
+                image={block.image}
+                onImageCached={onImageCached}
               />
             );
           case "tool_group": {

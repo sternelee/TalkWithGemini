@@ -27,11 +27,12 @@ It is designed for people who want the power of modern AI workspaces without giv
 ## Features
 
 - Multi-provider chat with Gemini, OpenAI, and OpenAI-compatible endpoints.
+- Native image generation and image editing for models whose metadata exposes image output/input, with ordered mixed text/image message blocks and OPFS-backed Blob URL display caching.
 - Local-first sessions, branches, pinned chats, workspaces, workspace files, and assistant instructions.
 - Assistant presets from the LobeHub agent registry plus local custom assistants.
 - Text-only Skills with localized public catalogs, install/uninstall flows, local edits, custom skills, auto-selection, and workspace presets.
 - OpenAPI-based plugin tools with per-plugin authentication and server-side execution.
-- Built-in tools for web reading, weather, Unsplash search, Agnes image generation, and Agnes video generation.
+- Built-in tools for web reading, weather, Unsplash search, Agnes image generation, and Agnes video generation. Agnes remains a plugin path, separate from native model image output.
 - Web search through Gemini native Google Search or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
 - Knowledge-base RAG with OPFS file storage, Mineru/LlamaParse document parsing, and optional vector indexing.
 - Local memory with optional memory search, background extraction, and dream consolidation.
@@ -193,7 +194,7 @@ Neo Chat is local-first by default:
 
 - Core settings, provider records, selected models, and provider API keys are stored in browser `localStorage`.
 - Chat metadata, messages, app settings, installed plugins, installed/custom skills, skill catalog caches, assistants, knowledge metadata, and local memories are stored in IndexedDB through `localforage`.
-- Uploaded chat, workspace, and knowledge files are stored in browser OPFS.
+- Uploaded chat, workspace, and knowledge files are stored in browser OPFS. User-sent and model-generated images also keep OPFS display-cache copies that render through runtime `blob:` URLs while preserving the original message data for model requests and export.
 - User-entered secrets are encrypted in the browser as BYOK envelopes before being sent to API routes.
 
 Important server-side settings:
@@ -238,11 +239,14 @@ DEFAULT_PROVIDER_MODELS="gpt-5.5,gpt-5.4-mini"
 # JSON string array
 DEFAULT_PROVIDER_MODELS='["gpt-5.5","gpt-5.4-mini"]'
 
-# JSON object array with optional display names and capability metadata
-DEFAULT_PROVIDER_MODELS='[{"id": "gpt-5.5","name": "GPT-5.5","capabilities": ["vision","attachment","reasoning","tool_call"]},"gpt-5.4-mini"]'
+# JSON object array with optional display names, capability aliases, and modalities
+DEFAULT_PROVIDER_MODELS='[{"id":"gpt-image-2","name":"GPT Image 2","capabilities":["image_generation"]},{"id":"gemini-3.1-flash-image","modalities":{"input":["text","image"],"output":["text","image"]}},"gpt-5.4-mini"]'
 ```
 
 For JSON object entries, `name` is optional and falls back to `id`.
+`capabilities` accepts aliases such as `vision`, `attachment`, `reasoning`,
+`tool_call`, `image_generation`, `image_output`, and `image_editing`.
+Explicit `modalities.input` / `modalities.output` are preferred when present.
 
 Default task models:
 

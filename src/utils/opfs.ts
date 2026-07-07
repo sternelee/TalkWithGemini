@@ -176,6 +176,37 @@ export async function resolveOPFSUrl(url: string): Promise<string> {
 }
 
 /**
+ * Reads an opfs:// URL into a Blob without creating a blob: URL.
+ */
+export async function resolveOPFSBlob(url: string): Promise<Blob | null> {
+  if (!url.startsWith(OPFS_PROTOCOL)) return null;
+
+  const filePath = getSafeOPFSPath(url);
+  if (!filePath) {
+    logDevWarn("Invalid OPFS URL");
+    return null;
+  }
+
+  try {
+    const file = read(filePath);
+    if (!(await file.exists())) {
+      logDevWarn(`OPFS File not found: ${filePath}`);
+      return null;
+    }
+
+    const fileBlob = await file.getOriginFile();
+    if (!fileBlob) {
+      logDevWarn(`Failed to get file blob: ${filePath}`);
+      return null;
+    }
+    return fileBlob;
+  } catch (error) {
+    logDevError(`Failed to read OPFS file: ${filePath}`, error);
+    return null;
+  }
+}
+
+/**
  * Checks if a URL is an OPFS protocol URL.
  */
 export function isOPFSUrl(url?: string): boolean {

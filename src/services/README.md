@@ -28,10 +28,26 @@ Handles chat generation workflows from the browser side:
 - Streams chat responses.
 - Executes model tool calls through plugin utilities.
 - Generates titles, related questions, RAG search queries, and image outputs.
+- Plans optional image generation counts for image-capable models without persisting that value as a chat setting.
 - Prepares history for model APIs.
 - Adds applied skill context and local memory context when enabled by the chat workflow.
 - Runs background context compression.
 - Updates tool-call status while streaming and while executing tools.
+
+Image-capable chat models follow the same streaming path as text models when
+they can return text and images together. The client appends incoming image SSE
+events to ordered `outputBlocks`. OpenAI `gpt-image-*` models use the
+`/api/chat/generate-image` direct Images API path; OpenAI text+image models use
+the Responses `image_generation` tool; Gemini image models use
+`generateContent` / `generateContentStream` with text and image response
+modalities. `imageCount` is filled only by `resolveImageGenerationOptions`
+when the user clearly asks for multiple separate images, and provider paths
+ignore or report unsupported count semantics rather than saving it to settings.
+Before chat or image requests leave the browser, client services strip
+display-only OPFS cache metadata from attachments. Image outputs returned by
+provider routes are cached into OPFS for display, then rendered as runtime
+Blob URLs; the original base64 data or remote URL remains the canonical model
+and export payload.
 
 ### `agentService.ts`
 

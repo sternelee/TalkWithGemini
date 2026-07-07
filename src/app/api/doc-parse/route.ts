@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { API_INPUT_LIMITS, DOCUMENT_LIMITS } from "@/config/limits";
+import {
+  API_INPUT_LIMITS,
+  DOCUMENT_LIMITS,
+  getRuntimeMaxAttachmentFileBytes,
+} from "@/config/limits";
 import {
   assertMultipartRequestContentLengthUnderLimit,
   createApiErrorResponse,
@@ -14,9 +18,10 @@ import { createDocumentParseJob } from "../../../lib/api/docParseJobs";
 
 export async function POST(request: NextRequest) {
   try {
+    const runtimeMaxFileBytes = getRuntimeMaxAttachmentFileBytes();
     assertMultipartRequestContentLengthUnderLimit(
       request,
-      DOCUMENT_LIMITS.maxParseFileBytes +
+      Math.min(DOCUMENT_LIMITS.maxParseFileBytes, runtimeMaxFileBytes) +
         API_INPUT_LIMITS.maxMultipartOverheadBytes,
     );
 
@@ -58,7 +63,7 @@ export async function POST(request: NextRequest) {
         : DOCUMENT_LIMITS.maxParseFileBytes;
     const fileError = getUploadBlobValidationError(file, {
       label: "Document file",
-      maxBytes,
+      maxBytes: Math.min(maxBytes, runtimeMaxFileBytes),
     });
     if (fileError) {
       return NextResponse.json(

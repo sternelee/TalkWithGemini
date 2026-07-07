@@ -59,6 +59,11 @@ const serverConfig: PublicServerConfig = {
     defaultSttAvailable: false,
     defaultTtsAvailable: false,
   },
+  limits: {
+    attachments: {
+      maxFileBytes: 10 * 1024 * 1024,
+    },
+  },
 };
 
 describe("server default store injection", () => {

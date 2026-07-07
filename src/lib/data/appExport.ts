@@ -55,7 +55,7 @@ function collectKnownOpfsFields(value: unknown, output: Set<string>): void {
 
   if (!isRecord(value)) return;
 
-  for (const key of ["url", "path"]) {
+  for (const key of ["url", "path", "opfsUrl"]) {
     const field = value[key];
     if (isOpfsUrl(field)) output.add(field);
   }

@@ -86,6 +86,8 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("handleDownloadImage");
     expect(messageItem).toContain("message-pdf-print-root");
     expect(messageItem).toContain("message-image-export-root");
+    expect(messageItem).toContain("message={pdfPrintJob.message}");
+    expect(messageItem).toContain("message={imageExportJob.message}");
     expect(messageItem).toContain("window.print");
     expect(messageItem).toContain("afterprint");
     expect(messageItem).toContain("toPng");
@@ -99,6 +101,7 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("message-image-export-canvas");
     expect(messageItem).toContain(".markdown-diagram-header");
     expect(messageItem).toContain("forceExpandCodeBlocks");
+    expect(messageItem).toContain("MessageOutputRenderer");
     expect(messageItem).toContain("proxyMessageExportImages");
     expect(messageItem).toContain("https://serveproxy.com/?url=");
     expect(messageItem).toContain("encodeURIComponent");

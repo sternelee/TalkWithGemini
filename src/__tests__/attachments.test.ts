@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { processAttachmentsForModel } from "../lib/utils/attachments";
+import {
+  processAttachmentsForModel,
+  stripAttachmentsDisplayCacheForModel,
+} from "../lib/utils/attachments";
 
 describe("attachment processing", () => {
   const encodeText = (value: string) =>
@@ -75,6 +78,91 @@ describe("attachment processing", () => {
       "audio_1",
     ]);
     expect(result.convertedContent).toBe("");
+  });
+
+  it("strips display-only OPFS cache metadata before provider requests", async () => {
+    const result = await stripAttachmentsDisplayCacheForModel([
+      {
+        id: "img_1",
+        mimeType: "image/png",
+        fileName: "image.png",
+        data: "aW1hZ2U=",
+        displayCache: {
+          opfsUrl: "opfs://images/generated/cache.png",
+          sourceKind: "data",
+          sourceFingerprint: "fingerprint",
+          createdAt: 1,
+        },
+      },
+    ]);
+
+    expect(result).toEqual([
+      {
+        id: "img_1",
+        mimeType: "image/png",
+        fileName: "image.png",
+        data: "aW1hZ2U=",
+      },
+    ]);
+  });
+
+  it("removes local OPFS URLs from request copies when inline data is present", async () => {
+    const result = await stripAttachmentsDisplayCacheForModel([
+      {
+        id: "doc_1",
+        mimeType: "text/markdown",
+        fileName: "report.pdf",
+        data: "cGFyc2Vk",
+        url: "opfs://chat/documents/report.pdf",
+      },
+    ]);
+
+    expect(result).toEqual([
+      {
+        id: "doc_1",
+        mimeType: "text/markdown",
+        fileName: "report.pdf",
+        data: "cGFyc2Vk",
+      },
+    ]);
+  });
+
+  it("converts OPFS-backed media attachments before provider requests", async () => {
+    const result = await stripAttachmentsDisplayCacheForModel(
+      [
+        {
+          id: "audio_1",
+          mimeType: "audio/mpeg",
+          fileName: "voice.mp3",
+          url: "opfs://chat/audio/voice.mp3",
+        },
+        {
+          id: "video_1",
+          mimeType: "video/mp4",
+          fileName: "clip.mp4",
+          url: "opfs://chat/video/clip.mp4",
+        },
+      ],
+      {
+        resolveOPFSBlob: async (url) =>
+          new Blob([url.includes("audio") ? "audio" : "video"]),
+      },
+    );
+
+    expect(result).toEqual([
+      {
+        id: "audio_1",
+        mimeType: "audio/mpeg",
+        fileName: "voice.mp3",
+        data: "YXVkaW8=",
+      },
+      {
+        id: "video_1",
+        mimeType: "video/mp4",
+        fileName: "clip.mp4",
+        data: "dmlkZW8=",
+      },
+    ]);
   });
 
   it("escapes converted text attachment delimiters for non-attachment models", async () => {

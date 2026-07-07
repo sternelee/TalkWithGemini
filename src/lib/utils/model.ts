@@ -58,6 +58,10 @@ export function supportsStructuredOutput(metadata?: ModelMetadata): boolean {
   return metadata?.structured_output === true;
 }
 
+function normalizeModality(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 /**
  * 获取模型的上下文窗口大小
  */
@@ -81,5 +85,24 @@ export function supportsModality(
   direction: "input" | "output",
 ): boolean {
   const modalities = metadata?.modalities?.[direction];
-  return modalities?.includes(modality) ?? false;
+  const target = normalizeModality(modality);
+  return (
+    modalities?.some((item) => normalizeModality(item) === target) ?? false
+  );
+}
+
+export function supportsTextOutput(metadata?: ModelMetadata): boolean {
+  if (!metadata?.modalities?.output?.length) return true;
+  return supportsModality(metadata, "text", "output");
+}
+
+export function supportsImageGeneration(metadata?: ModelMetadata): boolean {
+  return supportsModality(metadata, "image", "output");
+}
+
+export function supportsImageEditing(metadata?: ModelMetadata): boolean {
+  return (
+    supportsModality(metadata, "image", "input") &&
+    supportsImageGeneration(metadata)
+  );
 }

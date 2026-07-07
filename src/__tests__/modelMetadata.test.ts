@@ -5,6 +5,12 @@ import {
   normalizeModelMetadata,
   normalizeModelMetadataMap,
 } from "../lib/providers/metadata";
+import {
+  supportsImageEditing,
+  supportsImageGeneration,
+  supportsModality,
+  supportsTextOutput,
+} from "../lib/utils/model";
 
 describe("model metadata normalization", () => {
   it("trims model metadata fields and normalizes modalities", () => {
@@ -49,6 +55,35 @@ describe("model metadata normalization", () => {
     });
     expect(metadata?.name).toHaveLength(MODEL_METADATA_LIMITS.maxNameChars);
     expect(metadata?.reasoning).toBeUndefined();
+  });
+
+  it("detects image generation and editing from normalized modalities", () => {
+    const generator = normalizeModelMetadata({
+      id: "gpt-image-2",
+      name: "GPT Image 2",
+      modalities: {
+        input: ["TEXT"],
+        output: ["IMAGE"],
+      },
+    });
+    const editor = normalizeModelMetadata({
+      id: "gemini-3.1-flash-image",
+      name: "Gemini Flash Image",
+      modalities: {
+        input: ["text", "image"],
+        output: ["text", "image"],
+      },
+    });
+
+    expect(supportsModality(generator || undefined, "image", "output")).toBe(
+      true,
+    );
+    expect(supportsImageGeneration(generator || undefined)).toBe(true);
+    expect(supportsImageEditing(generator || undefined)).toBe(false);
+    expect(supportsImageGeneration(editor || undefined)).toBe(true);
+    expect(supportsImageEditing(editor || undefined)).toBe(true);
+    expect(supportsTextOutput(undefined)).toBe(true);
+    expect(supportsTextOutput(generator || undefined)).toBe(false);
   });
 
   it("uses fallback ids and caps metadata maps", () => {

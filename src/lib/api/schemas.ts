@@ -3,8 +3,11 @@ import {
   API_INPUT_LIMITS,
   ATTACHMENT_LIMITS,
   CHAT_CONFIG_LIMITS,
+  IMAGE_GENERATION_LIMITS,
   PLUGIN_EXECUTION_LIMITS,
+  getAttachmentPayloadBytes,
   getAttachmentsPayloadChars,
+  getRuntimeMaxAttachmentFileBytes,
 } from "../../config/limits";
 import { getRemoteAttachmentUrlError } from "../security/remoteAttachment";
 import { getPluginExecutionArgsError } from "../plugin/execution";
@@ -91,6 +94,24 @@ export const AttachmentSchema = z.object({
   url: z.string().max(ATTACHMENT_LIMITS.maxUrlChars).optional(),
   fileName: z.string().min(1).max(ATTACHMENT_LIMITS.maxFileNameChars),
 });
+
+function addAttachmentFileSizeIssues(
+  attachments: Array<z.infer<typeof AttachmentSchema>>,
+  ctx: z.RefinementCtx,
+  path: string[],
+): void {
+  const maxFileBytes = getRuntimeMaxAttachmentFileBytes();
+
+  attachments.forEach((attachment, index) => {
+    if (getAttachmentPayloadBytes(attachment) <= maxFileBytes) return;
+
+    ctx.addIssue({
+      code: "custom",
+      path: [...path, index, "data"],
+      message: "Attachment file is too large",
+    });
+  });
+}
 
 export const ToolCallSchema = z
   .object({
@@ -189,6 +210,12 @@ export const ChatRequestSchema = z
         reasoningMode: ReasoningModeSchema.optional(),
         useSearch: z.boolean().optional(),
         useRAG: z.boolean().optional(),
+        imageCount: z
+          .number()
+          .int()
+          .min(IMAGE_GENERATION_LIMITS.minCount)
+          .max(IMAGE_GENERATION_LIMITS.maxCount)
+          .optional(),
       })
       .strict()
       .optional(),
@@ -197,14 +224,14 @@ export const ChatRequestSchema = z
       .max(API_INPUT_LIMITS.maxSystemInstructionChars)
       .optional(),
     tools: z.array(ToolSchema).max(64).optional(),
+    enableImageGeneration: z.boolean().optional(),
     enableGoogleSearch: z.boolean().optional(),
     enableOpenAIWebSearch: z.boolean().optional(),
   })
   .strict()
   .superRefine((request, ctx) => {
-    const totalPayloadChars = getAttachmentsPayloadChars(
-      request.attachments || [],
-    );
+    const attachments = request.attachments || [];
+    const totalPayloadChars = getAttachmentsPayloadChars(attachments);
 
     if (totalPayloadChars > ATTACHMENT_LIMITS.maxTotalBase64Chars) {
       ctx.addIssue({
@@ -214,7 +241,9 @@ export const ChatRequestSchema = z
       });
     }
 
-    request.attachments?.forEach((attachment, index) => {
+    addAttachmentFileSizeIssues(attachments, ctx, ["attachments"]);
+
+    attachments.forEach((attachment, index) => {
       if (!attachment.url) return;
 
       const remoteUrlError = getRemoteAttachmentUrlError(attachment.url);
@@ -486,8 +515,45 @@ export const ImageGenerateRequestSchema = z
     provider: ProviderRuntimeConfigSchema,
     modelName: ModelNameSchema,
     prompt: z.string().min(1).max(8_000),
+    imageCount: z
+      .number()
+      .int()
+      .min(IMAGE_GENERATION_LIMITS.minCount)
+      .max(IMAGE_GENERATION_LIMITS.maxCount)
+      .optional(),
+    attachments: z
+      .array(AttachmentSchema)
+      .max(ATTACHMENT_LIMITS.maxCount)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((request, ctx) => {
+    const attachments = request.attachments || [];
+    const totalPayloadChars = getAttachmentsPayloadChars(attachments);
+
+    if (totalPayloadChars > ATTACHMENT_LIMITS.maxTotalBase64Chars) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["attachments"],
+        message: "Attachment payload is too large",
+      });
+    }
+
+    addAttachmentFileSizeIssues(attachments, ctx, ["attachments"]);
+
+    attachments.forEach((attachment, index) => {
+      if (!attachment.url) return;
+
+      const remoteUrlError = getRemoteAttachmentUrlError(attachment.url);
+      if (remoteUrlError) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["attachments", index, "url"],
+          message: remoteUrlError,
+        });
+      }
+    });
+  });
 
 export const VoiceSynthesizeRequestSchema = z
   .object({

@@ -38,9 +38,11 @@ export interface ChatHandlerOptions {
     temperature?: number;
     useReasoning?: boolean;
     reasoningMode?: ReasoningMode;
+    imageCount?: number;
   };
   systemInstruction?: string;
   tools?: any[];
+  enableImageGeneration?: boolean;
   enableGoogleSearch?: boolean;
   enableOpenAIWebSearch?: boolean;
 }
@@ -132,6 +134,18 @@ function getResponsesOutputText(response: any): string {
     .join("");
 }
 
+function appendImageCountInstruction(
+  instruction: string | undefined,
+  imageCount: number | undefined,
+): string | undefined {
+  if (!imageCount) return instruction;
+
+  const imageInstruction = `When generating images for this request, create ${imageCount} separate image output${imageCount === 1 ? "" : "s"}.`;
+  return instruction
+    ? `${instruction}\n\n${imageInstruction}`
+    : imageInstruction;
+}
+
 /**
  * 处理聊天请求（流式）
  */
@@ -145,6 +159,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
     config,
     systemInstruction,
     tools,
+    enableImageGeneration,
     enableGoogleSearch,
     enableOpenAIWebSearch,
   } = options;
@@ -168,11 +183,15 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           client,
           model: modelName,
           input,
-          instructions: systemInstruction,
+          instructions: appendImageCountInstruction(
+            systemInstruction,
+            enableImageGeneration ? config?.imageCount : undefined,
+          ),
           temperature: config?.temperature,
           tools: convertToolsToOpenAIResponses(tools),
           useReasoning: config?.useReasoning,
           reasoningMode: config?.reasoningMode,
+          enableImageGeneration,
           enableWebSearch: enableOpenAIWebSearch,
           onChunk: send,
         });
@@ -273,6 +292,8 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           temperature: config?.temperature,
           tools: geminiTools,
           enableGoogleSearch,
+          enableImageGeneration,
+          imageCount: config?.imageCount,
           useReasoning: config?.useReasoning,
           reasoningMode: config?.reasoningMode,
           onChunk: send,

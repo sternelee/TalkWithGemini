@@ -27,11 +27,12 @@ Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.j
 ## 功能特性
 
 - 支持 Gemini、OpenAI 和 OpenAI-compatible endpoint 的多供应商对话。
+- 对 metadata 声明支持图片输出/输入的模型提供原生图片生成和图片编辑，图文混排会按模型输出顺序渲染，并使用 OPFS + Blob URL 做图片显示缓存。
 - 本地优先的会话、分支、置顶对话、工作区、工作区文件和助理指令。
 - 支持 LobeHub Agent Registry 助理预设，也支持本地自定义助理。
 - 支持纯文本技能：本地化公共目录、安装/卸载、编辑内置技能、本地自定义技能、自动选择和工作区预设。
 - 支持 OpenAPI 风格插件工具、插件鉴权和服务端执行。
-- 内置网页阅读、天气、Unsplash 搜索、Agnes 图片生成、Agnes 视频生成工具。
+- 内置网页阅读、天气、Unsplash 搜索、Agnes 图片生成、Agnes 视频生成工具。Agnes 仍是插件路径，和模型原生图片输出分开。
 - 支持 Gemini 原生 Google Search，以及 Tavily、Firecrawl、Exa、Bocha、SearXNG 等外部搜索。
 - 知识库 RAG 支持 OPFS 文件存储、Mineru/LlamaParse 文档解析和可选向量索引。
 - 支持本地记忆、可选记忆搜索、后台记忆提取和记忆整合。
@@ -186,7 +187,7 @@ Neo Chat 默认本地优先：
 
 - 核心设置、供应商记录、已选模型和供应商 API key 存在浏览器 `localStorage`。
 - 对话元数据、消息、应用设置、已安装插件、已安装/自定义技能、技能目录缓存、助理、知识库元数据和本地记忆通过 `localforage` 存在 IndexedDB。
-- 上传的对话文件、工作区文件和知识库文件存在浏览器 OPFS。
+- 上传的对话文件、工作区文件和知识库文件存在浏览器 OPFS。用户发送和模型生成的图片还会保存 OPFS 显示缓存，并在运行期通过 `blob:` URL 渲染；原始消息数据仍用于模型请求和导出。
 - 用户输入的密钥会先在浏览器中加密成 BYOK envelope，再发送给 API 路由。
 
 重要服务端配置：
@@ -231,11 +232,14 @@ DEFAULT_PROVIDER_MODELS="gpt-5.5,gpt-5.4-mini"
 # JSON string array
 DEFAULT_PROVIDER_MODELS='["gpt-5.5","gpt-5.4-mini"]'
 
-# JSON object array with optional display names and capability metadata
-DEFAULT_PROVIDER_MODELS='[{"id": "gpt-5.5","name": "GPT-5.5","capabilities": ["vision","attachment","reasoning","tool_call"]},"gpt-5.4-mini"]'
+# JSON object array with optional display names, capability aliases, and modalities
+DEFAULT_PROVIDER_MODELS='[{"id":"gpt-image-2","name":"GPT Image 2","capabilities":["image_generation"]},{"id":"gemini-3.1-flash-image","modalities":{"input":["text","image"],"output":["text","image"]}},"gpt-5.4-mini"]'
 ```
 
 JSON 对象条目中的 `name` 可选，缺省时会使用 `id` 作为显示名。
+`capabilities` 支持 `vision`、`attachment`、`reasoning`、`tool_call`、
+`image_generation`、`image_output`、`image_editing` 等 aliases。显式
+`modalities.input` / `modalities.output` 存在时优先生效。
 
 默认任务模型：
 

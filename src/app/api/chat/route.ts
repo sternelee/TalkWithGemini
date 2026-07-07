@@ -23,6 +23,7 @@ export const POST = withStreamApiHandler(
       config: parsed.config,
       systemInstruction: parsed.systemInstruction,
       tools: parsed.tools,
+      enableImageGeneration: parsed.enableImageGeneration,
       enableGoogleSearch: parsed.enableGoogleSearch,
       enableOpenAIWebSearch: parsed.enableOpenAIWebSearch,
     });

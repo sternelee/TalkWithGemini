@@ -14,6 +14,10 @@ import {
   isTextDocumentMimeType,
 } from "./documentAttachments";
 import {
+  stripAttachmentDisplayCacheForModel,
+  stripAttachmentsDisplayCacheForModel,
+} from "./imageDisplayCache";
+import {
   isKnowledgeAttachment,
   isKnowledgeCollectionAttachment,
   parseKnowledgeFileAttachmentData,
@@ -134,7 +138,19 @@ export async function processAttachmentsForModel(
   const contextBudget = createPromptContextBudget();
 
   for (const att of attachments) {
-    const processedAtt = { ...att };
+    const processedAtt = await stripAttachmentDisplayCacheForModel(att, {
+      resolveOPFSBlob: async (path) => {
+        const resolvedBlob = await withResolvedObjectUrl({
+          source: path,
+          resolveObjectUrl: resolveOPFSUrl,
+          read: async (blobUrl) => {
+            const response = await fetch(blobUrl);
+            return response.blob();
+          },
+        });
+        return resolvedBlob;
+      },
+    });
 
     // Resolve OPFS URLs to Base64
     if (
@@ -169,7 +185,8 @@ export async function processAttachmentsForModel(
 
     if (
       processedAtt.mimeType.startsWith("image/") ||
-      processedAtt.mimeType.startsWith("audio/")
+      processedAtt.mimeType.startsWith("audio/") ||
+      processedAtt.mimeType.startsWith("video/")
     ) {
       finalAttachments.push(processedAtt);
       continue;
@@ -217,4 +234,5 @@ export {
   isKnowledgeAttachment,
   isKnowledgeCollectionAttachment,
   parseKnowledgeFileAttachmentData,
+  stripAttachmentsDisplayCacheForModel,
 };

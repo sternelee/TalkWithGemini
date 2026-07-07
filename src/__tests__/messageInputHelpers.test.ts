@@ -25,6 +25,9 @@ describe("message input helpers", () => {
       isNativeMediaFile(new File([""], "audio.mp3", { type: "audio/mpeg" })),
     ).toBe(true);
     expect(
+      isNativeMediaFile(new File([""], "clip.mp4", { type: "video/mp4" })),
+    ).toBe(true);
+    expect(
       isNativeMediaFile(new File([""], "doc.txt", { type: "text/plain" })),
     ).toBe(false);
   });

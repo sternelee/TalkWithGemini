@@ -24,6 +24,7 @@ import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import { supportsModality } from "@/lib/utils/model";
 
 const MIMO_STT_MODEL = "mimo-v2.5-asr";
 const MIMO_API_KEY_URL = "https://platform.xiaomimimo.com/";
@@ -54,14 +55,14 @@ const VoiceSettings = () => {
           const displayName = `${name} (${p.name})`;
 
           if (
-            meta?.modalities?.input?.includes("audio") ||
+            supportsModality(meta, "audio", "input") ||
             mId.toLowerCase().includes("whisper")
           ) {
             inputModels.push({ id: fullId, name: displayName });
           }
 
           if (
-            meta?.modalities?.output?.includes("audio") ||
+            supportsModality(meta, "audio", "output") ||
             mId.toLowerCase().includes("tts")
           ) {
             outputModels.push({ id: fullId, name: displayName });

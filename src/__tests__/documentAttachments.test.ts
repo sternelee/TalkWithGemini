@@ -89,6 +89,33 @@ describe("chat document attachments", () => {
     });
   });
 
+  it("can keep the original document in OPFS while using parsed text", async () => {
+    mocks.parseDocumentFile.mockResolvedValue("# Parsed PDF");
+    const saveOriginalFile = vi.fn(async () => "opfs://chat/documents/doc.pdf");
+    const { createChatDocumentAttachment, decodeAttachmentText } =
+      await import("../lib/utils/documentAttachments");
+    const file = new File(["pdf"], "doc.pdf", {
+      type: "application/pdf",
+    });
+
+    const result = await createChatDocumentAttachment(file, {
+      id: "att_pdf",
+      rag: {
+        ...baseRag,
+        useDefaultDocumentProcessing: true,
+        serverDocumentProcessingAvailable: true,
+      },
+      saveOriginalFile,
+    });
+
+    expect(saveOriginalFile).toHaveBeenCalledWith(file, "chat/documents");
+    expect(result.attachment).toMatchObject({
+      data: expect.any(String),
+      url: "opfs://chat/documents/doc.pdf",
+    });
+    expect(decodeAttachmentText(result.attachment)).toBe("# Parsed PDF");
+  });
+
   it("uses default document processing without resolving local parser secrets", async () => {
     mocks.parseDocumentFile.mockResolvedValue("default parsed");
     const { createChatDocumentAttachment } =

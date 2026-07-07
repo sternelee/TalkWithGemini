@@ -623,6 +623,42 @@ describe("chat store persistence", () => {
     expect(deleteFromOPFSMock).toHaveBeenCalledWith(orphanUrl);
   });
 
+  it("cleans generated image display cache files from deleted output blocks", async () => {
+    const cachedImageUrl = "opfs://images/generated/output-cache.png";
+    useChatStore.setState({
+      sessions: [makeSession("a")],
+      currentSessionId: "a",
+      activeMessages: [
+        {
+          ...makeModelMessage("m1", "generated"),
+          outputBlocks: [
+            {
+              id: "block_1",
+              type: "image",
+              image: {
+                id: "img_1",
+                mimeType: "image/png",
+                data: "aW1hZ2U=",
+                fileName: "generated.png",
+                displayCache: {
+                  opfsUrl: cachedImageUrl,
+                  sourceKind: "data",
+                  sourceFingerprint: "fingerprint",
+                  createdAt: 1,
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    await useChatStore.getState().deleteMessage("a", "m1");
+
+    expect(deleteFromOPFSMock).toHaveBeenCalledTimes(1);
+    expect(deleteFromOPFSMock).toHaveBeenCalledWith(cachedImageUrl);
+  });
+
   it("preserves deleted message attachments still referenced by other messages", async () => {
     const sharedUrl = "opfs://workspaces/w1/shared.txt";
     useChatStore.setState({

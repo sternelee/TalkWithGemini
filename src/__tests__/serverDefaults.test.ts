@@ -112,6 +112,7 @@ const ENV_KEYS = [
   "DEFAULT_HISTORY_KEEP_COUNT",
   "DEFAULT_ENABLE_CODE_COLLAPSE",
   "DEFAULT_ENABLE_HTML_VISUAL_PROMPT",
+  "MAX_ATTACHMENT_FILE_BYTES",
 ] as const;
 
 const LEGACY_PROVIDER_ENV_KEYS = [
@@ -224,6 +225,9 @@ describe("server default configuration", () => {
       enableHtmlVisualPrompt: true,
       compressionThreshold: 12,
     });
+    expect(config.limits.attachments.maxFileBytes).toBe(
+      10 * 1024 * 1024,
+    );
 
     for (const secret of [
       "provider-secret",
@@ -238,6 +242,35 @@ describe("server default configuration", () => {
     ]) {
       expect(serialized).not.toContain(secret);
     }
+  });
+
+  it("exposes clamped runtime attachment upload limits", async () => {
+    setEnv({
+      MAX_ATTACHMENT_FILE_BYTES: String(1024 * 1024),
+    });
+
+    const { getPublicServerConfig } =
+      await import("../lib/defaultConfig/server");
+
+    expect(getPublicServerConfig().limits.attachments.maxFileBytes).toBe(
+      1024 * 1024,
+    );
+
+    setEnv({
+      MAX_ATTACHMENT_FILE_BYTES: String(100 * 1024 * 1024),
+    });
+
+    expect(
+      getPublicServerConfig().limits.attachments.maxFileBytes,
+    ).toBeLessThan(100 * 1024 * 1024);
+
+    setEnv({
+      MAX_ATTACHMENT_FILE_BYTES: "not-a-number",
+    });
+
+    expect(getPublicServerConfig().limits.attachments.maxFileBytes).toBe(
+      10 * 1024 * 1024,
+    );
   });
 
   it("allows self-hosted defaults to disable HTML visual prompting", async () => {
@@ -345,6 +378,7 @@ describe("server default configuration", () => {
             attachment: true,
             vision: true,
             audio: true,
+            image_generation: true,
             reasoning: false,
             tool_call: true,
           },
@@ -373,7 +407,7 @@ describe("server default configuration", () => {
         reasoning: false,
         reasoning_options: [{ type: "effort", values: ["low", "high"] }],
         tool_call: true,
-        modalities: { input: ["image", "audio", "text"] },
+        modalities: { input: ["image", "audio", "text"], output: ["image"] },
       },
     });
     expect(serialized).not.toContain("provider-secret");
@@ -387,11 +421,21 @@ describe("server default configuration", () => {
       DEFAULT_PROVIDER_MODELS: JSON.stringify([
         {
           id: "gpt-5.5",
-          capabilities: ["vision", "attachment", "reasoning", "tool_call"],
+          capabilities: [
+            "vision",
+            "attachment",
+            "reasoning",
+            "tool_call",
+            "image_editing",
+          ],
         },
         {
           id: "gpt-5.4",
           name: "GPT-5.4",
+          modalities: {
+            input: ["text"],
+            output: ["image"],
+          },
           capabilities: {
             vision: true,
             audio: false,
@@ -420,7 +464,7 @@ describe("server default configuration", () => {
         attachment: true,
         reasoning: true,
         tool_call: true,
-        modalities: { input: ["image", "text"] },
+        modalities: { input: ["image", "text"], output: ["image"] },
       },
       "gpt-5.4": {
         id: "gpt-5.4",
@@ -428,7 +472,7 @@ describe("server default configuration", () => {
         attachment: true,
         reasoning: false,
         tool_call: true,
-        modalities: { input: ["image", "text"] },
+        modalities: { input: ["text"], output: ["image"] },
       },
     });
   });

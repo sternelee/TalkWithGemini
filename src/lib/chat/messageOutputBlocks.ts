@@ -23,6 +23,10 @@ interface SearchBlockUpdate {
 
 const cloneToolCall = (toolCall: ToolCall): ToolCall => ({ ...toolCall });
 
+const cloneImage = (
+  image: Extract<MessageOutputBlock, { type: "image" }>["image"],
+) => ({ ...image });
+
 const cloneBlock = (block: MessageOutputBlock): MessageOutputBlock => {
   switch (block.type) {
     case "text":
@@ -35,6 +39,11 @@ const cloneBlock = (block: MessageOutputBlock): MessageOutputBlock => {
         error: block.error,
         sources: [...block.sources],
         images: [...block.images],
+      };
+    case "image":
+      return {
+        ...block,
+        image: cloneImage(block.image),
       };
     case "tool_group":
       return {
@@ -187,6 +196,17 @@ export function createMessageOutputBlockBuilder(
       };
       blocks.push(block);
       activeSearchBlockId = isSearching ? block.id : undefined;
+    },
+
+    appendImage(
+      image: Extract<MessageOutputBlock, { type: "image" }>["image"],
+    ) {
+      finalizeActiveReasoning();
+      blocks.push({
+        id: createId(),
+        type: "image",
+        image: cloneImage(image),
+      });
     },
 
     appendToolCall(toolCall: ToolCall) {

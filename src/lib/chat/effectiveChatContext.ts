@@ -25,7 +25,7 @@ import {
 } from "../settings/searchRag";
 import { buildDiagramPromptInstruction } from "./diagramPrompt";
 import { buildHtmlVisualPromptInstruction } from "./htmlVisualPrompt";
-import { parseModelString } from "../utils/model";
+import { parseModelString, supportsModality } from "../utils/model";
 
 export type CapabilityStatusCode =
   | "ok"
@@ -150,9 +150,9 @@ function getModelCapabilities({
     lower.includes("r1");
 
   return {
-    vision: meta?.modalities?.input?.includes("image") ?? false,
+    vision: supportsModality(meta, "image", "input"),
     attachment: meta?.attachment ?? false,
-    audio: meta?.modalities?.input?.includes("audio") ?? false,
+    audio: supportsModality(meta, "audio", "input"),
     reasoning: meta?.reasoning ?? reasoningByName,
   };
 }

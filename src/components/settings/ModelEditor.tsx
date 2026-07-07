@@ -4,6 +4,7 @@ import {
   X,
   Check,
   Copy,
+  Image as ImageIcon,
   Paperclip,
   Eye,
   Mic,
@@ -16,6 +17,7 @@ import Tooltip from "../ui/Tooltip";
 import { ModelMetadata } from "@/types";
 import { MODEL_METADATA_LIMITS } from "@/config/limits";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
+import { supportsImageGeneration, supportsModality } from "@/lib/utils/model";
 import {
   createTimedStatusResetController,
   type TimedStatusResetController,
@@ -23,6 +25,26 @@ import {
 import AnchoredPortal from "@/components/ui/AnchoredPortal";
 
 type CopyStatus = "idle" | "copied" | "error";
+
+function withoutModalities(
+  values: string[] | undefined,
+  excluded: string[],
+): string[] {
+  const excludedSet = new Set(excluded.map((value) => value.toLowerCase()));
+  return (values || []).filter(
+    (value) => !excludedSet.has(value.trim().toLowerCase()),
+  );
+}
+
+function dedupeModalities(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 const CapabilityIconToggle = ({
   label,
@@ -73,8 +95,9 @@ const ModelEditor = ({
   const [name, setName] = useState(initialMeta.name || "");
   const [capabilities, setCapabilities] = useState({
     attachment: initialMeta.attachment || false,
-    vision: initialMeta.modalities?.input?.includes("image") || false,
-    audio: initialMeta.modalities?.input?.includes("audio") || false,
+    vision: supportsModality(initialMeta, "image", "input"),
+    audio: supportsModality(initialMeta, "audio", "input"),
+    image_generation: supportsImageGeneration(initialMeta),
     reasoning: initialMeta.reasoning || false,
     tool_call: initialMeta.tool_call || false,
   });
@@ -112,6 +135,20 @@ const ModelEditor = ({
   }, [name, modelMetadata]);
 
   const handleSave = () => {
+    const inputModalities = dedupeModalities([
+      ...withoutModalities(initialMeta.modalities?.input, [
+        "image",
+        "audio",
+        "text",
+      ]),
+      ...(capabilities.vision ? ["image"] : []),
+      ...(capabilities.audio ? ["audio"] : []),
+      "text",
+    ]);
+    const outputModalities = dedupeModalities([
+      ...withoutModalities(initialMeta.modalities?.output, ["image"]),
+      ...(capabilities.image_generation ? ["image"] : []),
+    ]);
     const newMeta: ModelMetadata = {
       ...initialMeta,
       id: modelId,
@@ -121,12 +158,8 @@ const ModelEditor = ({
       tool_call: capabilities.tool_call,
       modalities: {
         ...initialMeta.modalities,
-        input: [
-          ...(capabilities.vision ? ["image"] : []),
-          ...(capabilities.audio ? ["audio"] : []),
-          // Preserve other inputs if any? usually just text which is implied
-          "text",
-        ],
+        input: inputModalities,
+        output: outputModalities.length > 0 ? outputModalities : undefined,
       },
     };
     setCustomModelMetadata(modelId, newMeta);
@@ -137,8 +170,9 @@ const ModelEditor = ({
     setName(suggestion.name);
     setCapabilities({
       attachment: suggestion.attachment || false,
-      vision: suggestion.modalities?.input?.includes("image") || false,
-      audio: suggestion.modalities?.input?.includes("audio") || false,
+      vision: supportsModality(suggestion, "image", "input"),
+      audio: supportsModality(suggestion, "audio", "input"),
+      image_generation: supportsImageGeneration(suggestion),
       reasoning: suggestion.reasoning || false,
       tool_call: suggestion.tool_call || false,
     });
@@ -322,6 +356,15 @@ const ModelEditor = ({
                   setCapabilities({ ...capabilities, vision: v })
                 }
                 colorClass="bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-300"
+              />
+              <CapabilityIconToggle
+                label={t("capImageGeneration")}
+                icon={ImageIcon}
+                checked={capabilities.image_generation}
+                onChange={(v: boolean) =>
+                  setCapabilities({ ...capabilities, image_generation: v })
+                }
+                colorClass="bg-cyan-50 border-cyan-200 text-cyan-600 dark:bg-cyan-900/20 dark:border-cyan-800 dark:text-cyan-300"
               />
               <CapabilityIconToggle
                 label={t("capAudio")}

@@ -1,10 +1,11 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { FileAudio, FileText, Library, Link, X } from "lucide-react";
+import { FileAudio, FileText, FileVideo, Library, Link, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { Attachment } from "@/types";
 import { isOPFSUrl, resolveOPFSUrl } from "@/utils/opfs";
 import { resolveObjectUrlWithLifecycle } from "@/lib/utils/objectUrlLifecycle";
+import { useAttachmentDisplayUrl } from "@/lib/utils/useAttachmentDisplayUrl";
 import {
   isKnowledgeCollectionAttachment,
   isKnowledgeFileAttachment,
@@ -36,6 +37,7 @@ const AttachmentPreviewCard: React.FC<{
   } | null>(null);
 
   useEffect(() => {
+    if (attachment.mimeType.startsWith("image/")) return;
     if (!attachment.url || !isOPFSUrl(attachment.url)) return;
 
     const source = attachment.url;
@@ -48,7 +50,7 @@ const AttachmentPreviewCard: React.FC<{
       onError: () => setResolvedOpfsSrc(null),
     });
     return () => resolution.cancel();
-  }, [attachment.url]);
+  }, [attachment.mimeType, attachment.url]);
 
   const resolvedSrc =
     attachment.url && isOPFSUrl(attachment.url)
@@ -56,10 +58,12 @@ const AttachmentPreviewCard: React.FC<{
         ? resolvedOpfsSrc.url
         : ""
       : fallbackSrc;
+  const imageDisplaySrc = useAttachmentDisplayUrl(attachment);
   const isKnowledgeCollection = isKnowledgeCollectionAttachment(attachment);
   const isKnowledgeFile = isKnowledgeFileAttachment(attachment);
   const isImage = attachment.mimeType.startsWith("image/");
   const isAudio = attachment.mimeType.startsWith("audio/");
+  const isVideo = attachment.mimeType.startsWith("video/");
   const isRemote = Boolean(attachment.url && !isOPFSUrl(attachment.url));
 
   const renderIcon = () => {
@@ -75,10 +79,10 @@ const AttachmentPreviewCard: React.FC<{
       );
     }
 
-    if (isImage && resolvedSrc) {
+    if (isImage && (imageDisplaySrc || resolvedSrc)) {
       return (
         <img
-          src={resolvedSrc}
+          src={imageDisplaySrc || resolvedSrc}
           alt={attachment.fileName}
           width={64}
           height={64}
@@ -92,6 +96,9 @@ const AttachmentPreviewCard: React.FC<{
 
     if (isAudio) {
       return <FileAudio size={20} aria-hidden="true" />;
+    }
+    if (isVideo) {
+      return <FileVideo size={20} aria-hidden="true" />;
     }
     if (isRemote) {
       return <Link size={20} aria-hidden="true" />;
@@ -107,9 +114,11 @@ const AttachmentPreviewCard: React.FC<{
         ? t("remoteFile")
         : isAudio
           ? tMessage("audioAttachment")
-          : isImage
-            ? tMessage("previewImageAria", { fileName: attachment.fileName })
-            : tMessage("documentAttachment");
+          : isVideo
+            ? tMessage("videoAttachment")
+            : isImage
+              ? tMessage("previewImageAria", { fileName: attachment.fileName })
+              : tMessage("documentAttachment");
 
   return (
     <li className="group/attachment markdown-file-card relative inline-flex w-56 max-w-[75vw] shrink-0 select-none items-center gap-3 rounded-xl p-2.5 pr-8 text-left transition-[border-color,background-color,box-shadow]">

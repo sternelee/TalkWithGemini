@@ -33,6 +33,7 @@
   "errorFetchingModels": "Error fetching models. Please check Base URL and API Key.",
   "capAttachments": "Attachments",
   "capVision": "Vision",
+  "capImageGeneration": "Image Generation",
   "capAudio": "Audio",
   "capReasoning": "Reasoning",
   "capFunctionCalling": "Function Calling",

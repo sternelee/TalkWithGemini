@@ -8,6 +8,12 @@ export interface Attachment {
   data?: string;
   url?: string;
   fileName: string;
+  displayCache?: {
+    opfsUrl: string;
+    sourceKind: "data" | "url";
+    sourceFingerprint: string;
+    createdAt: number;
+  };
 }
 
 export interface MessageVersion {
@@ -77,6 +83,11 @@ export type MessageOutputBlock =
       error?: string;
       sources: Source[];
       images: ImageSource[];
+    }
+  | {
+      id: string;
+      type: "image";
+      image: Attachment;
     }
   | {
       id: string;
@@ -288,6 +299,7 @@ export interface ChatConfig {
   reasoningMode: ReasoningMode;
   useRAG?: boolean;
   temperature: number;
+  imageCount?: number;
 }
 
 export type ReasoningMode = "off" | "auto" | "low" | "medium" | "high";

@@ -12,7 +12,11 @@ export function truncateMiddle(text: string, maxLength: number): string {
 }
 
 export function isNativeMediaFile(file: File): boolean {
-  return file.type.startsWith("image/") || file.type.startsWith("audio/");
+  return (
+    file.type.startsWith("image/") ||
+    file.type.startsWith("audio/") ||
+    file.type.startsWith("video/")
+  );
 }
 
 export function formatRecordingTime(seconds: number): string {

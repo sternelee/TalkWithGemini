@@ -20,6 +20,24 @@ describe("chat attachment file selection", () => {
     ]);
   });
 
+  it("uses the runtime max file size when provided", () => {
+    const selection = selectChatAttachmentFiles(
+      0,
+      [
+        { name: "accepted.txt", size: 1024 },
+        { name: "blocked.txt", size: 2048 },
+      ],
+      { maxFileBytes: 1500 },
+    );
+
+    expect(selection.accepted.map((file) => file.name)).toEqual([
+      "accepted.txt",
+    ]);
+    expect(selection.rejectedBySize.map((file) => file.name)).toEqual([
+      "blocked.txt",
+    ]);
+  });
+
   it("rejects files that would exceed the attachment count limit", () => {
     const selection = selectChatAttachmentFiles(
       ATTACHMENT_LIMITS.maxCount - 1,
@@ -38,16 +56,20 @@ describe("chat attachment file selection", () => {
   });
 
   it("describes rejected files with user-facing messages", () => {
-    const message = getChatAttachmentFileSelectionMessage({
-      rejectedByCount: [{ name: "extra.txt", size: 1 }],
-      rejectedBySize: [
-        { name: "huge-a.txt", size: ATTACHMENT_LIMITS.maxFileBytes + 1 },
-        { name: "huge-b.txt", size: ATTACHMENT_LIMITS.maxFileBytes + 2 },
-      ],
-    });
+    const message = getChatAttachmentFileSelectionMessage(
+      {
+        rejectedByCount: [{ name: "extra.txt", size: 1 }],
+        rejectedBySize: [
+          { name: "huge-a.txt", size: ATTACHMENT_LIMITS.maxFileBytes + 1 },
+          { name: "huge-b.txt", size: ATTACHMENT_LIMITS.maxFileBytes + 2 },
+        ],
+      },
+      { maxFileBytes: 1500 },
+    );
 
     expect(message).toContain("Attachment limit reached");
     expect(message).toContain("Skipped 2 file(s)");
+    expect(message).toContain("1.5 KB");
   });
 
   it("extracts dropped files from a file list", () => {

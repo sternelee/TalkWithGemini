@@ -47,7 +47,24 @@ describe("app export helpers", () => {
           {
             messages: [
               {
-                attachments: [{ url: "opfs://chat/s1/attachment.txt" }],
+                attachments: [
+                  {
+                    url: "opfs://chat/s1/attachment.txt",
+                    displayCache: {
+                      opfsUrl: "opfs://images/generated/display-cache.png",
+                    },
+                  },
+                ],
+                outputBlocks: [
+                  {
+                    type: "image",
+                    image: {
+                      displayCache: {
+                        opfsUrl: "opfs://images/generated/output-block.png",
+                      },
+                    },
+                  },
+                ],
               },
             ],
           },
@@ -64,6 +81,8 @@ describe("app export helpers", () => {
 
     expect([...referenced].sort()).toEqual([
       "opfs://chat/s1/attachment.txt",
+      "opfs://images/generated/display-cache.png",
+      "opfs://images/generated/output-block.png",
       "opfs://knowledge-base/c1/local.md",
       "opfs://workspaces/w1/preset.txt",
     ]);

@@ -16,6 +16,7 @@
   "closeSuggestions": "Close model name suggestions",
   "capAttachment": "Attachment",
   "capVision": "Vision",
+  "capImageGeneration": "Image Generation",
   "capAudio": "Audio",
   "capReasoning": "Reasoning",
   "capToolCall": "Tool Call"

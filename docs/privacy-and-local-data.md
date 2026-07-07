@@ -12,10 +12,23 @@ Neo Chat uses several browser storage layers:
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `localStorage`                  | Core settings, provider records, selected models, and provider API key envelopes.                                                                                           |
 | IndexedDB through `localforage` | Chat metadata, messages, app settings, installed plugins, installed/custom skills, skill catalog and definition caches, assistants, knowledge metadata, and local memories. |
-| OPFS                            | Uploaded chat files, workspace files, and knowledge-base source files.                                                                                                      |
+| OPFS                            | Uploaded chat files, workspace files, knowledge-base source files, and image display-cache copies for user-sent or model-generated images.                                  |
 
 Clearing browser data can remove local chats, settings, plugin configuration,
 assistant records, memories, and uploaded files.
+
+Generated images from native image models are saved as message output data in
+IndexedDB with the rest of the chat message. When users export app data, those
+image output blocks are included in the exported conversation payload. PNG/PDF
+message exports render the visible output blocks, while full app export
+preserves the stored message data.
+
+Image attachments keep their original `data` or remote `url` as the canonical
+message data. OPFS image copies are display caches mapped from that original
+source and are resolved to runtime `blob:` URLs with `URL.createObjectURL(...)`
+for rendering. Blob URLs are not persisted, and model requests strip display
+cache metadata before sending base64 data or the original remote URL to a
+provider.
 
 Memory is local-first, but it is not invisible to model providers. When the
 memory search tool is used, matching memory snippets are included in the

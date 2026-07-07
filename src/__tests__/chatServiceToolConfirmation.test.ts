@@ -51,6 +51,8 @@ vi.mock("@/lib/utils/model", () => ({
     const [providerId, modelName] = model.split(":");
     return { providerId, modelName };
   }),
+  supportsImageGeneration: vi.fn(() => false),
+  supportsTextOutput: vi.fn(() => true),
 }));
 
 vi.mock("@/lib/settings/searchRag", () => ({
@@ -437,6 +439,53 @@ describe("chat service tool execution", () => {
     expect(result).toBe("The tool failed.");
     expect(mocks.executePluginFunction).toHaveBeenCalledTimes(1);
     expect(statuses).toEqual(["pending", "running", "error"]);
+  });
+
+  it("keeps streamed generated images in output blocks without duplicating them as attachments", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () =>
+      sseResponse([
+        {
+          type: "image",
+          image: {
+            id: "img_generated",
+            mimeType: "image/png",
+            data: "aW1hZ2U=",
+            fileName: "generated.png",
+          },
+        },
+        { type: "done" },
+      ]),
+    );
+    const chunks: MessageOutputBlock[][] = [];
+    const onImage = vi.fn();
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Create an image",
+      [],
+      {},
+      (_content, _reasoning, outputBlocks) => {
+        if (outputBlocks) chunks.push(outputBlocks);
+      },
+      undefined,
+      undefined,
+      undefined,
+      onImage,
+    );
+
+    expect(onImage).not.toHaveBeenCalled();
+    expect(chunks.at(-1)).toEqual([
+      expect.objectContaining({
+        type: "image",
+        image: expect.objectContaining({
+          id: "img_generated",
+          data: "aW1hZ2U=",
+        }),
+      }),
+    ]);
   });
 
   it("adds API-only HTML visual request instructions when system prompt enables them", async () => {

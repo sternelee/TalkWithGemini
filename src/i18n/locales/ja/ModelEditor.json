@@ -16,6 +16,7 @@
   "closeSuggestions": "モデル名候補を閉じる",
   "capAttachment": "アタッチメント",
   "capVision": "画像認識 (Vision)",
+  "capImageGeneration": "画像生成",
   "capAudio": "音声認識 (Audio)",
   "capReasoning": "推論 (Reasoning)",
   "capToolCall": "ツール呼び出し (Tool Call)"

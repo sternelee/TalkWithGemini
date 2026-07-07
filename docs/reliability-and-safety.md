@@ -117,6 +117,26 @@ mind maps, image previews, citations, and artifacts. Inline HTML is sanitized;
 scripts, event handlers, iframes, unsafe URLs, full HTML documents, and unsafe
 style constructs are blocked before rendering.
 
+Native model image output is stored as ordered `MessageOutputBlock` entries.
+Mixed Gemini text/image responses and OpenAI image-generation events append
+`text` and `image` blocks in the order received, so chat rendering, reading
+mode, PNG export, and PDF print views use `outputBlocks` instead of only
+`message.content`. User-sent and model-generated images can keep OPFS
+display-cache copies mapped to the original `data` or remote `url`; renderers
+resolve those OPFS files to runtime Blob URLs and revoke the Blob URLs when the
+component unmounts or the image source changes. Provider payloads strip the
+display cache and send only base64 data or the original remote URL.
+
+Remote image URLs still pass through the existing client and server URL safety
+policies. The app does not fetch private-network image edit sources on behalf
+of users; image edit requests use uploaded inline attachments or provider-side
+file URLs that pass validation. If a provider or route does not support a
+requested image option such as multiple images, the provider error is surfaced
+as a generation failure instead of silently downgrading to another model.
+
+If OPFS display-cache writes or reads fail, rendering falls back to the
+canonical message image data instead of failing the generation.
+
 Mermaid and mind map fullscreen views normalize generated SVG root attributes
 for stable sizing and export snapshots. Fullscreen dialogs and reader views trap
 focus, close with Escape, restore focus on close, respect safe-area insets, and

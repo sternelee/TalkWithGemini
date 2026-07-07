@@ -33,6 +33,7 @@
   "errorFetchingModels": "获取模型出错，请检查基础 URL 和 API 密钥。",
   "capAttachments": "附件",
   "capVision": "视觉",
+  "capImageGeneration": "图片生成",
   "capAudio": "音频",
   "capReasoning": "推理",
   "capFunctionCalling": "函数调用",

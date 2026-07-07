@@ -9,6 +9,7 @@ import {
   ChatRequestSchema,
   DocumentParseSchema,
   EncryptedSecretEnvelopeSchema,
+  ImageGenerateRequestSchema,
   MessageSchema,
   SearchRequestSchema,
   SimpleGenerateRequestSchema,
@@ -161,6 +162,51 @@ describe("api schemas", () => {
     ).toThrow(/Attachment payload is too large/i);
   });
 
+  it("rejects chat and image generation attachments over the runtime file limit", () => {
+    const originalLimit = process.env.MAX_ATTACHMENT_FILE_BYTES;
+    process.env.MAX_ATTACHMENT_FILE_BYTES = "4";
+    try {
+      expect(() =>
+        ChatRequestSchema.parse({
+          provider: { type: "Gemini", apiKeySecret: encryptedSecret },
+          modelName: "gemini-test",
+          history: [],
+          newMessage: "hello",
+          attachments: [
+            {
+              id: "att_1",
+              mimeType: "text/plain",
+              fileName: "large.txt",
+              data: "aGVsbG8=",
+            },
+          ],
+        }),
+      ).toThrow(/Attachment file is too large/i);
+
+      expect(() =>
+        ImageGenerateRequestSchema.parse({
+          provider: { type: "OpenAI", apiKeySecret: encryptedSecret },
+          modelName: "gpt-image-2",
+          prompt: "edit",
+          attachments: [
+            {
+              id: "att_1",
+              mimeType: "image/png",
+              fileName: "large.png",
+              data: "aGVsbG8=",
+            },
+          ],
+        }),
+      ).toThrow(/Attachment file is too large/i);
+    } finally {
+      if (originalLimit === undefined) {
+        delete process.env.MAX_ATTACHMENT_FILE_BYTES;
+      } else {
+        process.env.MAX_ATTACHMENT_FILE_BYTES = originalLimit;
+      }
+    }
+  });
+
   it("rejects chat requests with oversized model or text fields", () => {
     const baseRequest = {
       provider: { type: "Gemini", apiKeySecret: encryptedSecret },
@@ -224,17 +270,70 @@ describe("api schemas", () => {
       newMessage: "hello",
     };
 
-    expect(() =>
+    expect(
       ChatRequestSchema.parse({
         ...baseRequest,
-        config: { reasoningMode: "auto" },
+        config: { reasoningMode: "auto", imageCount: 3 },
       }),
-    ).not.toThrow();
+    ).toMatchObject({
+      config: { reasoningMode: "auto", imageCount: 3 },
+    });
 
     expect(() =>
       ChatRequestSchema.parse({
         ...baseRequest,
         config: { reasoningMode: "xhigh" },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      ChatRequestSchema.parse({
+        ...baseRequest,
+        config: { imageCount: 5 },
+      }),
+    ).toThrow();
+  });
+
+  it("accepts optional image generation count and validates edit attachments", () => {
+    const baseRequest = {
+      provider: { type: "OpenAI", apiKeySecret: encryptedSecret },
+      modelName: "gpt-image-2",
+      prompt: "make three variants",
+    };
+
+    expect(
+      ImageGenerateRequestSchema.parse({
+        ...baseRequest,
+        imageCount: 4,
+        attachments: [
+          {
+            id: "att_1",
+            mimeType: "image/png",
+            fileName: "source.png",
+            data: "abc",
+          },
+        ],
+      }),
+    ).toMatchObject({ imageCount: 4 });
+
+    expect(() =>
+      ImageGenerateRequestSchema.parse({
+        ...baseRequest,
+        imageCount: 5,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      ImageGenerateRequestSchema.parse({
+        ...baseRequest,
+        attachments: [
+          {
+            id: "att_2",
+            mimeType: "image/png",
+            fileName: "blocked.png",
+            url: "http://127.0.0.1/private.png",
+          },
+        ],
       }),
     ).toThrow();
   });

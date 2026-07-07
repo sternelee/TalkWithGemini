@@ -2,13 +2,49 @@ import type { Attachment } from "@/types";
 
 export const ATTACHMENT_LIMITS = {
   maxCount: 20,
-  maxFileBytes: 5 * 1024 * 1024,
+  maxFileBytes: 10 * 1024 * 1024,
   maxBase64Chars: 30 * 1024 * 1024,
   maxTotalBase64Chars: 30 * 1024 * 1024,
   maxUrlChars: 4_096,
   maxFileNameChars: 512,
   maxMimeTypeChars: 200,
 } as const;
+
+const MAX_ATTACHMENT_FILE_BYTES_ENV = "MAX_ATTACHMENT_FILE_BYTES";
+const ATTACHMENT_BASE64_DECODE_RATIO = 3 / 4;
+
+export const ATTACHMENT_LIMIT_HARD_MAX_FILE_BYTES = Math.floor(
+  Math.min(
+    ATTACHMENT_LIMITS.maxBase64Chars,
+    ATTACHMENT_LIMITS.maxTotalBase64Chars,
+  ) * ATTACHMENT_BASE64_DECODE_RATIO,
+);
+
+function getProcessEnv(): Record<string, string | undefined> {
+  const globalWithProcess = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  return globalWithProcess.process?.env || {};
+}
+
+export function normalizeMaxAttachmentFileBytes(value: unknown): number {
+  const parsed =
+    typeof value === "string" || typeof value === "number"
+      ? Math.floor(Number(value))
+      : NaN;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return ATTACHMENT_LIMITS.maxFileBytes;
+  }
+
+  return Math.min(parsed, ATTACHMENT_LIMIT_HARD_MAX_FILE_BYTES);
+}
+
+export function getRuntimeMaxAttachmentFileBytes(
+  env: Record<string, string | undefined> = getProcessEnv(),
+): number {
+  return normalizeMaxAttachmentFileBytes(env[MAX_ATTACHMENT_FILE_BYTES_ENV]);
+}
 
 export const VOICE_LIMITS = {
   maxTranscriptionAudioBytes: 25 * 1024 * 1024,
@@ -181,6 +217,11 @@ export const IMAGE_PREVIEW_LIMITS = {
   maxDescriptionChars: 500,
 } as const;
 
+export const IMAGE_GENERATION_LIMITS = {
+  minCount: 1,
+  maxCount: 4,
+} as const;
+
 export const HTML_PREVIEW_LIMITS = {
   maxSrcDocChars: 500_000,
 } as const;
@@ -295,6 +336,14 @@ export function formatBytes(bytes: number): string {
 
 export function getAttachmentPayloadChars(attachment: Attachment): number {
   return attachment.data?.length || 0;
+}
+
+export function getAttachmentPayloadBytes(attachment: Attachment): number {
+  const data = attachment.data?.trim();
+  if (!data) return 0;
+
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
 }
 
 export function getAttachmentsPayloadChars(attachments: Attachment[]): number {

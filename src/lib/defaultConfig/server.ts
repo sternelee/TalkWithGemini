@@ -4,6 +4,7 @@ import {
   RAG_LIMITS,
   SEARCH_CONFIG_LIMITS,
   SYSTEM_SETTINGS_LIMITS,
+  getRuntimeMaxAttachmentFileBytes,
 } from "../../config/limits";
 import { DEFAULT_SYSTEM_SETTINGS } from "../../config/defaults";
 import { normalizeProviderModelId } from "../providers/models";
@@ -98,17 +99,41 @@ function readProviderModelCapability(
   capabilities: unknown,
   key: string,
 ): boolean | undefined {
+  const aliases = new Set(
+    key === "image_generation"
+      ? ["image_generation", "image_output"]
+      : key === "image_editing"
+        ? ["image_editing", "image_edit"]
+        : [key],
+  );
+
   if (Array.isArray(capabilities)) {
     return capabilities.some(
-      (item) => typeof item === "string" && item.trim().toLowerCase() === key,
+      (item) =>
+        typeof item === "string" && aliases.has(item.trim().toLowerCase()),
     )
       ? true
       : undefined;
   }
 
   if (!capabilities || typeof capabilities !== "object") return undefined;
-  const value = (capabilities as Record<string, unknown>)[key];
-  return typeof value === "boolean" ? value : undefined;
+  const record = capabilities as Record<string, unknown>;
+  for (const alias of aliases) {
+    const value = record[alias];
+    if (typeof value === "boolean") return value;
+  }
+  return undefined;
+}
+
+function readEnvModalities(value: Record<string, unknown>) {
+  const modalities =
+    value.modalities && typeof value.modalities === "object"
+      ? (value.modalities as Record<string, unknown>)
+      : {};
+  return {
+    input: Array.isArray(modalities.input) ? modalities.input : undefined,
+    output: Array.isArray(modalities.output) ? modalities.output : undefined,
+  };
 }
 
 function modelMetadataFromEnvObject(
@@ -116,15 +141,32 @@ function modelMetadataFromEnvObject(
   modelId: string,
 ): ModelMetadata | null {
   const capabilities = value.capabilities;
-  const inputModalities = [
-    ...(readProviderModelCapability(capabilities, "vision") === true
-      ? ["image"]
-      : []),
-    ...(readProviderModelCapability(capabilities, "audio") === true
-      ? ["audio"]
-      : []),
-  ];
+  const explicitModalities = readEnvModalities(value);
+  const inputModalities = explicitModalities.input
+    ? [...explicitModalities.input]
+    : [
+        ...(readProviderModelCapability(capabilities, "vision") === true
+          ? ["image"]
+          : []),
+        ...(readProviderModelCapability(capabilities, "image_editing") === true
+          ? ["image"]
+          : []),
+        ...(readProviderModelCapability(capabilities, "audio") === true
+          ? ["audio"]
+          : []),
+      ];
   if (inputModalities.length > 0) inputModalities.push("text");
+  const outputModalities = explicitModalities.output
+    ? [...explicitModalities.output]
+    : [
+        ...(readProviderModelCapability(capabilities, "image_generation") ===
+        true
+          ? ["image"]
+          : []),
+        ...(readProviderModelCapability(capabilities, "image_editing") === true
+          ? ["image"]
+          : []),
+      ];
 
   return normalizeModelMetadata(
     {
@@ -134,8 +176,15 @@ function modelMetadataFromEnvObject(
       reasoning: readProviderModelCapability(capabilities, "reasoning"),
       reasoning_options: value.reasoning_options,
       tool_call: readProviderModelCapability(capabilities, "tool_call"),
-      ...(inputModalities.length > 0
-        ? { modalities: { input: inputModalities } }
+      ...(inputModalities.length > 0 || outputModalities.length > 0
+        ? {
+            modalities: {
+              ...(inputModalities.length > 0 ? { input: inputModalities } : {}),
+              ...(outputModalities.length > 0
+                ? { output: outputModalities }
+                : {}),
+            },
+          }
         : {}),
     },
     modelId,
@@ -594,6 +643,11 @@ export function getPublicServerConfig(): PublicServerConfig {
       rateLimitStore: getPublicStoreState("RATE_LIMIT_STORE"),
       documentParseJobStore: getPublicStoreState("DOCUMENT_PARSE_JOB_STORE"),
       pluginRegistryStore: getPublicStoreState("PLUGIN_REGISTRY_STORE"),
+    },
+    limits: {
+      attachments: {
+        maxFileBytes: getRuntimeMaxAttachmentFileBytes(),
+      },
     },
     ...(system ? { system } : {}),
   };

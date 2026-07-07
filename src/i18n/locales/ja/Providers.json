@@ -33,6 +33,7 @@
   "errorFetchingModels": "モデルの取得中にエラーが発生しました。ベース URL と API キーを確認してください。",
   "capAttachments": "アタッチメント",
   "capVision": "画像認識 (Vision)",
+  "capImageGeneration": "画像生成",
   "capAudio": "音声認識 (Audio)",
   "capReasoning": "推論 (Reasoning)",
   "capFunctionCalling": "ツール呼び出し (Function Calling)",

@@ -13,6 +13,10 @@ export interface ChatAttachmentFileSelection<
   rejectedBySize: T[];
 }
 
+interface ChatAttachmentFileSelectionOptions {
+  maxFileBytes?: number;
+}
+
 type FileListLike = Iterable<File> | ArrayLike<File>;
 
 interface ClipboardItemLike {
@@ -62,13 +66,18 @@ export function extractChatAttachmentFilesFromClipboard(
 
 export function selectChatAttachmentFiles<
   T extends ChatAttachmentFileCandidate,
->(existingCount: number, candidates: T[]): ChatAttachmentFileSelection<T> {
+>(
+  existingCount: number,
+  candidates: T[],
+  options: ChatAttachmentFileSelectionOptions = {},
+): ChatAttachmentFileSelection<T> {
   const accepted: T[] = [];
   const rejectedByCount: T[] = [];
   const rejectedBySize: T[] = [];
+  const maxFileBytes = options.maxFileBytes ?? ATTACHMENT_LIMITS.maxFileBytes;
 
   for (const candidate of candidates) {
-    if (candidate.size > ATTACHMENT_LIMITS.maxFileBytes) {
+    if (candidate.size > maxFileBytes) {
       rejectedBySize.push(candidate);
       continue;
     }
@@ -89,8 +98,10 @@ export function getChatAttachmentFileSelectionMessage(
     ChatAttachmentFileSelection<ChatAttachmentFileCandidate>,
     "rejectedByCount" | "rejectedBySize"
   >,
+  options: ChatAttachmentFileSelectionOptions = {},
 ): string {
   const messages: string[] = [];
+  const maxFileBytes = options.maxFileBytes ?? ATTACHMENT_LIMITS.maxFileBytes;
 
   if (selection.rejectedByCount.length > 0) {
     messages.push(
@@ -101,13 +112,13 @@ export function getChatAttachmentFileSelectionMessage(
   if (selection.rejectedBySize.length === 1) {
     messages.push(
       `File "${selection.rejectedBySize[0].name}" exceeds ${formatBytes(
-        ATTACHMENT_LIMITS.maxFileBytes,
+        maxFileBytes,
       )}.`,
     );
   } else if (selection.rejectedBySize.length > 1) {
     messages.push(
       `Skipped ${selection.rejectedBySize.length} file(s): each file must be ${formatBytes(
-        ATTACHMENT_LIMITS.maxFileBytes,
+        maxFileBytes,
       )} or smaller.`,
     );
   }

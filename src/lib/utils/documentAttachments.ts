@@ -1,6 +1,7 @@
 import type { Attachment, RAGConfig } from "../../types";
 import { parseDocumentFile } from "../../services/api/docParseService";
 import { resolveDocumentParseToken } from "../security/localSecretResolvers";
+import { logDevError } from "./devLogger";
 
 const TEXT_MIME_TYPES = new Set([
   "application/javascript",
@@ -23,6 +24,8 @@ export interface ChatDocumentAttachmentResult {
   attachment: Attachment;
   parsed: boolean;
 }
+
+type SaveOriginalFile = (file: File, prefix: string) => Promise<string>;
 
 function normalizeMimeType(value: string | undefined, fallback = "text/plain") {
   return (value || fallback).trim().toLowerCase();
@@ -101,23 +104,41 @@ async function parseFileToMarkdown(
   return markdown;
 }
 
+async function trySaveOriginalDocument(
+  file: File,
+  saveOriginalFile: SaveOriginalFile | undefined,
+): Promise<string | undefined> {
+  if (!saveOriginalFile) return undefined;
+
+  try {
+    return await saveOriginalFile(file, "chat/documents");
+  } catch (error) {
+    logDevError("Failed to cache original document in OPFS", error);
+    return undefined;
+  }
+}
+
 export async function createChatDocumentAttachment(
   file: File,
   {
     id,
     rag,
+    saveOriginalFile,
   }: {
     id: string;
     rag: RAGConfig;
+    saveOriginalFile?: SaveOriginalFile;
   },
 ): Promise<ChatDocumentAttachmentResult> {
   if (isTextDocumentFile(file)) {
     const text = await file.text();
+    const originalUrl = await trySaveOriginalDocument(file, saveOriginalFile);
     return {
       attachment: {
         id,
         mimeType: file.type || "text/plain",
         data: encodeTextToBase64(text),
+        ...(originalUrl ? { url: originalUrl } : {}),
         fileName: file.name,
       },
       parsed: false,
@@ -125,11 +146,13 @@ export async function createChatDocumentAttachment(
   }
 
   const markdown = await parseFileToMarkdown(file, rag);
+  const originalUrl = await trySaveOriginalDocument(file, saveOriginalFile);
   return {
     attachment: {
       id,
       mimeType: "text/markdown",
       data: encodeTextToBase64(markdown),
+      ...(originalUrl ? { url: originalUrl } : {}),
       fileName: file.name,
     },
     parsed: true,

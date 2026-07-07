@@ -4,6 +4,7 @@
 
 import {
   GoogleGenAI,
+  Modality,
   ThinkingLevel,
   type GenerateContentParameters,
   type GenerateContentConfig,
@@ -28,6 +29,8 @@ export interface GeminiStreamOptions {
   temperature?: number;
   tools?: any[];
   enableGoogleSearch?: boolean;
+  enableImageGeneration?: boolean;
+  imageCount?: number;
   useReasoning?: boolean;
   reasoningMode?: ReasoningMode;
   onChunk: (message: SSEMessage) => void;
@@ -101,6 +104,18 @@ function getGeminiThinkingConfig(
   return { includeThoughts: true };
 }
 
+function appendImageCountInstruction(
+  instruction: string | undefined,
+  imageCount: number | undefined,
+): string | undefined {
+  if (!imageCount) return instruction;
+
+  const imageInstruction = `When generating images for this request, create ${imageCount} separate image output${imageCount === 1 ? "" : "s"}.`;
+  return instruction
+    ? `${instruction}\n\n${imageInstruction}`
+    : imageInstruction;
+}
+
 function extractGeminiGroundingSources(groundingMetadata: any) {
   const chunks = Array.isArray(groundingMetadata?.groundingChunks)
     ? groundingMetadata.groundingChunks
@@ -146,6 +161,8 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
     temperature = 1,
     tools,
     enableGoogleSearch,
+    enableImageGeneration,
+    imageCount,
     useReasoning,
     reasoningMode: rawReasoningMode,
     onChunk,
@@ -161,8 +178,12 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
   };
   const config: GenerateContentConfig = {};
 
-  if (systemInstruction) {
-    config.systemInstruction = systemInstruction;
+  const effectiveSystemInstruction = appendImageCountInstruction(
+    systemInstruction,
+    enableImageGeneration ? imageCount : undefined,
+  );
+  if (effectiveSystemInstruction) {
+    config.systemInstruction = effectiveSystemInstruction;
   }
 
   if (temperature !== undefined) {
@@ -183,6 +204,9 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
   }
   if (geminiTools.length > 0) {
     config.tools = geminiTools;
+  }
+  if (enableImageGeneration) {
+    config.responseModalities = [Modality.TEXT, Modality.IMAGE];
   }
 
   requestParams.config = config;

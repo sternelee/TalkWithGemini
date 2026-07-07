@@ -41,6 +41,39 @@ describe("message output blocks", () => {
     ]);
   });
 
+  it("keeps generated images in model output order", () => {
+    const builder = createMessageOutputBlockBuilder({
+      createId: (() => {
+        let index = 0;
+        return () => `block-${++index}`;
+      })(),
+    });
+
+    builder.appendText("Before ");
+    builder.appendImage({
+      id: "img_1",
+      mimeType: "image/png",
+      data: "abc123",
+      fileName: "generated.png",
+    });
+    builder.appendText("After");
+
+    expect(builder.getBlocks()).toEqual([
+      { id: "block-1", type: "text", content: "Before " },
+      {
+        id: "block-2",
+        type: "image",
+        image: {
+          id: "img_1",
+          mimeType: "image/png",
+          data: "abc123",
+          fileName: "generated.png",
+        },
+      },
+      { id: "block-3", type: "text", content: "After" },
+    ]);
+  });
+
   it("merges consecutive tool calls and updates tool results in place", () => {
     const builder = createMessageOutputBlockBuilder({
       createId: (() => {

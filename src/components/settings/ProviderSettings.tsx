@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Check,
   Eye,
+  Image as ImageIcon,
   Paperclip,
   Mic,
   Lightbulb,
@@ -38,6 +39,7 @@ import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import { supportsImageGeneration, supportsModality } from "@/lib/utils/model";
 
 const ProviderSettings = () => {
   const t = useTranslations("Providers");
@@ -256,7 +258,7 @@ const ProviderSettings = () => {
           "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800",
       });
     }
-    if (meta.modalities?.input?.includes("image")) {
+    if (supportsModality(meta, "image", "input")) {
       capabilities.push({
         key: "vis",
         icon: Eye,
@@ -265,7 +267,16 @@ const ProviderSettings = () => {
           "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300 border-green-200 dark:border-green-800",
       });
     }
-    if (meta.modalities?.input?.includes("audio")) {
+    if (supportsImageGeneration(meta)) {
+      capabilities.push({
+        key: "img",
+        icon: ImageIcon,
+        label: t("capImageGeneration"),
+        className:
+          "bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800",
+      });
+    }
+    if (supportsModality(meta, "audio", "input")) {
       capabilities.push({
         key: "aud",
         icon: Mic,

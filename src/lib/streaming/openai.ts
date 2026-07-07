@@ -18,6 +18,7 @@ import {
   isReasoningEnabled,
   normalizeReasoningMode,
 } from "../chat/reasoning";
+import { normalizeGeneratedImageAttachment } from "../utils/generatedImages";
 
 export interface OpenAIStreamOptions {
   client: OpenAI;
@@ -127,6 +128,56 @@ function extractReasoningSummary(item: any): string {
     .join("");
 }
 
+function extractImageDataValue(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const data = extractImageDataValue(item);
+      if (data) return data;
+    }
+    return "";
+  }
+  if (typeof value !== "object") return "";
+
+  const record = value as Record<string, unknown>;
+  return (
+    extractImageDataValue(record.result) ||
+    extractImageDataValue(record.image) ||
+    extractImageDataValue(record.b64_json) ||
+    extractImageDataValue(record.data) ||
+    extractImageDataValue(record.partial_image_b64) ||
+    extractImageDataValue(record.base64)
+  );
+}
+
+function emitResponsesImageGeneration(
+  event: any,
+  onChunk: (message: SSEMessage) => void,
+): void {
+  const item = event?.item || event?.output || event;
+  const data = extractImageDataValue([
+    item?.result,
+    item?.image,
+    item?.b64_json,
+    item?.data,
+    item?.partial_image_b64,
+    event?.result,
+    event?.image,
+    event?.b64_json,
+    event?.data,
+    event?.partial_image_b64,
+  ]);
+  const image = normalizeGeneratedImageAttachment({
+    id: item?.id || event?.item_id || event?.id,
+    mimeType: item?.mime_type || item?.mimeType || event?.mime_type,
+    data,
+    fileName: item?.file_name || item?.fileName || "generated-image.png",
+  });
+
+  if (image) onChunk({ type: "image", image });
+}
+
 type ThinkTagStreamEvent = {
   type: "content" | "reasoning";
   content: string;
@@ -232,6 +283,7 @@ export interface OpenAIResponsesStreamOptions {
   useReasoning?: boolean;
   reasoningMode?: ReasoningMode;
   enableWebSearch?: boolean;
+  enableImageGeneration?: boolean;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -446,6 +498,7 @@ export async function streamOpenAIResponses(
     useReasoning,
     reasoningMode: rawReasoningMode,
     enableWebSearch,
+    enableImageGeneration,
     onChunk,
   } = options;
   const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
@@ -466,6 +519,12 @@ export async function streamOpenAIResponses(
       "web_search_call.results",
       "web_search_call.action.sources",
     ];
+  }
+  if (
+    enableImageGeneration &&
+    !requestTools.some((tool) => tool?.type === "image_generation")
+  ) {
+    requestTools.push({ type: "image_generation" });
   }
   if (requestTools.length > 0) requestParams.tools = requestTools;
   if (reasoningMode === "auto") {
@@ -577,6 +636,13 @@ export async function streamOpenAIResponses(
         }
         break;
       }
+
+      case "response.image_generation_call.completed":
+        emitResponsesImageGeneration(event, onChunk);
+        break;
+
+      case "response.image_generation_call.partial_image":
+        break;
 
       case "response.completed": {
         const usage = event.response?.usage;

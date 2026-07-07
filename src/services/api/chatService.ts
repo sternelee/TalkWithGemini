@@ -16,9 +16,18 @@ import { v7 as uuidv7 } from "uuid";
 import { executePluginFunction } from "@/utils/pluginUtils";
 import { createSearchProvider } from "./searchService";
 import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
-import { parseModelString } from "@/lib/utils/model";
+import {
+  parseModelString,
+  supportsImageGeneration,
+  supportsTextOutput,
+} from "@/lib/utils/model";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
+import { cacheGeneratedImageAttachments } from "../../lib/utils/generatedImages";
+import {
+  stripAttachmentsDisplayCacheForModel,
+  stripMessagesDisplayCacheForModel,
+} from "../../lib/utils/imageDisplayCache";
 import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
 import {
@@ -26,6 +35,7 @@ import {
   getSearchCompatibilityErrorMessage,
 } from "@/lib/settings/searchRag";
 import { createMessageOutputBlockBuilder } from "../../lib/chat/messageOutputBlocks";
+import { resolveImageGenerationOptions } from "../../lib/chat/imageGenerationOptions";
 import {
   buildSearchContextForPrompt,
   createSearchDecisionPrompt,
@@ -142,7 +152,7 @@ async function executeMemorySearchTool(args: unknown): Promise<unknown> {
 
 function resolveModelMetadata(modelName: string): ModelMetadata | undefined {
   const { modelMetadata, customModelMetadata } = useSettingsStore.getState();
-  return customModelMetadata[modelName] || modelMetadata[modelName];
+  return customModelMetadata?.[modelName] || modelMetadata?.[modelName];
 }
 
 function getMessagesContextLength(messages: Message[]): number {
@@ -414,6 +424,8 @@ export const generateRAGSearchQueries = async (
 export const generateImage = async (
   modelString: string,
   prompt: string,
+  options: { imageCount?: number; attachments?: Attachment[] } = {},
+  signal?: AbortSignal,
 ): Promise<{ images: Attachment[]; message: string }> => {
   const { providerId, modelName } = parseModelString(modelString);
 
@@ -425,6 +437,9 @@ export const generateImage = async (
   if (!provider) throw new Error("No provider found");
 
   try {
+    const requestAttachments = options.attachments
+      ? await stripAttachmentsDisplayCacheForModel(options.attachments)
+      : undefined;
     const response = await fetchWithByokRetry(async () =>
       fetch("/api/chat/generate-image", {
         method: "POST",
@@ -435,7 +450,10 @@ export const generateImage = async (
           provider: await buildProviderRuntimeConfig(provider),
           modelName,
           prompt,
+          imageCount: options.imageCount,
+          attachments: requestAttachments,
         }),
+        signal,
       }),
     );
 
@@ -449,8 +467,9 @@ export const generateImage = async (
       images?: Attachment[];
       message?: string;
     }>(response, "Image generation failed");
+    const images = await cacheGeneratedImageAttachments(data.images || []);
     return {
-      images: data.images || [],
+      images,
       message: data.message || "No images generated.",
     };
   } catch (error) {
@@ -501,6 +520,7 @@ export const streamChatResponse = async (
     : providers.find((p) => p.enabled);
 
   if (!provider) throw new Error("No provider available");
+  const selectedModelMetadata = resolveModelMetadata(modelName);
 
   let effectiveNewMessage = newMessage;
   const { search } = useSettingsStore.getState();
@@ -635,7 +655,9 @@ export const streamChatResponse = async (
     const allToolCalls: ToolCall[] = [];
     let committedContent = "";
     let committedReasoning = "";
-    let requestHistory = history as Message[];
+    let requestHistory = await stripMessagesDisplayCacheForModel(
+      history as Message[],
+    );
     const messageWithSkills = skillsContext?.trim()
       ? appendContextToChatInput(effectiveNewMessage, skillsContext, {
           separator: "\n\n",
@@ -648,8 +670,71 @@ export const streamChatResponse = async (
       ),
       userSystemInstruction,
     );
-    let requestAttachments = attachments;
+    let requestAttachments =
+      await stripAttachmentsDisplayCacheForModel(attachments);
+    let requestConfig: Partial<ChatConfig> = { ...config };
     const maxToolRounds = PLUGIN_EXECUTION_LIMITS.maxToolRounds;
+
+    if (
+      requestConfig.imageCount === undefined &&
+      supportsImageGeneration(selectedModelMetadata)
+    ) {
+      const availableModels = providers
+        .filter((item) => item.enabled)
+        .flatMap((item) =>
+          item.models.map((availableModelName) => ({
+            id: `${item.id}:${availableModelName}`,
+            metadata: resolveModelMetadata(availableModelName),
+          })),
+        );
+      const imageOptions = await resolveImageGenerationOptions({
+        userMessage: newMessage,
+        selectedModel: model,
+        selectedModelMetadata,
+        defaultPromptOptimizationModel: getTaskModel("promptOptimization"),
+        availableModels,
+        generate: (planningModel, prompt) =>
+          streamGenerateContent(planningModel, prompt, () => {}, signal),
+      });
+      requestConfig = { ...requestConfig, ...imageOptions };
+    }
+
+    if (
+      provider.type === "OpenAI" &&
+      supportsImageGeneration(selectedModelMetadata) &&
+      (!supportsTextOutput(selectedModelMetadata) ||
+        modelName.toLowerCase().startsWith("gpt-image-"))
+    ) {
+      const { images, message } = await generateImage(
+        model,
+        requestMessage,
+        {
+          imageCount: requestConfig.imageCount,
+          attachments: requestAttachments,
+        },
+        signal,
+      );
+
+      if (images.length > 0) {
+        for (const image of images) {
+          outputBlockBuilder.appendImage(image);
+        }
+        onChunk(
+          committedContent,
+          committedReasoning,
+          outputBlockBuilder.getBlocks(),
+        );
+        return committedContent;
+      }
+
+      outputBlockBuilder.appendText(message);
+      onChunk(
+        committedContent + message,
+        committedReasoning,
+        outputBlockBuilder.getBlocks(),
+      );
+      return committedContent + message;
+    }
 
     const emitToolCalls = () => {
       onToolUpdate?.([...allToolCalls]);
@@ -682,13 +767,18 @@ export const streamChatResponse = async (
             history: requestHistory,
             newMessage: requestMessage,
             attachments: requestAttachments,
-            config,
+            config: requestConfig,
             systemInstruction: userSystemInstruction,
             tools,
+            enableImageGeneration:
+              supportsImageGeneration(selectedModelMetadata) &&
+              (provider.type === "OpenAI" || provider.type === "Gemini"),
             enableGoogleSearch:
-              config?.useSearch && searchCompatibility.mode === "gemini-google",
+              requestConfig?.useSearch &&
+              searchCompatibility.mode === "gemini-google",
             enableOpenAIWebSearch:
-              config?.useSearch && searchCompatibility.mode === "openai-web",
+              requestConfig?.useSearch &&
+              searchCompatibility.mode === "openai-web",
           }),
           signal,
         }),
@@ -712,7 +802,7 @@ export const streamChatResponse = async (
       let buffer = "";
       const roundToolCalls: ToolCall[] = [];
 
-      const handleEventData = (data: string) => {
+      const handleEventData = async (data: string) => {
         if (!data || data === "[DONE]") return false;
         const parsed = JSON.parse(data);
 
@@ -769,7 +859,17 @@ export const streamChatResponse = async (
             return false;
 
           case "image":
-            onImage?.([parsed.image]);
+            if (parsed.image) {
+              const [image] = await cacheGeneratedImageAttachments([
+                parsed.image,
+              ]);
+              outputBlockBuilder.appendImage(image);
+              onChunk(
+                committedContent + fullContent,
+                committedReasoning + fullReasoning,
+                outputBlockBuilder.getBlocks(),
+              );
+            }
             return false;
 
           case "usage": {
@@ -798,7 +898,7 @@ export const streamChatResponse = async (
         }
       };
 
-      const processSSEEvent = (event: string) => {
+      const processSSEEvent = async (event: string) => {
         const dataLines = event
           .split("\n")
           .filter((line) => line.startsWith("data: "))
@@ -807,7 +907,7 @@ export const streamChatResponse = async (
         if (dataLines.length === 0) return false;
 
         try {
-          return handleEventData(dataLines.join("\n"));
+          return await handleEventData(dataLines.join("\n"));
         } catch (eventError) {
           if (eventError instanceof SyntaxError) {
             logDevError("Failed to parse SSE data:", eventError);
@@ -826,7 +926,7 @@ export const streamChatResponse = async (
         buffer = events.pop() || "";
 
         for (const event of events) {
-          const isDone = processSSEEvent(event);
+          const isDone = await processSSEEvent(event);
           if (isDone) {
             return {
               content: fullContent,
@@ -838,7 +938,7 @@ export const streamChatResponse = async (
       }
 
       if (buffer.trim()) {
-        const isDone = processSSEEvent(buffer);
+        const isDone = await processSSEEvent(buffer);
         if (isDone) {
           return {
             content: fullContent,
@@ -1033,7 +1133,8 @@ export const prepareHistoryForLLM = async (
           m.attachments?.length ||
           m.reasoning ||
           m.searchSources?.length ||
-          m.toolCalls?.length)),
+          m.toolCalls?.length ||
+          m.outputBlocks?.length)),
   );
 
   // If no compression state exists, return filtered history
