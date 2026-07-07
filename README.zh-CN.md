@@ -24,6 +24,15 @@ Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.j
 
 它适合想使用现代 AI 工作台、同时保持本地数据所有权的用户。默认情况下，对话历史、工作区元数据、技能、插件配置、记忆和文件都保存在浏览器内；服务端路由作为受控代理，连接模型供应商、搜索、RAG、文档解析、语音、插件执行和部署健康检查。
 
+## v2.1.0 亮点
+
+- 重构 System Settings，提供更清晰的分组控制、About 面板、部署健康可见性，以及本地数据导出/重置入口。
+- 新增模型原生图片生成/编辑，支持按顺序渲染图文混合输出块，并使用 OPFS 做图片显示缓存。
+- 为支持 reasoning 的 Gemini 和 OpenAI-compatible 模型新增 thinking intensity 控制。
+- 新增日文支持，覆盖应用界面、SEO metadata、助理语言路由、语音语言处理和公共 Skills 目录。
+- 加强 hosted 部署安全，加入 API request proof、共享存储检查、服务健康覆盖、更安全的 URL/密钥处理，以及 Cloudflare Worker 命令修复。
+- 新增基于 `CHANGELOG.md` 的 GitHub Release 自动化，以及仅在 fork 仓库运行的 upstream 同步 workflow。
+
 ## 功能特性
 
 - 支持 Gemini、OpenAI 和 OpenAI-compatible endpoint 的多供应商对话。
@@ -401,6 +410,25 @@ docs/                 部署和可靠性说明
 - [可靠性与安全模型](docs/reliability-and-safety.md)
 - [路线图](ROADMAP.md)
 - [变更日志](CHANGELOG.md)
+
+### Fork 同步
+
+fork 维护者可以启用 `Sync upstream` workflow，把自己的 fork 从上游 `u14app/neo-chat` 的 `main` 分支快进同步。
+
+1. 在 fork 仓库打开 **Settings > Actions > General**，允许 GitHub Actions 运行。
+2. 在 **Workflow permissions** 中选择 **Read and write permissions**，让 `GITHUB_TOKEN` 可以推送到 fork。
+3. 打开 **Actions > Sync upstream > Run workflow**，手动触发第一次同步。
+4. 如果希望每天自动同步，请保持 scheduled workflow 启用。
+
+该 workflow 会在上游仓库中跳过，只会在 GitHub 标记为 fork 的仓库里运行。它使用 fast-forward-only merge；当 fork 分支已经和上游分叉，或分支保护规则阻止推送时，会安全失败，不会自动合并冲突或强推。
+
+可选 repository variables 可以覆盖默认值：
+
+```text
+UPSTREAM_REPOSITORY=u14app/neo-chat
+UPSTREAM_BRANCH=main
+TARGET_BRANCH=<fork default branch>
+```
 
 ## FAQ
 

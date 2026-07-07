@@ -24,6 +24,15 @@ Neo Chat is a self-hostable, local-first AI chat application built with Next.js,
 
 It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, skills, plugin configuration, memories, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, plugin execution, and deployment health.
 
+## v2.1.0 Highlights
+
+- Rebuilt System Settings with clearer grouped controls, an About panel, deployment health visibility, and local data export/reset actions.
+- Added native model image generation/editing with ordered mixed text/image output blocks and OPFS-backed image display caching.
+- Added thinking intensity controls for reasoning-capable Gemini and OpenAI-compatible models.
+- Added Japanese localization for the app shell, SEO metadata, assistant locale routing, voice language handling, and the public Skills catalog.
+- Hardened hosted deployments with API request proof, shared-store checks, service health coverage, safer URL/secret handling, and Cloudflare Worker command fixes.
+- Added changelog-driven GitHub Release automation and a fork-only upstream sync workflow.
+
 ## Features
 
 - Multi-provider chat with Gemini, OpenAI, and OpenAI-compatible endpoints.
@@ -408,6 +417,25 @@ Project documentation:
 - [Reliability and Safety Model](docs/reliability-and-safety.md)
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
+
+### Fork Synchronization
+
+Fork maintainers can enable the `Sync upstream` workflow to fast-forward their fork from the upstream `u14app/neo-chat` `main` branch.
+
+1. In the fork, open **Settings > Actions > General** and allow GitHub Actions to run.
+2. In **Workflow permissions**, select **Read and write permissions** so `GITHUB_TOKEN` can push to the fork.
+3. Open **Actions > Sync upstream > Run workflow** to trigger the first sync manually.
+4. Keep the scheduled workflow enabled if you want the fork to sync daily.
+
+The workflow is skipped in the upstream repository and only runs when GitHub marks the repository as a fork. It uses fast-forward-only merging, so it fails safely when the fork branch has diverged from upstream or a branch protection rule blocks the push.
+
+Optional repository variables can override the defaults:
+
+```text
+UPSTREAM_REPOSITORY=u14app/neo-chat
+UPSTREAM_BRANCH=main
+TARGET_BRANCH=<fork default branch>
+```
 
 ## FAQ
 

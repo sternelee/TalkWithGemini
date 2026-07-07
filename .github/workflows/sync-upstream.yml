@@ -1,0 +1,49 @@
+name: Sync upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: ${{ github.event.repository.fork == true }}
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REPOSITORY: ${{ vars.UPSTREAM_REPOSITORY || 'u14app/neo-chat' }}
+      UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH || 'main' }}
+      TARGET_BRANCH: ${{ vars.TARGET_BRANCH || github.event.repository.default_branch }}
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Sync from upstream
+        run: |
+          set -euo pipefail
+
+          if [[ "$UPSTREAM_REPOSITORY" != */* ]]; then
+            echo "UPSTREAM_REPOSITORY must use the owner/repo format." >&2
+            exit 1
+          fi
+
+          if [[ -z "$UPSTREAM_BRANCH" || -z "$TARGET_BRANCH" ]]; then
+            echo "UPSTREAM_BRANCH and TARGET_BRANCH must not be empty." >&2
+            exit 1
+          fi
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --no-tags upstream "$UPSTREAM_BRANCH"
+          git merge --ff-only FETCH_HEAD
+          git push origin "HEAD:${TARGET_BRANCH}"
