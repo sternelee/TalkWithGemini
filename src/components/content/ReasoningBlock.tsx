@@ -1,5 +1,5 @@
 "use client";
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { Lightbulb, LoaderCircle, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -23,7 +23,7 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
   isThinking,
   durationMs,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(isThinking);
   const panelId = useId();
 
   const t = useTranslations("Content");
@@ -37,6 +37,10 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
     ? formatReasoningDuration(durationMs)
     : null;
 
+  useEffect(() => {
+    setIsExpanded(isThinking);
+  }, [isThinking]);
+
   if (!reasoning) return null;
 
   return (
@@ -46,7 +50,7 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
         aria-expanded={isExpanded}
         aria-controls={panelId}
         aria-busy={isThinking || undefined}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setIsExpanded((expanded) => !expanded)}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 dark:text-muted-foreground hover:bg-gray-100/50 dark:hover:bg-accent/30 transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
       >
         <span className="inline-flex h-5 w-5 items-center justify-center rounded text-violet-600 dark:text-violet-400">

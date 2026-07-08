@@ -9,6 +9,14 @@ import { Plugin } from "@/types";
 // Schema 定义
 // ============================================================================
 
+const ImageCountSchema = {
+  type: "integer",
+  minimum: 1,
+  maximum: 10,
+  description:
+    "Optional number of images to generate when supported by the selected model.",
+};
+
 /**
  * Jina Reader 参数 Schema
  */
@@ -62,7 +70,7 @@ const UnsplashSchema = {
 };
 
 /**
- * Agnes 图片生成参数 Schema
+ * Agnes 图片处理参数 Schema
  */
 const AgnesImageSchema = {
   type: "object",
@@ -75,6 +83,12 @@ const AgnesImageSchema = {
       type: "string",
       description: 'Output image size, such as "1024x768".',
     },
+    model: {
+      type: "string",
+      description:
+        'Optional Agnes image model. Defaults to "agnes-image-2.1-flash".',
+    },
+    n: ImageCountSchema,
     image: {
       type: "array",
       items: { type: "string" },
@@ -95,6 +109,138 @@ const AgnesImageSchema = {
 };
 
 /**
+ * Gemini 图片处理参数 Schema
+ */
+const GeminiImageSchema = {
+  type: "object",
+  properties: {
+    prompt: {
+      type: "string",
+      description: "Text instruction for Gemini image generation or editing.",
+    },
+    model: {
+      type: "string",
+      description:
+        'Optional Gemini image model. Defaults to "gemini-3.1-flash-image".',
+    },
+    aspect_ratio: {
+      type: "string",
+      enum: [
+        "1:1",
+        "2:3",
+        "3:2",
+        "3:4",
+        "4:3",
+        "4:5",
+        "5:4",
+        "9:16",
+        "16:9",
+        "21:9",
+      ],
+      description: 'Optional output aspect ratio, such as "1:1" or "16:9".',
+    },
+    image_size: {
+      type: "string",
+      enum: ["1K", "2K", "4K", "512"],
+      description: 'Optional output size tier, such as "1K" or "2K".',
+    },
+    n: ImageCountSchema,
+    image: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional input image URLs or data URLs for image-to-image editing.",
+    },
+  },
+  required: ["prompt"],
+};
+
+/**
+ * OpenAI Responses 图片生成参数 Schema
+ */
+const OpenAIResponsesImageSchema = {
+  type: "object",
+  properties: {
+    prompt: {
+      type: "string",
+      description: "Text instruction for image generation or image editing.",
+    },
+    model: {
+      type: "string",
+      description: 'Main Responses model. Defaults to "gpt-5.5".',
+    },
+    image_model: {
+      type: "string",
+      description: 'Optional GPT image tool model, such as "gpt-image-1.5".',
+    },
+    action: {
+      type: "string",
+      enum: ["auto", "generate", "edit"],
+      description:
+        "Whether the image tool should generate, edit, or let the model decide.",
+    },
+    size: {
+      type: "string",
+      description: 'Optional output size, such as "1024x1024".',
+    },
+    quality: {
+      type: "string",
+      enum: ["auto", "low", "medium", "high"],
+      description: "Optional image generation quality.",
+    },
+    background: {
+      type: "string",
+      enum: ["auto", "transparent", "opaque"],
+      description: "Optional generated image background.",
+    },
+    image: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional input image URLs or data URLs for image-to-image editing.",
+    },
+  },
+  required: ["prompt"],
+};
+
+/**
+ * OpenAI 兼容 Images API 图片生成参数 Schema
+ */
+const OpenAICompatibleImageSchema = {
+  type: "object",
+  properties: {
+    prompt: {
+      type: "string",
+      description: "Text instruction for image generation or image editing.",
+    },
+    model: {
+      type: "string",
+      description: 'Image model name. Defaults to "gpt-image-1".',
+    },
+    size: {
+      type: "string",
+      description: 'Optional output image size, such as "1024x1024".',
+    },
+    n: {
+      ...ImageCountSchema,
+    },
+    image: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional input images as data URLs. When present, the plugin calls /images/edits.",
+    },
+    response_format: {
+      type: "string",
+      enum: ["url", "b64_json"],
+      description:
+        "Optional Images API response format for compatible providers that support it.",
+    },
+  },
+  required: ["prompt"],
+};
+
+/**
  * Agnes 视频创建参数 Schema
  */
 const AgnesVideoCreateSchema = {
@@ -104,9 +250,15 @@ const AgnesVideoCreateSchema = {
       type: "string",
       description: "Text description of the video content.",
     },
+    model: {
+      type: "string",
+      description:
+        'Optional Agnes video model. Defaults to "agnes-video-v2.0".',
+    },
     image: {
       type: "string",
-      description: "Optional image URL for image-to-video workflows.",
+      description:
+        "Optional publicly accessible HTTPS image URL for image-to-video workflows.",
     },
     mode: {
       type: "string",
@@ -169,7 +321,7 @@ const AgnesVideoResultSchema = {
     model_name: {
       type: "string",
       description:
-        "Optional model name when retrieving an upstream original video ID.",
+        "Optional Agnes video model name for video_id result lookups, especially when using a custom video model.",
     },
   },
   anyOf: [{ required: ["video_id"] }, { required: ["task_id"] }],
@@ -266,18 +418,18 @@ export const UNSPLASH_PLUGIN: Plugin = {
 };
 
 /**
- * Agnes 图片生成插件
+ * Agnes 图片处理插件
  */
 export const AGNES_IMAGE_PLUGIN: Plugin = {
   id: "agnes-image-generation",
-  title: "Agnes Image Generation",
+  title: "Agnes Image Processing",
   description:
-    "Generate images with Agnes Image 2.1 Flash from text prompts or input images.",
+    "Generate or edit images with Agnes Image 2.1 Flash from text prompts or input images.",
   logoUrl: "https://agnes-ai.com/images/logo.png",
   manifestUrl: "",
   externalDocsUrl: "https://agnes-ai.com/en/docs/agnes-image-21-flash",
   baseUrl: "https://apihub.agnes-ai.com",
-  category: "Image Generation",
+  category: "Image Processing",
   builtIn: true,
   added: new Date().toISOString(),
   functions: [
@@ -297,13 +449,110 @@ export const AGNES_IMAGE_PLUGIN: Plugin = {
 };
 
 /**
+ * Gemini 图片处理插件
+ */
+export const GEMINI_IMAGE_PLUGIN: Plugin = {
+  id: "gemini-image-generation",
+  title: "Gemini Image Processing",
+  description: "Generate or edit images with Gemini Nano Banana image models.",
+  logoUrl:
+    "https://www.gstatic.com/lamda/images/gemini_sparkle_aurora_33f86dc0c0257da337c63.svg",
+  manifestUrl: "",
+  externalDocsUrl: "https://ai.google.dev/gemini-api/docs/image-generation",
+  baseUrl: "https://generativelanguage.googleapis.com",
+  category: "Image Processing",
+  builtIn: true,
+  added: new Date().toISOString(),
+  functions: [
+    {
+      name: "generate_gemini_image",
+      description:
+        "Generate or edit an image with Gemini Nano Banana. Requires a Gemini API key.",
+      method: "POST",
+      path: "/v1beta/interactions",
+      parameters: GeminiImageSchema,
+    },
+  ],
+  auth: {
+    type: "apiKey",
+    name: "x-goog-api-key",
+    in: "header",
+    required: true,
+  },
+};
+
+/**
+ * OpenAI 兼容 Images API 图片处理插件
+ */
+export const OPENAI_IMAGE_PLUGIN: Plugin = {
+  id: "openai-image-generation",
+  title: "OpenAI-compatible Image Processing",
+  description:
+    "Generate or edit images with OpenAI-compatible Images API providers.",
+  logoUrl: "https://openai.com/favicon.ico",
+  manifestUrl: "",
+  externalDocsUrl:
+    "https://developers.openai.com/api/docs/guides/image-generation",
+  baseUrl: "https://api.openai.com/v1",
+  category: "Image Processing",
+  builtIn: true,
+  added: new Date().toISOString(),
+  functions: [
+    {
+      name: "generate_image_with_images_api",
+      description:
+        "Generate or edit an image using an OpenAI-compatible Images API endpoint configured in plugin settings. Requires an API key.",
+      method: "POST",
+      path: "/images/generations",
+      parameters: OpenAICompatibleImageSchema,
+    },
+  ],
+  auth: {
+    type: "bearer",
+    required: true,
+  },
+};
+
+/**
+ * OpenAI Responses API 图片处理插件
+ */
+export const OPENAI_RESPONSES_IMAGE_PLUGIN: Plugin = {
+  id: "openai-responses-image-processing",
+  title: "OpenAI Responses Image Processing",
+  description:
+    "Generate or edit images with the OpenAI Responses API image_generation tool.",
+  logoUrl: "https://openai.com/favicon.ico",
+  manifestUrl: "",
+  externalDocsUrl:
+    "https://developers.openai.com/api/docs/guides/image-generation",
+  baseUrl: "https://api.openai.com/v1",
+  category: "Image Processing",
+  builtIn: true,
+  added: new Date().toISOString(),
+  functions: [
+    {
+      name: "generate_image_with_responses",
+      description:
+        "Generate or edit an image using the OpenAI Responses API image_generation tool. Requires an OpenAI API key.",
+      method: "POST",
+      path: "/responses",
+      parameters: OpenAIResponsesImageSchema,
+    },
+  ],
+  auth: {
+    type: "bearer",
+    required: true,
+  },
+};
+
+/**
  * Agnes 视频生成插件
  */
 export const AGNES_VIDEO_PLUGIN: Plugin = {
   id: "agnes-video-generation",
   title: "Agnes Video Generation",
   description:
-    "Create and retrieve video generation tasks with Agnes Video V2.0.",
+    "Create text-to-video or image-to-video tasks with Agnes Video V2.0, then retrieve generated results.",
   logoUrl: "https://agnes-ai.com/images/logo.png",
   manifestUrl: "",
   externalDocsUrl: "https://agnes-ai.com/en/docs/agnes-video-v20",
@@ -315,7 +564,7 @@ export const AGNES_VIDEO_PLUGIN: Plugin = {
     {
       name: "create_video",
       description:
-        "Create an asynchronous Agnes Video V2.0 generation task. Requires an Agnes AI API key.",
+        "Create an asynchronous Agnes Video V2.0 text-to-video or image-to-video generation task. Requires an Agnes AI API key.",
       method: "POST",
       path: "/v1/videos",
       parameters: AgnesVideoCreateSchema,
@@ -347,6 +596,9 @@ export const BUILT_IN_PLUGINS: Plugin[] = [
   WEATHER_PLUGIN,
   UNSPLASH_PLUGIN,
   AGNES_IMAGE_PLUGIN,
+  GEMINI_IMAGE_PLUGIN,
+  OPENAI_IMAGE_PLUGIN,
+  OPENAI_RESPONSES_IMAGE_PLUGIN,
   AGNES_VIDEO_PLUGIN,
 ];
 
@@ -356,7 +608,7 @@ export const BUILT_IN_PLUGINS: Plugin[] = [
 export const PLUGIN_CATEGORIES = {
   utilities: "Utilities",
   imageSearch: "Image Search",
-  imageGeneration: "Image Generation",
+  imageProcessing: "Image Processing",
   videoGeneration: "Video Generation",
   dataRetrieval: "Data Retrieval",
   productivity: "Productivity",

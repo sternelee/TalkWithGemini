@@ -37,6 +37,8 @@ export interface Plugin {
 export interface PluginConfig {
   enabledFunctions?: string[];
   disabledFunctions?: string[];
+  baseUrl?: string;
+  model?: string;
   auth?: {
     type: "bearer" | "apiKey" | "none";
     value?: string;

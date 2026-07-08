@@ -91,6 +91,11 @@ export type MessageOutputBlock =
     }
   | {
       id: string;
+      type: "image_generation_status";
+      status: "generating";
+    }
+  | {
+      id: string;
       type: "tool_group";
       toolCalls: ToolCall[];
     };

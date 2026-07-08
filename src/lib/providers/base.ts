@@ -4,7 +4,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
-import { AuthenticationError, HostedProxyBlockedError } from "../errors";
+import { AuthenticationError } from "../errors";
 import {
   getProviderApiKey,
   normalizeProviderBaseUrl,
@@ -13,7 +13,6 @@ import {
   getSafeUrlPolicy,
 } from "../security/urlPolicy";
 import { assertOutboundUrlAllowed } from "../security/safeFetch";
-import { getDeploymentMode } from "../security/deployment";
 import { isOpenAIProviderType } from "./providerTypes";
 
 export type ProviderConfig = ProviderRuntimeConfig;
@@ -63,29 +62,11 @@ export class ProviderFactory {
     });
   }
 
-  private static assertSdkBaseUrlAllowed(
-    provider: ProviderConfig,
-    providerType: ProviderConfig["type"],
-  ): void {
-    const rawBaseUrl = provider.baseUrl?.trim();
-    if (!rawBaseUrl || rawBaseUrl === "default") return;
-    if (getDeploymentMode() !== "hosted") return;
-
-    const customBaseUrl = this.getEffectiveBaseUrl(rawBaseUrl, providerType);
-    const officialBaseUrl = this.getEffectiveBaseUrl(undefined, providerType);
-    if (customBaseUrl === officialBaseUrl) return;
-
-    throw new HostedProxyBlockedError(
-      "Custom provider base URLs are disabled in hosted mode",
-    );
-  }
-
   /**
    * 创建 OpenAI 客户端
    */
   static createOpenAIClient(provider: ProviderConfig): OpenAI {
     const apiKey = this.validateApiKey(provider);
-    this.assertSdkBaseUrlAllowed(provider, "OpenAI");
     const baseURL = this.getEffectiveBaseUrl(provider.baseUrl, "OpenAI");
     if (baseURL) {
       validateOutboundUrl(baseURL, getSafeUrlPolicy("provider"));
@@ -99,7 +80,6 @@ export class ProviderFactory {
    */
   static createGeminiClient(provider: ProviderConfig): GoogleGenAI {
     const apiKey = this.validateApiKey(provider);
-    this.assertSdkBaseUrlAllowed(provider, "Gemini");
     const baseUrl = this.getEffectiveBaseUrl(provider.baseUrl, "Gemini");
     if (baseUrl) {
       validateOutboundUrl(baseUrl, getSafeUrlPolicy("provider"));

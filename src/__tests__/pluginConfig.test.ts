@@ -41,6 +41,7 @@ describe("plugin config normalization", () => {
 
   it("caps auth fields and normalizes auth metadata", () => {
     const config = normalizePluginConfig({
+      baseUrl: " https://api.example.com/v1 ",
       auth: {
         type: "unknown",
         value: ` ${"k".repeat(PLUGIN_CONFIG_LIMITS.maxAuthValueChars + 10)}`,
@@ -49,12 +50,32 @@ describe("plugin config normalization", () => {
       },
     });
 
+    expect(config.baseUrl).toBe("https://api.example.com/v1");
     expect(config.auth?.type).toBe("bearer");
     expect(config.auth?.addTo).toBe("header");
     expect(config.auth?.value).toHaveLength(
       PLUGIN_CONFIG_LIMITS.maxAuthValueChars,
     );
     expect(config.auth?.key).toHaveLength(PLUGIN_CONFIG_LIMITS.maxAuthKeyChars);
+  });
+
+  it("drops unsafe plugin endpoint overrides", () => {
+    expect(
+      normalizePluginConfig({
+        baseUrl: "http://localhost:3000/v1",
+      }).baseUrl,
+    ).toBeUndefined();
+  });
+
+  it("normalizes plugin model defaults", () => {
+    const model = ` gpt-image-${"x".repeat(
+      PLUGIN_CONFIG_LIMITS.maxModelNameChars + 10,
+    )} `;
+    const config = normalizePluginConfig({ model });
+
+    expect(config.model).toHaveLength(PLUGIN_CONFIG_LIMITS.maxModelNameChars);
+    expect(config.model?.startsWith("gpt-image-")).toBe(true);
+    expect(normalizePluginConfig({ model: "" }).model).toBeUndefined();
   });
 
   it("deduplicates function refs and keeps only declared plugin functions", () => {

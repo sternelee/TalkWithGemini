@@ -76,6 +76,19 @@ describe("server default store injection", () => {
     useCoreSettingsStore.setState(useCoreSettingsStore.getInitialState(), true);
   });
 
+  it("creates new model providers as OpenAI Compatible by default", async () => {
+    const { useCoreSettingsStore } =
+      await import("../store/core/coreSettingsStore");
+
+    const providerId = useCoreSettingsStore.getState().addProvider();
+
+    expect(
+      useCoreSettingsStore
+        .getState()
+        .providers.find((provider) => provider.id === providerId)?.type,
+    ).toBe("OpenAI Compatible");
+  });
+
   it("selects default search for fresh settings but preserves persisted search choices", async () => {
     const { useSettingsStore } = await import("../store/core/settingsStore");
 
@@ -280,6 +293,39 @@ describe("server default store injection", () => {
       JINA_READER_PLUGIN.id,
     );
     expect(hasLocalSecret(savedAuth?.localValueSecret)).toBe(true);
+  });
+
+  it("adds every configured built-in plugin to installed plugins", async () => {
+    const { useSettingsStore } = await import("../store/core/settingsStore");
+    const {
+      BUILT_IN_PLUGINS,
+      GEMINI_IMAGE_PLUGIN,
+      OPENAI_IMAGE_PLUGIN,
+      OPENAI_RESPONSES_IMAGE_PLUGIN,
+    } = await import("../config/plugins");
+
+    useSettingsStore.setState((state) => ({
+      ...state,
+      installedPlugins: state.installedPlugins.filter(
+        (plugin) =>
+          plugin.id !== GEMINI_IMAGE_PLUGIN.id &&
+          plugin.id !== OPENAI_IMAGE_PLUGIN.id &&
+          plugin.id !== OPENAI_RESPONSES_IMAGE_PLUGIN.id,
+      ),
+    }));
+
+    useSettingsStore.getState().ensureBuiltInPlugins();
+
+    const installedPluginIds = useSettingsStore
+      .getState()
+      .installedPlugins.map((plugin) => plugin.id);
+
+    expect(installedPluginIds).toEqual(
+      expect.arrayContaining(BUILT_IN_PLUGINS.map((plugin) => plugin.id)),
+    );
+    expect(installedPluginIds).toContain(GEMINI_IMAGE_PLUGIN.id);
+    expect(installedPluginIds).toContain(OPENAI_IMAGE_PLUGIN.id);
+    expect(installedPluginIds).toContain(OPENAI_RESPONSES_IMAGE_PLUGIN.id);
   });
 
   it("keeps plugin auth local secrets in persisted settings snapshots", async () => {

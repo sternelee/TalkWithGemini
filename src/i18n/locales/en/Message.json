@@ -25,6 +25,7 @@
   "user": "User",
   "sentTime": "Sent Time",
   "generatingResponse": "Generating response",
+  "generatingImage": "Generating image",
   "generationFailed": "Generation failed",
   "generationRecoverable": "Use Regenerate to try again.",
   "failedToSynthesize": "Failed to synthesize speech: {error}",

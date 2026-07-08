@@ -8,6 +8,8 @@ export interface PluginExecutionAuthConfig {
   valueSecret?: EncryptedSecretEnvelope;
   key?: string;
   addTo?: "header" | "query";
+  baseUrl?: string;
+  model?: string;
 }
 
 export interface PluginExecutionPayload {

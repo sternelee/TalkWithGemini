@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PLUGIN_EXECUTION_LIMITS } from "../config/limits";
-import type { MessageOutputBlock, Plugin, ToolCall } from "../types";
+import type {
+  MessageOutputBlock,
+  ModelMetadata,
+  Plugin,
+  ToolCall,
+} from "../types";
 
 const mocks = vi.hoisted(() => ({
   executePluginFunction: vi.fn(),
   settingsState: {} as Record<string, unknown>,
   memoryState: {} as Record<string, unknown>,
   coreState: {} as Record<string, unknown>,
+  supportsImageGeneration: vi.fn<(metadata?: ModelMetadata) => boolean>(
+    () => false,
+  ),
+  supportsTextOutput: vi.fn<(metadata?: ModelMetadata) => boolean>(() => true),
 }));
 
 vi.mock("@/utils/pluginUtils", () => ({
@@ -61,8 +70,8 @@ vi.mock("@/lib/utils/model", () => ({
     const [providerId, modelName] = model.split(":");
     return { providerId, modelName };
   }),
-  supportsImageGeneration: vi.fn(() => false),
-  supportsTextOutput: vi.fn(() => true),
+  supportsImageGeneration: mocks.supportsImageGeneration,
+  supportsTextOutput: mocks.supportsTextOutput,
 }));
 
 vi.mock("@/lib/settings/searchRag", () => ({
@@ -141,6 +150,24 @@ const writePlugin: Plugin = {
   ],
 };
 
+const imagePlugin: Plugin = {
+  id: "openai-image-generation",
+  title: "OpenAI-compatible Image Processing",
+  description: "Process images",
+  logoUrl: "",
+  manifestUrl: "",
+  baseUrl: "https://api.openai.com/v1",
+  functions: [
+    {
+      name: "generate_image_with_images_api",
+      description: "Generate or edit images",
+      method: "POST",
+      path: "/images/generations",
+      parameters: { type: "object", properties: {} },
+    },
+  ],
+};
+
 describe("chat service tool execution", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -173,6 +200,10 @@ describe("chat service tool execution", () => {
         },
       ],
     };
+    mocks.supportsImageGeneration.mockReset();
+    mocks.supportsImageGeneration.mockReturnValue(false);
+    mocks.supportsTextOutput.mockReset();
+    mocks.supportsTextOutput.mockReturnValue(true);
   });
 
   it("does not expose memory_search for ordinary prompts", async () => {
@@ -391,6 +422,102 @@ describe("chat service tool execution", () => {
     );
   });
 
+  it("does not render image plugin results as visible output image blocks", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      installedPlugins: [imagePlugin],
+    };
+    mocks.executePluginFunction.mockResolvedValueOnce({
+      imageBase64: "aW1hZ2U=",
+      images: [
+        {
+          imageBase64: "aW1hZ2U=",
+          mimeType: "image/png",
+        },
+      ],
+      revisedPrompt: "Edited prompt",
+      raw: {
+        data: [{ b64_json: "aW1hZ2U=", revised_prompt: "Edited prompt" }],
+      },
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_image",
+              name: "generate_image_with_images_api",
+              args: { prompt: "Edit this image" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          { type: "content", content: "Edited." },
+          { type: "done" },
+        ]),
+      );
+    const outputSnapshots: MessageOutputBlock[][] = [];
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    const result = await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Edit this image",
+      [],
+      {},
+      (_content, _reasoning, outputBlocks) => {
+        if (outputBlocks) outputSnapshots.push(outputBlocks);
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      ["openai-image-generation"],
+      undefined,
+      (outputBlocks) => outputSnapshots.push(outputBlocks),
+    );
+
+    expect(result).toBe("Edited.");
+    expect(
+      outputSnapshots.some((blocks) =>
+        blocks.some(
+          (block) =>
+            block.type === "tool_group" &&
+            block.toolCalls.some(
+              (toolCall) =>
+                toolCall.id === "call_image" && toolCall.status === "success",
+            ),
+        ),
+      ),
+    ).toBe(true);
+    expect(outputSnapshots.flat().some((block) => block.type === "image")).toBe(
+      false,
+    );
+    const followUpBody = JSON.parse(
+      String((fetchMock.mock.calls[1]?.[1] as RequestInit).body),
+    );
+    const toolResult = followUpBody.history?.[1]?.toolCalls?.[0]
+      ?.result as Record<string, unknown>;
+    expect(toolResult).toEqual({
+      imageUrl: null,
+      imageBase64: "[image omitted]",
+      imageCount: 1,
+      revisedPrompt: "Edited prompt",
+    });
+    expect(JSON.stringify(followUpBody.history)).not.toContain("aW1hZ2U=");
+    expect(toolResult).not.toHaveProperty("raw");
+    expect(toolResult).not.toHaveProperty("images");
+  });
+
   it("emits one error output transition when tool execution fails", async () => {
     mocks.executePluginFunction.mockRejectedValueOnce(new Error("boom"));
     vi.spyOn(globalThis, "fetch")
@@ -583,6 +710,247 @@ describe("chat service tool execution", () => {
     expect(body.newMessage).toContain("[Skills]");
     expect(body.newMessage).toContain("Translation & Localization");
     expect(body.systemInstruction).toBeUndefined();
+  });
+
+  it("routes OpenAI Compatible image-only models through the direct image endpoint", async () => {
+    mocks.coreState = {
+      providers: [
+        {
+          id: "krill",
+          enabled: true,
+          type: "OpenAI Compatible",
+          name: "Krill",
+          baseUrl: "https://api.krill-ai.com/v1",
+          apiKey: "test-key",
+          models: ["gpt-image-2"],
+        },
+      ],
+    };
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      modelMetadata: {
+        "gpt-image-2": {
+          id: "gpt-image-2",
+          modalities: { input: ["text", "image"], output: ["image"] },
+        },
+      },
+    };
+    mocks.supportsImageGeneration.mockImplementation(
+      (metadata) =>
+        Array.isArray(metadata?.modalities?.output) &&
+        metadata.modalities.output.includes("image"),
+    );
+    mocks.supportsTextOutput.mockImplementation(
+      (metadata) =>
+        !Array.isArray(metadata?.modalities?.output) ||
+        metadata.modalities.output.includes("text"),
+    );
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        images: [{ id: "img_1", mimeType: "image/png", data: "aW1hZ2U=" }],
+        message: "Generated image",
+      }),
+    );
+    const outputSnapshots: MessageOutputBlock[][] = [];
+    const { streamChatResponse } = await import("../services/api/chatService");
+
+    await streamChatResponse(
+      "session-1",
+      "krill:gpt-image-2",
+      [],
+      "Draw a quiet dashboard.",
+      [],
+      {},
+      (_content, _reasoning, outputBlocks) => {
+        if (outputBlocks) outputSnapshots.push(outputBlocks);
+      },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      (outputBlocks) => outputSnapshots.push(outputBlocks),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/generate-image");
+    const body = JSON.parse(
+      String((fetchMock.mock.calls[0]?.[1] as RequestInit).body),
+    );
+    expect(body.provider).toMatchObject({
+      type: "OpenAI Compatible",
+      baseUrl: "https://api.krill-ai.com/v1",
+    });
+    expect(body.modelName).toBe("gpt-image-2");
+    expect(body.prompt).toContain("Draw a quiet dashboard.");
+    expect(outputSnapshots[0]).toEqual([
+      expect.objectContaining({
+        type: "image_generation_status",
+        status: "generating",
+      }),
+    ]);
+    expect(outputSnapshots.at(-1)).toEqual([
+      expect.objectContaining({
+        type: "image",
+        image: expect.objectContaining({ id: "img_1" }),
+      }),
+    ]);
+  });
+
+  it("removes the direct image loading block when image generation fails", async () => {
+    mocks.coreState = {
+      providers: [
+        {
+          id: "krill",
+          enabled: true,
+          type: "OpenAI Compatible",
+          name: "Krill",
+          baseUrl: "https://api.krill-ai.com/v1",
+          apiKey: "test-key",
+          models: ["gpt-image-2"],
+        },
+      ],
+    };
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      modelMetadata: {
+        "gpt-image-2": {
+          id: "gpt-image-2",
+          modalities: { input: ["text", "image"], output: ["image"] },
+        },
+      },
+    };
+    mocks.supportsImageGeneration.mockImplementation(
+      (metadata) =>
+        Array.isArray(metadata?.modalities?.output) &&
+        metadata.modalities.output.includes("image"),
+    );
+    mocks.supportsTextOutput.mockImplementation(
+      (metadata) =>
+        !Array.isArray(metadata?.modalities?.output) ||
+        metadata.modalities.output.includes("text"),
+    );
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({ error: "provider failed" }, { status: 502 }),
+    );
+    const outputSnapshots: MessageOutputBlock[][] = [];
+    const { streamChatResponse } = await import("../services/api/chatService");
+
+    await expect(
+      streamChatResponse(
+        "session-1",
+        "krill:gpt-image-2",
+        [],
+        "Draw a quiet dashboard.",
+        [],
+        {},
+        (_content, _reasoning, outputBlocks) => {
+          if (outputBlocks) outputSnapshots.push(outputBlocks);
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (outputBlocks) => outputSnapshots.push(outputBlocks),
+      ),
+    ).rejects.toThrow("provider failed");
+
+    expect(outputSnapshots[0]).toEqual([
+      expect.objectContaining({
+        type: "image_generation_status",
+        status: "generating",
+      }),
+    ]);
+    expect(outputSnapshots.at(-1)).toEqual([]);
+  });
+
+  it("uses a text fallback model for external search decisions when the selected model is image-only", async () => {
+    mocks.coreState = {
+      defaultModels: { promptOptimization: "openai:gpt-4o-mini" },
+      providers: [
+        {
+          id: "krill",
+          enabled: true,
+          type: "OpenAI Compatible",
+          name: "Krill",
+          apiKey: "test-key",
+          models: ["gpt-image-2"],
+        },
+        {
+          id: "openai",
+          enabled: true,
+          type: "OpenAI",
+          name: "OpenAI",
+          apiKey: "test-key",
+          models: ["gpt-4o-mini"],
+        },
+      ],
+    };
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      search: { provider: "tavily", configs: { tavily: { apiKey: "search" } } },
+      modelMetadata: {
+        "gpt-image-2": {
+          id: "gpt-image-2",
+          modalities: { input: ["text"], output: ["image"] },
+        },
+        "gpt-4o-mini": {
+          id: "gpt-4o-mini",
+          modalities: { input: ["text"], output: ["text"] },
+        },
+      },
+    };
+    mocks.supportsImageGeneration.mockImplementation(
+      (metadata) =>
+        Array.isArray(metadata?.modalities?.output) &&
+        metadata.modalities.output.includes("image"),
+    );
+    mocks.supportsTextOutput.mockImplementation(
+      (metadata) =>
+        !Array.isArray(metadata?.modalities?.output) ||
+        metadata.modalities.output.includes("text"),
+    );
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.modelName).toBe("gpt-task");
+        return sseResponse([
+          { type: "content", content: '{"shouldSearch":false}' },
+          { type: "done" },
+        ]);
+      })
+      .mockImplementationOnce(async () =>
+        Response.json({
+          images: [{ id: "img_1", mimeType: "image/png", data: "aW1hZ2U=" }],
+          message: "Generated image",
+        }),
+      );
+    const { streamChatResponse } = await import("../services/api/chatService");
+
+    await streamChatResponse(
+      "session-1",
+      "krill:gpt-image-2",
+      [],
+      "Draw current market mood.",
+      [],
+      { useSearch: true },
+      () => undefined,
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/generate");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/chat/generate-image");
   });
 
   it("uses the centralized high tool-round limit before stopping recursive calls", async () => {

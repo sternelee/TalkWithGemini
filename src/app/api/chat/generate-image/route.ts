@@ -92,12 +92,13 @@ export async function POST(request: NextRequest) {
           { status: 401 },
         );
       }
-      const baseUrl = normalizeProviderBaseUrl(provider.baseUrl, "OpenAI");
+      const baseUrl = normalizeProviderBaseUrl(provider.baseUrl, provider.type);
       const isEditRequest = Boolean(attachments?.length);
       const url = `${baseUrl}/images/${isEditRequest ? "edits" : "generations"}`;
+      const shouldRequestBase64Response = provider.type === "OpenAI";
       const requestOptions = {
         policy: getSafeUrlPolicy("provider"),
-        timeoutMs: 60_000,
+        timeoutMs: 120_000,
         maxResponseBytes: 20 * 1024 * 1024,
       };
 
@@ -108,7 +109,9 @@ export async function POST(request: NextRequest) {
             formData.append("prompt", prompt);
             if (imageCount) formData.append("n", String(imageCount));
             formData.append("size", "1024x1024");
-            formData.append("response_format", "b64_json");
+            if (shouldRequestBase64Response) {
+              formData.append("response_format", "b64_json");
+            }
             if (!appendOpenAIEditImages(formData, attachments || [])) {
               throw new Error("Image editing requires at least one image.");
             }
@@ -137,7 +140,9 @@ export async function POST(request: NextRequest) {
                 prompt: prompt,
                 ...(imageCount ? { n: imageCount } : {}),
                 size: "1024x1024",
-                response_format: "b64_json",
+                ...(shouldRequestBase64Response
+                  ? { response_format: "b64_json" }
+                  : {}),
               }),
             },
             requestOptions,
@@ -155,6 +160,7 @@ export async function POST(request: NextRequest) {
             id: uuidv7(),
             mimeType: "image/png",
             data: item.b64_json,
+            url: item.url,
             fileName: `generated-${Date.now()}.png`,
           })),
         );

@@ -15,6 +15,15 @@ when the matching tag is pushed.
 - Added native image generation and image editing for models with image
   input/output metadata, including ordered mixed text/image output blocks,
   image edit attachments, and OPFS-backed display caching.
+- Expanded built-in plugin media tools: Agnes and Gemini now present as image
+  processing plugins, OpenAI-compatible Images API and OpenAI Responses image
+  processing are separate built-ins, and image plugin results are compacted into
+  tool details/history so follow-up model messages decide how to reference them.
+- Added plugin-level API Base URL and Model ID controls for supported image
+  plugins, image count parameters where the upstream API supports them, Agnes
+  image-to-image editing, and Agnes video image-to-video support with custom
+  video model IDs while preserving the two-step `create_video` /
+  `get_video_result` workflow.
 - Added thinking intensity controls and provider-specific reasoning mapping for
   Gemini and OpenAI-compatible model requests.
 - Added Japanese localization across the app, SEO metadata, LobeHub assistant

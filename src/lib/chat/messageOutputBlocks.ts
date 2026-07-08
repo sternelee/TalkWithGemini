@@ -45,6 +45,8 @@ const cloneBlock = (block: MessageOutputBlock): MessageOutputBlock => {
         ...block,
         image: cloneImage(block.image),
       };
+    case "image_generation_status":
+      return { ...block };
     case "tool_group":
       return {
         ...block,
@@ -207,6 +209,27 @@ export function createMessageOutputBlockBuilder(
         type: "image",
         image: cloneImage(image),
       });
+    },
+
+    appendImageGenerationStatus() {
+      finalizeActiveReasoning();
+      const id = createId();
+      blocks.push({
+        id,
+        type: "image_generation_status",
+        status: "generating",
+      });
+      return id;
+    },
+
+    clearImageGenerationStatus(id?: string) {
+      const index = blocks.findIndex(
+        (block) =>
+          block.type === "image_generation_status" && (!id || block.id === id),
+      );
+      if (index === -1) return false;
+      blocks.splice(index, 1);
+      return true;
     },
 
     appendToolCall(toolCall: ToolCall) {

@@ -31,17 +31,24 @@ describe("provider outbound policy", () => {
     });
   });
 
-  it("fails closed for custom provider SDK base URLs in hosted mode", async () => {
+  it("allows custom public provider SDK base URLs in hosted mode", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     const { ProviderFactory } = await import("../lib/providers/base");
 
     expect(() =>
       ProviderFactory.createOpenAIClient({
-        type: "OpenAI",
+        type: "OpenAI Compatible",
         baseUrl: "https://proxy.example/v1",
         apiKey: "key",
       }),
-    ).toThrow(/Custom provider base URLs are disabled in hosted mode/i);
+    ).not.toThrow();
+    expect(() =>
+      ProviderFactory.createGeminiClient({
+        type: "Gemini",
+        baseUrl: "https://gemini-proxy.example",
+        apiKey: "key",
+      }),
+    ).not.toThrow();
   });
 
   it("keeps official provider base URLs available in hosted mode", async () => {

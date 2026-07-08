@@ -49,10 +49,22 @@ import {
 } from "@/config/plugins";
 ```
 
+Built-in media plugins use reserved IDs and should stay protocol-specific:
+
+- `agnes-image-generation` is Agnes image processing and supports text-to-image
+  and image-to-image inputs.
+- `gemini-image-generation` is Gemini image processing.
+- `openai-image-generation` is the OpenAI-compatible Images API plugin.
+- `openai-responses-image-processing` is the OpenAI Responses API image
+  processing plugin.
+
 Agnes video generation is intentionally split into two tools:
 
-- `create_video` creates an asynchronous task and returns task identifiers.
-- `get_video_result` checks the current status or final result by `video_id`, with `task_id` kept for legacy lookups.
+- `create_video` creates an asynchronous text-to-video or public HTTPS
+  image-to-video task and returns task identifiers.
+- `get_video_result` checks the current status or final result by `video_id`,
+  with `task_id` kept for legacy lookups. Custom video model lookups can use
+  `model_name`.
 
 ### `defaults.ts`
 

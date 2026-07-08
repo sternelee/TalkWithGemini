@@ -18,6 +18,12 @@ export type ConfigPluginKey =
   | "pluginUnsplashDescription"
   | "pluginAgnesImageTitle"
   | "pluginAgnesImageDescription"
+  | "pluginGeminiImageTitle"
+  | "pluginGeminiImageDescription"
+  | "pluginOpenAIImageTitle"
+  | "pluginOpenAIImageDescription"
+  | "pluginOpenAIResponsesImageTitle"
+  | "pluginOpenAIResponsesImageDescription"
   | "pluginAgnesVideoTitle"
   | "pluginAgnesVideoDescription";
 
@@ -40,6 +46,18 @@ const BUILT_IN_PLUGIN_I18N: Record<
   "agnes-image-generation": {
     titleKey: "pluginAgnesImageTitle",
     descriptionKey: "pluginAgnesImageDescription",
+  },
+  "gemini-image-generation": {
+    titleKey: "pluginGeminiImageTitle",
+    descriptionKey: "pluginGeminiImageDescription",
+  },
+  "openai-image-generation": {
+    titleKey: "pluginOpenAIImageTitle",
+    descriptionKey: "pluginOpenAIImageDescription",
+  },
+  "openai-responses-image-processing": {
+    titleKey: "pluginOpenAIResponsesImageTitle",
+    descriptionKey: "pluginOpenAIResponsesImageDescription",
   },
   "agnes-video-generation": {
     titleKey: "pluginAgnesVideoTitle",

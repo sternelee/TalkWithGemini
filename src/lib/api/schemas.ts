@@ -325,6 +325,8 @@ const PluginAuthConfigSchema = z
     valueSecret: EncryptedSecretEnvelopeSchema.optional(),
     key: z.string().max(120).optional(),
     addTo: z.enum(["header", "query"]).optional(),
+    baseUrl: z.string().max(2_048).optional(),
+    model: ModelNameSchema.optional(),
   })
   .strict()
   .superRefine((authConfig, ctx) => {

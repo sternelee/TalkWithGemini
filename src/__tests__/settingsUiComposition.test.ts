@@ -119,4 +119,32 @@ describe("settings UI primitives", () => {
     expect(zh.ModelEditor.capImageGeneration).toBe("图片生成");
     expect(ja.ModelEditor.capImageGeneration).toBe("画像生成");
   });
+
+  it("uses the settings select style for provider type selection", () => {
+    const providerSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/ProviderSettings.tsx"),
+      "utf8",
+    );
+    const providerTypeIndex = providerSettings.indexOf(
+      "htmlFor={providerTypeInputId}",
+    );
+    const providerTypeSection = providerSettings.slice(
+      providerTypeIndex,
+      providerSettings.indexOf("providerBaseUrlInputId", providerTypeIndex),
+    );
+
+    expect(providerSettings).toContain("CustomSelect");
+    expect(providerTypeSection).toContain("<CustomSelect");
+    expect(providerTypeSection).toContain("providerTypeOptions");
+    expect(providerTypeSection).toContain("selectButtonClassName");
+    expect(providerTypeSection).toContain("bg-gray-50");
+    expect(providerTypeSection).toContain("dark:bg-muted");
+    expect(providerTypeSection).not.toContain("DropdownMenu");
+    expect(providerTypeSection).not.toContain("shadow-sm");
+    expect(providerTypeSection).not.toContain("<select");
+    expect(providerTypeSection).not.toContain("description");
+    expect(providerTypeSection).not.toContain("openaiCompatibleDesc");
+    expect(providerTypeSection).not.toContain("openaiResponsesDesc");
+    expect(providerTypeSection).not.toContain("geminiDesc");
+  });
 });

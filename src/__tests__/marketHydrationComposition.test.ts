@@ -20,4 +20,28 @@ describe("market hydration composition", () => {
     expect(pluginMarket).toContain("getCachedPlugins");
     expect(pluginMarket).toContain("if (!_hasHydrated) return");
   });
+
+  it("keeps image plugin endpoint configuration user-controlled", () => {
+    const pluginMarket = readFileSync(
+      resolve(process.cwd(), "src/components/plugin/PluginMarket.tsx"),
+      "utf8",
+    );
+
+    expect(pluginMarket).toContain("ENDPOINT_CONFIG_PLUGIN_IDS");
+    expect(pluginMarket).toContain('"openai-image-generation"');
+    expect(pluginMarket).toContain('"gemini-image-generation"');
+    expect(pluginMarket).toContain('"openai-responses-image-processing"');
+    expect(pluginMarket).toContain("baseUrl: endpointValue");
+    expect(pluginMarket).toContain('t("endpointLabel")');
+    expect(pluginMarket).toContain('t("endpointHint")');
+    expect(pluginMarket).toContain("getEndpointPlaceholder");
+    expect(pluginMarket).toContain("MODEL_CONFIG_PLUGIN_IDS");
+    expect(pluginMarket).toContain('"agnes-video-generation"');
+    expect(pluginMarket).toContain("modelValue");
+    expect(pluginMarket).toContain("model: modelValue");
+    expect(pluginMarket).toContain('t("modelLabel")');
+    expect(pluginMarket).toContain('t("modelHint")');
+    expect(pluginMarket).toContain("getModelPlaceholder");
+    expect(pluginMarket).toContain('"agnes-video-v2.0"');
+  });
 });

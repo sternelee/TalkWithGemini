@@ -47,6 +47,55 @@ describe("generated image attachment normalization", () => {
     ).toBeNull();
   });
 
+  it("normalizes URL-only generated images and prefers inline data when both are present", () => {
+    expect(
+      normalizeGeneratedImageAttachment({
+        id: " image-url ",
+        mimeType: "image/webp",
+        url: " https://cdn.example.com/generated.webp ",
+        fileName: "remote.webp",
+      }),
+    ).toMatchObject({
+      id: "image-url",
+      mimeType: "image/webp",
+      url: "https://cdn.example.com/generated.webp",
+      fileName: "remote.webp",
+    });
+
+    const inlinePreferred = normalizeGeneratedImageAttachment({
+      mimeType: "image/png",
+      data: "aW1hZ2U=",
+      url: "https://cdn.example.com/generated.png",
+      fileName: "inline.png",
+    });
+    expect(inlinePreferred).toMatchObject({
+      data: "aW1hZ2U=",
+    });
+    expect(inlinePreferred).not.toHaveProperty("url");
+
+    expect(
+      normalizeGeneratedImageAttachment({
+        mimeType: "image/png",
+        url: "http://example.com/generated.png",
+        fileName: "plain-http.png",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeGeneratedImageAttachment({
+        mimeType: "image/png",
+        url: "https://localhost/generated.png",
+        fileName: "localhost.png",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeGeneratedImageAttachment({
+        mimeType: "image/png",
+        url: `https://example.com/${"a".repeat(ATTACHMENT_LIMITS.maxUrlChars)}`,
+        fileName: "too-long.png",
+      }),
+    ).toBeNull();
+  });
+
   it("caps generated image attachment batches", () => {
     const attachments = normalizeGeneratedImageAttachments(
       Array.from({ length: ATTACHMENT_LIMITS.maxCount + 5 }, (_, index) => ({
@@ -85,6 +134,30 @@ describe("generated image attachment normalization", () => {
       },
     });
     expect(saveFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves URL-only generated images uncached for direct display", async () => {
+    const saveFile = vi.fn(async () => "opfs://images/generated/image.png");
+    const [attachment] = normalizeGeneratedImageAttachments([
+      {
+        id: "img_url",
+        mimeType: "image/png",
+        url: "https://cdn.example.com/generated.png",
+        fileName: "generated.png",
+      },
+    ]);
+
+    const cached = await cacheGeneratedImageAttachments([attachment], {
+      saveFile,
+      now: () => 456,
+    });
+
+    expect(cached[0]).toMatchObject({
+      id: "img_url",
+      url: "https://cdn.example.com/generated.png",
+    });
+    expect(cached[0]).not.toHaveProperty("displayCache");
+    expect(saveFile).not.toHaveBeenCalled();
   });
 
   it("normalizes Gemini inline images before emitting SSE messages", async () => {

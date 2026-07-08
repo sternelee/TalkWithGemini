@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGNES_IMAGE_PLUGIN,
+  AGNES_VIDEO_PLUGIN,
+  BUILT_IN_PLUGINS,
+  GEMINI_IMAGE_PLUGIN,
+  OPENAI_IMAGE_PLUGIN,
+  OPENAI_RESPONSES_IMAGE_PLUGIN,
+} from "../config/plugins";
+import {
   getPluginFunctionNameCollisions,
   getEnabledPluginFunctions,
   resolvePluginFunction,
@@ -75,5 +83,118 @@ describe("plugin function resolution", () => {
         pluginIds: ["first", "second"],
       },
     ]);
+  });
+
+  it("keeps built-in plugin function names unique when all built-ins are active", () => {
+    expect(
+      getPluginFunctionNameCollisions(
+        BUILT_IN_PLUGINS,
+        BUILT_IN_PLUGINS.map((plugin) => plugin.id),
+        {},
+      ),
+    ).toEqual([]);
+  });
+
+  it("registers image processing plugins with OpenAI protocols split", () => {
+    expect(GEMINI_IMAGE_PLUGIN).toMatchObject({
+      id: "gemini-image-generation",
+      builtIn: true,
+      manifestUrl: "",
+      category: "Image Processing",
+    });
+    expect(OPENAI_IMAGE_PLUGIN).toMatchObject({
+      id: "openai-image-generation",
+      builtIn: true,
+      manifestUrl: "",
+      category: "Image Processing",
+    });
+    expect(OPENAI_IMAGE_PLUGIN.functions.map((fn) => fn.name)).toEqual([
+      "generate_image_with_images_api",
+    ]);
+    expect(OPENAI_RESPONSES_IMAGE_PLUGIN).toMatchObject({
+      id: "openai-responses-image-processing",
+      builtIn: true,
+      manifestUrl: "",
+      category: "Image Processing",
+    });
+    expect(
+      OPENAI_RESPONSES_IMAGE_PLUGIN.functions.map((fn) => fn.name),
+    ).toEqual(["generate_image_with_responses"]);
+  });
+
+  it("exposes image count only on plugins that support safe count parameters", () => {
+    const getProperties = (plugin: Plugin) =>
+      plugin.functions[0]?.parameters?.properties as Record<string, unknown>;
+
+    expect(getProperties(AGNES_IMAGE_PLUGIN).n).toMatchObject({
+      type: "integer",
+      minimum: 1,
+      maximum: 10,
+    });
+    expect(getProperties(GEMINI_IMAGE_PLUGIN).n).toMatchObject({
+      type: "integer",
+      minimum: 1,
+      maximum: 10,
+    });
+    expect(getProperties(OPENAI_IMAGE_PLUGIN).n).toMatchObject({
+      type: "integer",
+      minimum: 1,
+      maximum: 10,
+    });
+    expect(getProperties(OPENAI_RESPONSES_IMAGE_PLUGIN)).not.toHaveProperty(
+      "n",
+    );
+  });
+
+  it("exposes model customization on every built-in image plugin", () => {
+    const getProperties = (plugin: Plugin) =>
+      plugin.functions[0]?.parameters?.properties as Record<string, unknown>;
+
+    expect(getProperties(AGNES_IMAGE_PLUGIN).model).toMatchObject({
+      type: "string",
+    });
+    expect(getProperties(GEMINI_IMAGE_PLUGIN).model).toMatchObject({
+      type: "string",
+    });
+    expect(getProperties(OPENAI_IMAGE_PLUGIN).model).toMatchObject({
+      type: "string",
+    });
+    expect(getProperties(OPENAI_RESPONSES_IMAGE_PLUGIN).model).toMatchObject({
+      type: "string",
+    });
+    expect(
+      getProperties(OPENAI_RESPONSES_IMAGE_PLUGIN).image_model,
+    ).toMatchObject({
+      type: "string",
+    });
+  });
+
+  it("exposes Agnes image editing and image-to-video parameters", () => {
+    const getFunctionProperties = (plugin: Plugin, functionName: string) =>
+      plugin.functions.find((fn) => fn.name === functionName)?.parameters
+        ?.properties as Record<string, unknown>;
+
+    expect(getFunctionProperties(AGNES_IMAGE_PLUGIN, "generate_image")).toEqual(
+      expect.objectContaining({
+        model: expect.objectContaining({ type: "string" }),
+        image: expect.objectContaining({
+          type: "array",
+          items: { type: "string" },
+        }),
+      }),
+    );
+    expect(getFunctionProperties(AGNES_VIDEO_PLUGIN, "create_video")).toEqual(
+      expect.objectContaining({
+        model: expect.objectContaining({ type: "string" }),
+        image: expect.objectContaining({ type: "string" }),
+      }),
+    );
+    expect(
+      getFunctionProperties(AGNES_VIDEO_PLUGIN, "get_video_result"),
+    ).toEqual(
+      expect.objectContaining({
+        model_name: expect.objectContaining({ type: "string" }),
+      }),
+    );
   });
 });

@@ -15,13 +15,7 @@ import {
   SkillCatalog,
   SkillDataLocale,
 } from "@/types";
-import {
-  AGNES_IMAGE_PLUGIN,
-  AGNES_VIDEO_PLUGIN,
-  JINA_READER_PLUGIN,
-  WEATHER_PLUGIN,
-  UNSPLASH_PLUGIN,
-} from "@/config/plugins";
+import { BUILT_IN_PLUGINS, UNSPLASH_PLUGIN } from "@/config/plugins";
 import { DEFAULT_SYSTEM_SETTINGS } from "@/config/defaults";
 import { PublicServerConfig } from "@/lib/defaultConfig/shared";
 import {
@@ -194,14 +188,6 @@ interface SettingsState {
   clearAllData: () => Promise<void>;
 }
 
-// 内置插件列表
-const BUILT_IN_PLUGINS = [
-  JINA_READER_PLUGIN,
-  WEATHER_PLUGIN,
-  UNSPLASH_PLUGIN,
-  AGNES_IMAGE_PLUGIN,
-  AGNES_VIDEO_PLUGIN,
-] as const;
 const BUILT_IN_PLUGINS_BY_ID = new Map(
   BUILT_IN_PLUGINS.map((plugin) => [plugin.id, plugin]),
 );

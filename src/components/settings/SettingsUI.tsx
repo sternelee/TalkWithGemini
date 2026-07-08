@@ -36,18 +36,22 @@ export interface GroupedSelectOption {
 }
 
 export const CustomSelect = ({
+  id,
   value,
   onChange,
   options,
   icon: Icon,
   className = "",
+  selectButtonClassName,
   ariaLabel,
 }: {
+  id?: string;
   value: string;
   onChange: (val: string) => void;
   options: SelectOption[] | GroupedSelectOption[];
   icon?: any;
   className?: string;
+  selectButtonClassName?: string;
   ariaLabel?: string;
 }) => {
   const t = useTranslations("Common");
@@ -193,6 +197,7 @@ export const CustomSelect = ({
     <div className={`relative ${className}`} ref={containerRef}>
       <button
         type="button"
+        id={id}
         disabled={!hasOptions}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
@@ -200,7 +205,10 @@ export const CustomSelect = ({
         aria-controls={isOpen ? listboxId : undefined}
         onClick={handleToggle}
         onKeyDown={handleListboxKeyDown}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-[border-color,background-color,box-shadow] hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background disabled:hover:text-foreground flex items-center justify-between"
+        className={
+          selectButtonClassName ||
+          "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm transition-[border-color,background-color,box-shadow] hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background disabled:hover:text-foreground flex items-center justify-between"
+        }
       >
         <div className="flex items-center gap-2 truncate text-gray-700 dark:text-foreground">
           {Icon && (

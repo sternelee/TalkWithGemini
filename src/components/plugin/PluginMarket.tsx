@@ -56,6 +56,38 @@ interface PluginMarketProps {
 
 const ITEMS_PER_PAGE = 20;
 const CUSTOM_PLUGIN_INPUT_MAX_CHARS = 2_000_000;
+const ENDPOINT_CONFIG_PLUGIN_IDS = new Set([
+  "openai-image-generation",
+  "gemini-image-generation",
+  "openai-responses-image-processing",
+]);
+const ENDPOINT_PLACEHOLDERS: Record<string, string> = {
+  "openai-image-generation": "https://api.example.com/v1",
+  "gemini-image-generation": "https://generativelanguage.googleapis.com",
+  "openai-responses-image-processing": "https://api.openai.com/v1",
+};
+const MODEL_CONFIG_PLUGIN_IDS = new Set([
+  "agnes-image-generation",
+  "agnes-video-generation",
+  "gemini-image-generation",
+  "openai-image-generation",
+  "openai-responses-image-processing",
+]);
+const MODEL_PLACEHOLDERS: Record<string, string> = {
+  "agnes-image-generation": "agnes-image-2.1-flash",
+  "agnes-video-generation": "agnes-video-v2.0",
+  "gemini-image-generation": "gemini-3.1-flash-image",
+  "openai-image-generation": "gpt-image-1",
+  "openai-responses-image-processing": "gpt-image-1.5",
+};
+
+function getEndpointPlaceholder(pluginId: string, fallback: string) {
+  return ENDPOINT_PLACEHOLDERS[pluginId] || fallback;
+}
+
+function getModelPlaceholder(pluginId: string, fallback: string) {
+  return MODEL_PLACEHOLDERS[pluginId] || fallback;
+}
 
 // Helper to format category names (replace _ with space, title case)
 const formatCategoryName = (str: string) => {
@@ -346,6 +378,8 @@ const PluginDetailsModal = ({
   const disabledFunctions = config.disabledFunctions || [];
 
   const [activeTab, setActiveTab] = useState<"tools" | "auth">("tools");
+  const [endpointValue, setEndpointValue] = useState(config.baseUrl || "");
+  const [modelValue, setModelValue] = useState(config.model || "");
   const [isUninstallConfirming, setIsUninstallConfirming] = useState(false);
   const uninstallConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -367,6 +401,8 @@ const PluginDetailsModal = ({
   const pluginBaseUrl = plugin.baseUrl || t("notAvailable");
   const pluginAuthType = plugin.auth?.type || "none";
   const pluginAuthLocation = plugin.auth?.in || "header";
+  const supportsEndpointConfig = ENDPOINT_CONFIG_PLUGIN_IDS.has(plugin.id);
+  const supportsModelConfig = MODEL_CONFIG_PLUGIN_IDS.has(plugin.id);
 
   const clearUninstallConfirmation = () => {
     if (uninstallConfirmTimerRef.current) {
@@ -428,6 +464,32 @@ const PluginDetailsModal = ({
         ...(config.auth?.key ? { key: config.auth.key } : {}),
         addTo: plugin.auth?.in || "header",
       },
+    });
+  };
+
+  const handleSaveEndpoint = () => {
+    updatePluginConfig(plugin.id, {
+      baseUrl: endpointValue,
+    });
+  };
+
+  const handleClearEndpoint = () => {
+    setEndpointValue("");
+    updatePluginConfig(plugin.id, {
+      baseUrl: "",
+    });
+  };
+
+  const handleSaveModel = () => {
+    updatePluginConfig(plugin.id, {
+      model: modelValue,
+    });
+  };
+
+  const handleClearModel = () => {
+    setModelValue("");
+    updatePluginConfig(plugin.id, {
+      model: "",
     });
   };
 
@@ -786,6 +848,77 @@ const PluginDetailsModal = ({
                   </p>
                 </div>
               )}
+
+              {supportsEndpointConfig && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor={`${modalId}-endpoint-input`}
+                    className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-foreground/85"
+                  >
+                    <ExternalLink size={16} aria-hidden="true" />{" "}
+                    {t("endpointLabel")}
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      id={`${modalId}-endpoint-input`}
+                      type="url"
+                      value={endpointValue}
+                      maxLength={PLUGIN_CONFIG_LIMITS.maxBaseUrlChars}
+                      placeholder={getEndpointPlaceholder(
+                        plugin.id,
+                        t("endpointPlaceholder"),
+                      )}
+                      onChange={(event) => setEndpointValue(event.target.value)}
+                      onBlur={handleSaveEndpoint}
+                      className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm transition-[border-color,box-shadow] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleClearEndpoint}
+                      disabled={!endpointValue && !config.baseUrl}
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-muted-foreground dark:hover:bg-muted"
+                    >
+                      {t("clearEndpoint")}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">{t("endpointHint")}</p>
+                </div>
+              )}
+
+              {supportsModelConfig && (
+                <div className="space-y-2">
+                  <label
+                    htmlFor={`${modalId}-model-input`}
+                    className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-foreground/85"
+                  >
+                    <Settings size={16} aria-hidden="true" /> {t("modelLabel")}
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      id={`${modalId}-model-input`}
+                      type="text"
+                      value={modelValue}
+                      maxLength={PLUGIN_CONFIG_LIMITS.maxModelNameChars}
+                      placeholder={getModelPlaceholder(
+                        plugin.id,
+                        t("modelPlaceholder"),
+                      )}
+                      onChange={(event) => setModelValue(event.target.value)}
+                      onBlur={handleSaveModel}
+                      className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 font-mono text-sm transition-[border-color,box-shadow] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleClearModel}
+                      disabled={!modelValue && !config.model}
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:text-muted-foreground dark:hover:bg-muted"
+                    >
+                      {t("clearModel")}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">{t("modelHint")}</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1055,6 +1188,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       {/* Detail Modal */}
       {selectedPluginForDetails && (
         <PluginDetailsModal
+          key={selectedPluginForDetails.id}
           plugin={selectedPluginForDetails}
           onClose={() => setSelectedPluginForDetails(null)}
         />

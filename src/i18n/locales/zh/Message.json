@@ -25,6 +25,7 @@
   "user": "用户",
   "sentTime": "发送时间",
   "generatingResponse": "正在生成回复",
+  "generatingImage": "正在生成图片",
   "generationFailed": "生成失败",
   "generationRecoverable": "可使用重新生成再试一次。",
   "failedToSynthesize": "语音合成失败：{error}",

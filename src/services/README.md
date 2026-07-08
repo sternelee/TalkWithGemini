@@ -43,11 +43,14 @@ the Responses `image_generation` tool; Gemini image models use
 modalities. `imageCount` is filled only by `resolveImageGenerationOptions`
 when the user clearly asks for multiple separate images, and provider paths
 ignore or report unsupported count semantics rather than saving it to settings.
+Plugin tool results that expose `images[]`, `imageUrl`, or `imageBase64` remain
+in compact tool details/history instead of being appended as automatic image
+output blocks.
 Before chat or image requests leave the browser, client services strip
 display-only OPFS cache metadata from attachments. Image outputs returned by
-provider routes are cached into OPFS for display, then rendered as runtime
-Blob URLs; the original base64 data or remote URL remains the canonical model
-and export payload.
+provider routes are cached into OPFS for display, then rendered as runtime Blob
+URLs; the original base64 data or remote URL remains the canonical model and
+export payload.
 
 ### `agentService.ts`
 

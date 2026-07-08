@@ -94,6 +94,13 @@ registered before use and stored in the shared registry for hosted or
 multi-instance deployments; otherwise another instance may be unable to resolve
 the function call.
 
+Built-in media plugin IDs are reserved and protocol-specific. Agnes and Gemini
+image tools are image processing plugins, `openai-image-generation` targets the
+OpenAI-compatible Images API, and `openai-responses-image-processing` targets
+the OpenAI Responses API. Supported built-ins can expose plugin-level API Base
+URL and Model ID fields; Agnes video remains a two-step `create_video` /
+`get_video_result` flow and accepts public HTTPS image URLs for image-to-video.
+
 Runtime tool calls execute automatically after a plugin is enabled for the chat.
 There is no per-call confirmation modal, so the plugin market, function toggle,
 auth configuration, and risk metadata are the user's control points.

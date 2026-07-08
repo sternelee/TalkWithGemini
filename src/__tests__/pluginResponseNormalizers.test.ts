@@ -44,6 +44,106 @@ describe("plugin response normalizers", () => {
     });
   });
 
+  it("normalizes Gemini interaction image responses", () => {
+    const response = {
+      id: "interaction_1",
+      output_image: {
+        data: "gemini-image",
+        mime_type: "image/webp",
+      },
+    };
+
+    expect(
+      normalizePluginResponse(plugin("gemini-image-generation"), response),
+    ).toEqual({
+      imageUrl: null,
+      imageBase64: "gemini-image",
+      revisedPrompt: null,
+      images: [
+        {
+          imageUrl: null,
+          imageBase64: "gemini-image",
+          mimeType: "image/webp",
+        },
+      ],
+      raw: response,
+    });
+  });
+
+  it("normalizes OpenAI Responses image generation calls", () => {
+    const response = {
+      output: [
+        {
+          type: "image_generation_call",
+          id: "ig_1",
+          result: "openai-image",
+          revised_prompt: "A revised prompt",
+        },
+        {
+          type: "image_generation_call",
+          id: "ig_2",
+          result: "openai-image-2",
+          revised_prompt: "Another revised prompt",
+        },
+      ],
+    };
+
+    expect(
+      normalizePluginResponse(
+        plugin("openai-responses-image-processing"),
+        response,
+      ),
+    ).toEqual({
+      imageUrl: null,
+      imageBase64: "openai-image",
+      revisedPrompt: "A revised prompt",
+      images: [
+        {
+          imageUrl: null,
+          imageBase64: "openai-image",
+          mimeType: "image/png",
+          revisedPrompt: "A revised prompt",
+        },
+        {
+          imageUrl: null,
+          imageBase64: "openai-image-2",
+          mimeType: "image/png",
+          revisedPrompt: "Another revised prompt",
+        },
+      ],
+      raw: response,
+    });
+  });
+
+  it("normalizes OpenAI-compatible Images API responses", () => {
+    const response = {
+      data: [
+        {
+          url: "https://cdn.example.com/image.png",
+          b64_json: null,
+          revised_prompt: "compat revised",
+        },
+      ],
+    };
+
+    expect(
+      normalizePluginResponse(plugin("openai-image-generation"), response),
+    ).toEqual({
+      imageUrl: "https://cdn.example.com/image.png",
+      imageBase64: null,
+      revisedPrompt: "compat revised",
+      images: [
+        {
+          imageUrl: "https://cdn.example.com/image.png",
+          imageBase64: null,
+          mimeType: "image/png",
+          revisedPrompt: "compat revised",
+        },
+      ],
+      raw: response,
+    });
+  });
+
   it("normalizes Agnes video status fields", () => {
     const response = {
       id: "task_1",

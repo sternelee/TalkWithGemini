@@ -55,6 +55,16 @@ describe("MessageItem composition", () => {
     expect(reasoningBlock).toContain("formatReasoningDuration");
     expect(reasoningBlock).toContain("durationMs?: number");
     expect(reasoningBlock).toContain("LoaderCircle");
+    expect(reasoningBlock).toContain("useEffect");
+    expect(reasoningBlock).toContain(
+      "const [isExpanded, setIsExpanded] = useState(isThinking);",
+    );
+    expect(reasoningBlock).toContain("setIsExpanded(isThinking);");
+    expect(reasoningBlock).toContain("}, [isThinking]);");
+    expect(reasoningBlock).toContain(
+      "onClick={() => setIsExpanded((expanded) => !expanded)}",
+    );
+    expect(reasoningBlock).not.toContain("useState(false)");
     expect(reasoningBlock).not.toContain("bg-violet-100");
     expect(reasoningBlock).not.toContain("dark:bg-violet-900/30");
     expect(reasoningBlock).toContain(

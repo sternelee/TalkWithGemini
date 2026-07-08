@@ -7,7 +7,6 @@ import { normalizeProviderModelId } from "./models";
 import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import {
   OPENAI_COMPATIBLE_PROVIDER_TYPE,
-  OPENAI_PROVIDER_TYPE,
   isProviderType,
 } from "./providerTypes";
 
@@ -16,26 +15,14 @@ function trimString(value: unknown, maxChars: number): string {
 }
 
 function normalizeProviderType(value: unknown): ProviderType {
-  return isProviderType(value) ? value : OPENAI_PROVIDER_TYPE;
+  return isProviderType(value) ? value : OPENAI_COMPATIBLE_PROVIDER_TYPE;
 }
 
 export function migrateCoreSettingsState<T extends { providers?: unknown }>(
   state: T,
 ): T & { providers?: ModelProvider[] } {
   const rawProviders = Array.isArray(state.providers) ? state.providers : [];
-  const providers = normalizeModelProviders(
-    rawProviders.map((provider) => {
-      if (!provider || typeof provider !== "object") return provider;
-      const raw = provider as Partial<ModelProvider>;
-      return {
-        ...raw,
-        type:
-          raw.type === OPENAI_PROVIDER_TYPE
-            ? OPENAI_COMPATIBLE_PROVIDER_TYPE
-            : raw.type,
-      };
-    }),
-  );
+  const providers = normalizeModelProviders(rawProviders);
 
   return {
     ...state,

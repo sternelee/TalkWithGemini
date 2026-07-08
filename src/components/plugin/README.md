@@ -12,6 +12,10 @@ are text-only prompt-context instructions.
 
 - Keep manifest parsing and OpenAPI conversion in `src/lib/plugin`.
 - Keep marketplace API calls in `src/services/api/pluginService.ts`.
+- Keep built-in media plugin configuration consistent with the execution layer:
+  supported plugins may expose API Base URL, Model ID, and image count fields,
+  while OpenAI-compatible Images API and OpenAI Responses image processing stay
+  separate built-ins.
 - Keep tool descriptions and schema text in English because models read them as tool declarations.
 - Keep built-in plugin IDs reserved and avoid duplicate active function names.
 - Treat plugin authentication as sensitive local-first data and preserve BYOK flows.

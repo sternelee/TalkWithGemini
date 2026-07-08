@@ -5,8 +5,14 @@
   "pluginWeatherDescription": "Get real-time weather information including temperature, conditions, and humidity for any city.",
   "pluginUnsplashTitle": "Unsplash",
   "pluginUnsplashDescription": "Search for high-quality photos on Unsplash.",
-  "pluginAgnesImageTitle": "Agnes Image Generation",
-  "pluginAgnesImageDescription": "Generate images with Agnes Image 2.1 Flash from text prompts or input images.",
-  "pluginAgnesVideoTitle": "Agnes Video Generation",
-  "pluginAgnesVideoDescription": "Create and retrieve video generation tasks with Agnes Video V2.0."
+  "pluginAgnesImageTitle": "Agnes Image Processing",
+  "pluginAgnesImageDescription": "Generate or edit images with Agnes Image 2.1 Flash from text prompts or input images.",
+  "pluginGeminiImageTitle": "Gemini Image Processing",
+  "pluginGeminiImageDescription": "Generate or edit images with Gemini Nano Banana image models.",
+  "pluginOpenAIImageTitle": "OpenAI-compatible Image Processing",
+  "pluginOpenAIImageDescription": "Generate or edit images with OpenAI-compatible Images API providers.",
+  "pluginOpenAIResponsesImageTitle": "OpenAI Responses Image Processing",
+  "pluginOpenAIResponsesImageDescription": "Generate or edit images with the OpenAI Responses API image_generation tool.",
+  "pluginAgnesVideoTitle": "Agnes Text/Image Video Generation",
+  "pluginAgnesVideoDescription": "Create text-to-video or image-to-video tasks with Agnes Video V2.0, then retrieve generated results."
 }

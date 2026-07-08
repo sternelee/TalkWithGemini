@@ -74,6 +74,36 @@ describe("message output blocks", () => {
     ]);
   });
 
+  it("adds and removes image generation status blocks", () => {
+    const builder = createMessageOutputBlockBuilder({
+      createId: (() => {
+        let index = 0;
+        return () => `block-${++index}`;
+      })(),
+    }) as any;
+
+    expect(typeof builder.appendImageGenerationStatus).toBe("function");
+    expect(typeof builder.clearImageGenerationStatus).toBe("function");
+
+    const statusId = builder.appendImageGenerationStatus();
+    builder.appendText("After");
+
+    expect(builder.getBlocks()).toEqual([
+      {
+        id: statusId,
+        type: "image_generation_status",
+        status: "generating",
+      },
+      { id: "block-2", type: "text", content: "After" },
+    ]);
+
+    expect(builder.clearImageGenerationStatus(statusId)).toBe(true);
+    expect(builder.getBlocks()).toEqual([
+      { id: "block-2", type: "text", content: "After" },
+    ]);
+    expect(builder.clearImageGenerationStatus(statusId)).toBe(false);
+  });
+
   it("merges consecutive tool calls and updates tool results in place", () => {
     const builder = createMessageOutputBlockBuilder({
       createId: (() => {

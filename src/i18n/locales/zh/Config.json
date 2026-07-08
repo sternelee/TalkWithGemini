@@ -5,8 +5,14 @@
   "pluginWeatherDescription": "获取任意城市的实时天气信息，包括温度、天气状况和湿度。",
   "pluginUnsplashTitle": "Unsplash",
   "pluginUnsplashDescription": "在 Unsplash 上搜索高质量照片。",
-  "pluginAgnesImageTitle": "Agnes 图片生成",
-  "pluginAgnesImageDescription": "使用 Agnes Image 2.1 Flash 根据文本提示或输入图片生成图像。",
-  "pluginAgnesVideoTitle": "Agnes 视频生成",
-  "pluginAgnesVideoDescription": "使用 Agnes Video V2.0 创建并查询视频生成任务。"
+  "pluginAgnesImageTitle": "Agnes 图片处理",
+  "pluginAgnesImageDescription": "使用 Agnes Image 2.1 Flash 根据文本提示或输入图片生成或编辑图像。",
+  "pluginGeminiImageTitle": "Gemini 图片处理",
+  "pluginGeminiImageDescription": "使用 Gemini Nano Banana 图片模型生成或编辑图像。",
+  "pluginOpenAIImageTitle": "OpenAI 兼容图片处理",
+  "pluginOpenAIImageDescription": "使用 OpenAI 兼容 Images API 服务生成或编辑图像。",
+  "pluginOpenAIResponsesImageTitle": "OpenAI Responses 图片处理",
+  "pluginOpenAIResponsesImageDescription": "使用 OpenAI Responses API 的 image_generation 工具生成或编辑图像。",
+  "pluginAgnesVideoTitle": "Agnes 文生/图生视频",
+  "pluginAgnesVideoDescription": "使用 Agnes Video V2.0 创建文生视频或图片生成视频任务，并查询生成结果。"
 }

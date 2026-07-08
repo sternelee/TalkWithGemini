@@ -26,7 +26,7 @@ describe("provider config normalization", () => {
 
     expect(provider).toMatchObject({
       id: "PROVIDER",
-      type: "OpenAI",
+      type: "OpenAI Compatible",
       enabled: true,
       models: ["gemini-pro"],
       modelsList: ["gemini-pro"],
@@ -63,7 +63,16 @@ describe("provider config normalization", () => {
     ).toBe("OpenAI Compatible");
   });
 
-  it("migrates persisted OpenAI providers to OpenAI Compatible", async () => {
+  it("defaults unknown provider types to OpenAI Compatible", () => {
+    expect(
+      normalizeModelProvider({
+        id: "FALLBACK",
+        type: "Other",
+      })?.type,
+    ).toBe("OpenAI Compatible");
+  });
+
+  it("preserves persisted OpenAI providers", async () => {
     const migrated = await migrateCoreSettingsState({
       providers: [
         {
@@ -75,7 +84,7 @@ describe("provider config normalization", () => {
       ],
     });
 
-    expect(migrated.providers?.[0]?.type).toBe("OpenAI Compatible");
+    expect(migrated.providers?.[0]?.type).toBe("OpenAI");
   });
 
   it("filters invalid providers and caps provider/model counts", () => {

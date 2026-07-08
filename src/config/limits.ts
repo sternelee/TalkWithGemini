@@ -305,8 +305,10 @@ export const PLUGIN_CONFIG_LIMITS = {
   maxActivePlugins: MARKET_LIMITS.maxPlugins,
   maxFunctionRefs: 100,
   maxFunctionNameChars: 160,
+  maxModelNameChars: API_INPUT_LIMITS.maxModelNameChars,
   maxAuthValueChars: 16_384,
   maxAuthKeyChars: 200,
+  maxBaseUrlChars: 2_048,
 } as const;
 
 export const PLUGIN_EXECUTION_LIMITS = {

@@ -28,6 +28,7 @@ It is designed for people who want the power of modern AI workspaces without giv
 
 - Rebuilt System Settings with clearer grouped controls, an About panel, deployment health visibility, and local data export/reset actions.
 - Added native model image generation/editing with ordered mixed text/image output blocks and OPFS-backed image display caching.
+- Expanded built-in plugin media tools with Agnes/Gemini image processing, separate OpenAI-compatible Images API and OpenAI Responses image processing plugins, plugin-level Base URL/Model ID controls, image count parameters where supported, compact image tool results, and Agnes image/video processing upgrades.
 - Added thinking intensity controls for reasoning-capable Gemini and OpenAI-compatible models.
 - Added Japanese localization for the app shell, SEO metadata, assistant locale routing, voice language handling, and the public Skills catalog.
 - Hardened hosted deployments with API request proof, shared-store checks, service health coverage, safer URL/secret handling, and Cloudflare Worker command fixes.
@@ -41,7 +42,7 @@ It is designed for people who want the power of modern AI workspaces without giv
 - Assistant presets from the LobeHub agent registry plus local custom assistants.
 - Text-only Skills with localized public catalogs, install/uninstall flows, local edits, custom skills, auto-selection, and workspace presets.
 - OpenAPI-based plugin tools with per-plugin authentication and server-side execution.
-- Built-in tools for web reading, weather, Unsplash search, Agnes image generation, and Agnes video generation. Agnes remains a plugin path, separate from native model image output.
+- Built-in tools for web reading, weather, Unsplash search, Agnes/Gemini image processing, OpenAI-compatible image processing, OpenAI Responses image processing, and Agnes video generation. Agnes image processing supports image-to-image edits, and Agnes video generation supports public image URL to video plus plugin-level model IDs. Image processing plugins remain separate from native model image output.
 - Web search through Gemini native Google Search or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
 - Knowledge-base RAG with OPFS file storage, Mineru/LlamaParse document parsing, and optional vector indexing.
 - Local memory with optional memory search, background extraction, and dream consolidation.
@@ -346,7 +347,7 @@ The app keeps durable user data in browser storage whenever possible. API routes
 
 Skills are text-only prompt-context modules. The app loads localized metadata catalogs from `public/data/skills`, fetches full skill definitions only when needed, and stores installed, edited, and custom skills locally. Active skills can be selected manually, inherited from workspace presets, or auto-selected for a message.
 
-Plugins are OpenAPI-style tools installed from manifests or built-in definitions. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
+Plugins are OpenAPI-style tools installed from manifests or built-in definitions. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. Built-in image processing plugin results stay in the tool details and compact conversation history, so the model can decide whether and how to reference generated or edited images in its follow-up message. OpenAI-compatible Images API and OpenAI Responses image processing are separate plugins so their credentials and activation can be managed independently. Supported built-in media plugins expose plugin-level API Base URL and Model ID fields, optional image count parameters, Agnes image-to-image editing, and Agnes video generation from a public HTTPS image URL while keeping Agnes video as the explicit `create_video` / `get_video_result` two-step flow. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
 
 Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service.
 

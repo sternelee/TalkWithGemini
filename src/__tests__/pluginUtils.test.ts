@@ -106,6 +106,38 @@ describe("plugin execution utility", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("passes saved plugin model defaults to backend execution", async () => {
+    mockStore.state = {
+      installedPlugins: [plugin],
+      pluginConfigs: {
+        [plugin.id]: {
+          model: "provider-image-model",
+        },
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          result: { ok: true },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(executePluginFunction("lookup", {})).resolves.toEqual({
+      ok: true,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(
+      expect.objectContaining({
+        pluginId: plugin.id,
+        functionName: "lookup",
+        authConfig: {
+          model: "provider-image-model",
+        },
+      }),
+    );
+  });
+
   it("returns Agnes video creation tasks without polling for the final result", async () => {
     mockStore.state = {
       installedPlugins: [AGNES_VIDEO_PLUGIN],

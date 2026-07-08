@@ -17,6 +17,11 @@ vi.mock("@/lib/security/safeFetch", () => ({
   safeFetchArrayBuffer: mocks.safeFetchArrayBuffer,
 }));
 
+vi.mock("@/utils/apiHelpers", () => ({
+  assertProviderOutboundAllowed: vi.fn(),
+  createGeminiClient: vi.fn(),
+}));
+
 vi.mock("@/config/limits", async () => vi.importActual("../config/limits"));
 
 vi.mock("@/lib/api/middleware", async () =>
@@ -31,6 +36,10 @@ vi.mock("@/lib/utils/safeServerLog", () => ({
   safeServerLogError: vi.fn(),
   safeServerLogWarn: vi.fn(),
 }));
+
+vi.mock("@/lib/utils/generatedImages", async () =>
+  vi.importActual("../lib/utils/generatedImages"),
+);
 
 vi.mock("@/lib/providers/base", () => ({
   ProviderFactory: {
@@ -190,6 +199,195 @@ describe("BYOK route integration", () => {
         process.env.OPENAI_API_KEY = originalOpenAiKey;
       }
     }
+  });
+
+  it("routes OpenAI Compatible image generation to the Images generations endpoint", async () => {
+    mocks.resolveProviderRuntimeConfig.mockResolvedValue({
+      type: "OpenAI Compatible",
+      baseUrl: "https://api.krill-ai.com/v1",
+      apiKey: "krill-key",
+    });
+    mocks.safeFetchJson.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        data: [{ b64_json: "aW1hZ2U=" }],
+      },
+    });
+
+    const { POST } = await import("../app/api/chat/generate-image/route");
+    const response = await POST(
+      new Request("https://neo.test/api/chat/generate-image", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: {
+            type: "OpenAI Compatible",
+            baseUrl: "https://api.krill-ai.com/v1",
+            apiKeySecret,
+          },
+          modelName: "gpt-image-2",
+          prompt: "draw a quiet dashboard",
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.safeFetchJson).toHaveBeenCalledWith(
+      "https://api.krill-ai.com/v1/images/generations",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer krill-key",
+        }),
+      }),
+      expect.any(Object),
+    );
+    expect(mocks.safeFetchJson.mock.calls[0]?.[2]).toMatchObject({
+      timeoutMs: 120_000,
+    });
+    const requestInit = mocks.safeFetchJson.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(requestInit.body))).not.toHaveProperty(
+      "response_format",
+    );
+  });
+
+  it("returns OpenAI Compatible URL-only generated images", async () => {
+    mocks.resolveProviderRuntimeConfig.mockResolvedValue({
+      type: "OpenAI Compatible",
+      baseUrl: "https://api.krill-ai.com/v1",
+      apiKey: "krill-key",
+    });
+    mocks.safeFetchJson.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        data: [{ url: "https://cdn.krill-ai.com/generated.png" }],
+      },
+    });
+
+    const { POST } = await import("../app/api/chat/generate-image/route");
+    const response = await POST(
+      new Request("https://neo.test/api/chat/generate-image", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: {
+            type: "OpenAI Compatible",
+            baseUrl: "https://api.krill-ai.com/v1",
+            apiKeySecret,
+          },
+          modelName: "gpt-image-2",
+          prompt: "draw a quiet dashboard",
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.images).toHaveLength(1);
+    expect(body.images[0]).toMatchObject({
+      mimeType: "image/png",
+      url: "https://cdn.krill-ai.com/generated.png",
+    });
+    expect(body.images[0]).not.toHaveProperty("data");
+  });
+
+  it("routes OpenAI Compatible image edits to the Images edits endpoint", async () => {
+    mocks.resolveProviderRuntimeConfig.mockResolvedValue({
+      type: "OpenAI Compatible",
+      baseUrl: "https://api.krill-ai.com/v1",
+      apiKey: "krill-key",
+    });
+    mocks.safeFetchJson.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        data: [{ b64_json: "ZWRpdA==" }],
+      },
+    });
+
+    const { POST } = await import("../app/api/chat/generate-image/route");
+    const response = await POST(
+      new Request("https://neo.test/api/chat/generate-image", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: {
+            type: "OpenAI Compatible",
+            baseUrl: "https://api.krill-ai.com/v1",
+            apiKeySecret,
+          },
+          modelName: "gpt-image-2",
+          prompt: "edit this image",
+          attachments: [
+            {
+              id: "att_1",
+              mimeType: "image/png",
+              fileName: "source.png",
+              data: "aW1hZ2U=",
+            },
+          ],
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.safeFetchJson).toHaveBeenCalledWith(
+      "https://api.krill-ai.com/v1/images/edits",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer krill-key",
+        }),
+        body: expect.any(FormData),
+      }),
+      expect.any(Object),
+    );
+    const requestInit = mocks.safeFetchJson.mock.calls[0]?.[1] as RequestInit;
+    const formData = requestInit.body as FormData;
+    expect(formData.has("response_format")).toBe(false);
+  });
+
+  it("returns OpenAI Compatible URL-only edited images", async () => {
+    mocks.resolveProviderRuntimeConfig.mockResolvedValue({
+      type: "OpenAI Compatible",
+      baseUrl: "https://api.krill-ai.com/v1",
+      apiKey: "krill-key",
+    });
+    mocks.safeFetchJson.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: {
+        data: [{ url: "https://cdn.krill-ai.com/edited.png" }],
+      },
+    });
+
+    const { POST } = await import("../app/api/chat/generate-image/route");
+    const response = await POST(
+      new Request("https://neo.test/api/chat/generate-image", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: {
+            type: "OpenAI Compatible",
+            baseUrl: "https://api.krill-ai.com/v1",
+            apiKeySecret,
+          },
+          modelName: "gpt-image-2",
+          prompt: "edit this image",
+          attachments: [
+            {
+              id: "att_1",
+              mimeType: "image/png",
+              fileName: "source.png",
+              data: "aW1hZ2U=",
+            },
+          ],
+        }),
+      }) as any,
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.images).toHaveLength(1);
+    expect(body.images[0]).toMatchObject({
+      mimeType: "image/png",
+      url: "https://cdn.krill-ai.com/edited.png",
+    });
+    expect(body.images[0]).not.toHaveProperty("data");
   });
 
   it("rejects plaintext document parse API keys in multipart requests", async () => {

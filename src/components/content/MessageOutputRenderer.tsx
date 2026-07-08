@@ -2,6 +2,7 @@
 
 import React, { useMemo } from "react";
 import { ImageOff } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { Attachment, Message, MessageOutputBlock, Source } from "@/types";
 import { getMessageOutputBlocks } from "@/lib/chat/messageOutputBlocks";
 import type { MarkdownGeneratedFile } from "@/lib/utils/markdownFiles";
@@ -31,6 +32,26 @@ interface MessageOutputRendererProps {
 
 const isMemorySearchTool = (name: string | undefined) =>
   name === "memory_search";
+
+const ImageGenerationStatusBlock: React.FC<{ label: string }> = ({ label }) => (
+  <div
+    className="my-3 w-72 max-w-full overflow-hidden rounded-lg border border-border bg-muted/30"
+    role="status"
+    aria-live="polite"
+    aria-label={label}
+  >
+    <div className="relative aspect-square overflow-hidden bg-muted/40">
+      <div className="absolute inset-0 animate-pulse bg-linear-to-br from-muted via-background/70 to-muted" />
+      <div className="absolute left-6 right-16 top-6 h-3 rounded-full bg-background/70" />
+      <div className="absolute left-6 right-28 top-12 h-2 rounded-full bg-background/50" />
+      <div className="absolute inset-x-10 bottom-9 h-2 rounded-full bg-background/60" />
+      <div className="absolute bottom-16 left-8 h-20 w-28 rounded-md bg-background/45" />
+      <div className="absolute right-8 top-20 h-28 w-24 rounded-md bg-background/35" />
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.7s_ease-in-out_infinite] bg-linear-to-r from-transparent via-background/60 to-transparent" />
+      <span className="sr-only">{label}</span>
+    </div>
+  </div>
+);
 
 const GeneratedImageBlock: React.FC<{
   image: Attachment;
@@ -113,6 +134,7 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
   forceExpandCodeBlocks,
   onImageCached,
 }) => {
+  const t = useTranslations("Message");
   const blocks = useMemo(() => {
     const orderedBlocks = getMessageOutputBlocks(message);
     return trimTextBlocksForStreaming(
@@ -166,6 +188,13 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
                 key={block.id}
                 image={block.image}
                 onImageCached={onImageCached}
+              />
+            );
+          case "image_generation_status":
+            return (
+              <ImageGenerationStatusBlock
+                key={block.id}
+                label={t("generatingImage")}
               />
             );
           case "tool_group": {

@@ -17,6 +17,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { ProviderType } from "@/types";
 import {
   useSettingsStore,
   formatModelName,
@@ -25,7 +26,7 @@ import {
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import Tooltip from "../ui/Tooltip";
 import ModelEditor from "./ModelEditor";
-import { SecretInput } from "./SettingsUI";
+import { CustomSelect, SecretInput } from "./SettingsUI";
 import { PROVIDER_CONFIG_LIMITS } from "@/config/limits";
 import {
   getResponseErrorMessage,
@@ -103,6 +104,23 @@ const ProviderSettings = () => {
       : currentProvider?.type === "OpenAI"
         ? "https://platform.openai.com/api-keys"
         : undefined;
+  const providerTypeOptions: Array<{
+    value: ProviderType;
+    label: string;
+  }> = [
+    {
+      value: "OpenAI Compatible",
+      label: t("openaiCompatible"),
+    },
+    {
+      value: "OpenAI",
+      label: t("openaiResponses"),
+    },
+    {
+      value: "Gemini",
+      label: "Gemini",
+    },
+  ];
 
   const clearDeleteConfirmation = () => {
     if (deleteConfirmTimerRef.current) {
@@ -419,32 +437,19 @@ const ProviderSettings = () => {
                     >
                       {t("apiType")}
                     </label>
-                    <div className="relative">
-                      <select
-                        id={providerTypeInputId}
-                        name="providerType"
-                        value={currentProvider.type}
-                        onChange={(e) =>
-                          updateProvider(currentProvider.id, {
-                            type: e.target.value as any,
-                          })
-                        }
-                        className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] appearance-none text-gray-800 dark:text-foreground"
-                      >
-                        <option value="Gemini">Gemini</option>
-                        <option value="OpenAI">{t("openaiResponses")}</option>
-                        <option value="OpenAI Compatible">
-                          {t("openaiCompatible")}
-                        </option>
-                      </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        <Server
-                          size={14}
-                          className="text-gray-400"
-                          aria-hidden="true"
-                        />
-                      </div>
-                    </div>
+                    <CustomSelect
+                      id={providerTypeInputId}
+                      value={currentProvider.type}
+                      onChange={(value) =>
+                        updateProvider(currentProvider.id, {
+                          type: value as ProviderType,
+                        })
+                      }
+                      options={providerTypeOptions}
+                      icon={Server}
+                      ariaLabel={t("apiType")}
+                      selectButtonClassName="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] text-gray-800 dark:text-foreground flex items-center justify-between disabled:cursor-not-allowed disabled:opacity-50"
+                    />
                   </div>
                 )}
                 {!isServerDefaultProvider && (

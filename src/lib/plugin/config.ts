@@ -2,12 +2,28 @@ import type { Plugin, PluginConfig } from "../../types";
 import { MARKET_LIMITS, PLUGIN_CONFIG_LIMITS } from "../../config/limits";
 import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import { hasPluginAuthValue } from "../security/localSecretResolvers";
+import { getSafeUrlPolicy, validateOutboundUrl } from "../security/urlPolicy";
 
 const AUTH_TYPES = new Set(["bearer", "apiKey", "none"]);
 const AUTH_LOCATIONS = new Set(["header", "query"]);
 
 function trimString(value: unknown, maxChars: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxChars) : "";
+}
+
+function normalizePluginBaseUrl(value: unknown): string | undefined {
+  const raw = trimString(value, PLUGIN_CONFIG_LIMITS.maxBaseUrlChars);
+  if (!raw) return undefined;
+
+  try {
+    const { url } = validateOutboundUrl(raw, getSafeUrlPolicy("plugin"));
+    url.hash = "";
+    url.search = "";
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeFunctionRefs(
@@ -72,6 +88,16 @@ export function normalizePluginConfig(
   const normalized: PluginConfig = {
     disabledFunctions: normalizeFunctionRefs(raw.disabledFunctions, allowed),
   };
+
+  const baseUrl = normalizePluginBaseUrl(raw.baseUrl);
+  if (baseUrl) {
+    normalized.baseUrl = baseUrl;
+  }
+
+  const model = trimString(raw.model, PLUGIN_CONFIG_LIMITS.maxModelNameChars);
+  if (model) {
+    normalized.model = model;
+  }
 
   const enabledFunctions = normalizeFunctionRefs(raw.enabledFunctions, allowed);
   if (enabledFunctions.length > 0) {
