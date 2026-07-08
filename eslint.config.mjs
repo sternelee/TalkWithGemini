@@ -21,6 +21,12 @@ const eslintConfig = defineConfig([
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@next/next/no-img-element": "off",
+      // React Hooks 7.1 enables compiler-oriented rules that flag existing
+      // state/effect patterns; keep them opt-in until those flows are refactored.
+      "react-hooks/immutability": "off",
+      "react-hooks/purity": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/static-components": "off",
     },
   },
 ]);
