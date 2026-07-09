@@ -16,7 +16,7 @@ import {
   generateTitle,
 } from "../lib/api/auxiliary-handler";
 
-const provider = { type: "Gemini", apiKey: "test" } as const;
+const provider = { type: "Google", apiKey: "test" } as const;
 
 describe("auxiliary generation handlers", () => {
   beforeEach(() => {

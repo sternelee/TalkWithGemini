@@ -29,21 +29,21 @@ It is designed for people who want the power of modern AI workspaces without giv
 - Rebuilt System Settings with clearer grouped controls, an About panel, deployment health visibility, and local data export/reset actions.
 - Added native model image generation/editing with ordered mixed text/image output blocks and OPFS-backed image display caching.
 - Expanded built-in plugin media tools with Agnes/Gemini image processing, separate OpenAI-compatible Images API and OpenAI Responses image processing plugins, plugin-level Base URL/Model ID controls, image count parameters where supported, compact image tool results, and Agnes image/video processing upgrades.
-- Added thinking intensity controls for reasoning-capable Gemini and OpenAI-compatible models.
+- Added thinking intensity controls for reasoning-capable Google/Gemini and OpenAI-compatible models.
 - Added Japanese localization for the app shell, SEO metadata, assistant locale routing, voice language handling, and the public Skills catalog.
 - Hardened hosted deployments with API request proof, shared-store checks, service health coverage, safer URL/secret handling, and Cloudflare Worker command fixes.
 - Added changelog-driven GitHub Release automation and a fork-only upstream sync workflow.
 
 ## Features
 
-- Multi-provider chat with Gemini, OpenAI, and OpenAI-compatible endpoints.
+- Multi-provider chat with Google, Anthropic, OpenAI, and OpenAI-compatible endpoints.
 - Native image generation and image editing for models whose metadata exposes image output/input, with ordered mixed text/image message blocks and OPFS-backed Blob URL display caching.
 - Local-first sessions, branches, pinned chats, workspaces, workspace files, and assistant instructions.
 - Assistant presets from the LobeHub agent registry plus local custom assistants.
 - Text-only Skills with localized public catalogs, install/uninstall flows, local edits, custom skills, auto-selection, and workspace presets.
 - OpenAPI-based plugin tools plus remote streamable HTTP MCP servers, with per-plugin authentication and server-side execution through the same installed/active plugin controls.
-- Built-in tools for web reading, weather, Unsplash search, Agnes/Gemini image processing, OpenAI-compatible image processing, OpenAI Responses image processing, and Agnes video generation. Agnes image processing supports image-to-image edits, and Agnes video generation supports public image URL to video plus plugin-level model IDs. Image processing plugins remain separate from native model image output.
-- Web search through Gemini native Google Search or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
+- Built-in tools for web reading, weather, Unsplash search, Agnes/Google image processing, OpenAI-compatible image processing, OpenAI Responses image processing, and Agnes video generation. Agnes image processing supports image-to-image edits, and Agnes video generation supports public image URL to video plus plugin-level model IDs. Image processing plugins remain separate from native model image output.
+- Web search through Google native Google Search, OpenAI Web Search, or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
 - Knowledge-base RAG with OPFS file storage, Mineru/LlamaParse document parsing, and optional vector indexing.
 - Local memory with optional memory search, background extraction, and dream consolidation.
 - Voice input and output through browser APIs, ElevenLabs, Mimo, or compatible configured providers.
@@ -142,6 +142,8 @@ for the environments that build those deployments.
 
 ```bash
 pnpm build:worker
+pnpm worker:size
+pnpm worker:dry-run
 pnpm preview:worker
 pnpm deploy:worker
 ```
@@ -233,8 +235,8 @@ UPSTASH_REDIS_REST_TOKEN="..."
 Default model provider:
 
 ```bash
-DEFAULT_PROVIDER_TYPE="Gemini"
-DEFAULT_PROVIDER_NAME="Google Gemini"
+DEFAULT_PROVIDER_TYPE="Google"
+DEFAULT_PROVIDER_NAME="Google"
 DEFAULT_PROVIDER_BASE_URL=""
 DEFAULT_PROVIDER_API_KEY="provider-key"
 DEFAULT_PROVIDER_MODELS="model-a,model-b"
@@ -325,7 +327,7 @@ flowchart LR
   Browser --> IndexedDB["IndexedDB\nsessions + plugins + skills + knowledge + memories"]
   Browser --> OPFS["OPFS\nuploads + workspace files"]
   Browser --> ApiRoutes["Next.js API routes"]
-  ApiRoutes --> Providers["Model providers\nGemini / OpenAI / compatible"]
+  ApiRoutes --> Providers["Model providers\nGoogle / Anthropic / OpenAI / compatible"]
   ApiRoutes --> Search["Search providers"]
   ApiRoutes --> Rag["RAG + document services"]
   ApiRoutes --> Plugins["Plugin APIs"]
@@ -349,7 +351,7 @@ Skills are text-only prompt-context modules. The app loads localized metadata ca
 
 Plugins are executable tools installed from OpenAPI manifests, built-in definitions, or remote streamable HTTP MCP servers discovered from the official MCP Registry. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. MCP v1 support is remote-only: stdio, npm, Docker, local process transports, and OAuth login flows are intentionally out of scope. MCP server URLs are HTTPS-only; local and self-hosted deployments may call localhost or private-network HTTPS endpoints for LAN MCP servers, while hosted deployments block those targets unless local-network proxying is explicitly enabled. Built-in image processing plugin results stay in the tool details and compact conversation history, so the model can decide whether and how to reference generated or edited images in its follow-up message. OpenAI-compatible Images API and OpenAI Responses image processing are separate plugins so their credentials and activation can be managed independently. Supported built-in media plugins expose plugin-level API Base URL and Model ID fields, optional image count parameters, Agnes image-to-image editing, and Agnes video generation from a public HTTPS image URL while keeping Agnes video as the explicit `create_video` / `get_video_result` two-step flow. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
 
-Search can run through Gemini native Google Search for Gemini models or external providers for other model families. Knowledge-base RAG stores source files in OPFS, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service.
+Search can run through Google native Google Search, OpenAI Web Search, or external providers for other model families including Anthropic. Knowledge-base RAG stores source files in OPFS, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service.
 
 Voice workflows support browser speech APIs and configured external providers. Set `DEFAULT_VOICE_PROVIDER` to `elevenlabs` or `mimo` to enable a server default; leaving it empty keeps browser-native speech as the default. Empty default model values disable the matching STT or TTS capability, and the UI can store user-specific secrets locally.
 
@@ -392,6 +394,8 @@ pnpm start            # Start production server
 pnpm format           # Format the repository with Prettier
 pnpm format:check     # Check repository formatting
 pnpm build:worker     # Build for Cloudflare Workers
+pnpm worker:size      # Check Worker gzip size budget
+pnpm worker:dry-run   # Validate Worker deploy without publishing
 pnpm preview:worker   # Preview Worker build
 pnpm deploy:worker    # Deploy Worker build while preserving dashboard vars
 pnpm byok:generate    # Generate copyable BYOK key values
@@ -447,6 +451,10 @@ By default, durable chat and configuration data live in browser storage. API rou
 ### Can I use OpenAI-compatible providers?
 
 Yes. Add an OpenAI-compatible provider in Settings or configure deployment defaults with `DEFAULT_PROVIDER_TYPE="OpenAI Compatible"` and a compatible `/v1` base URL.
+
+### Can I use Anthropic's native Messages API?
+
+Yes. Add an Anthropic provider in Settings or configure `DEFAULT_PROVIDER_TYPE="Anthropic"`. The official base URL is `https://api.anthropic.com`; the app uses Anthropic's native `/v1/messages` API through the official TypeScript SDK.
 
 ### Why do I need a stable BYOK private key in production?
 

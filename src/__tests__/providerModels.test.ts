@@ -3,9 +3,9 @@ import { PROVIDER_MODEL_LIMITS } from "../config/limits";
 import { extractProviderModelIds } from "../lib/providers/models";
 
 describe("provider model extraction", () => {
-  it("filters Gemini models to generateContent-capable ids", () => {
+  it("filters Google models to generateContent-capable ids", () => {
     expect(
-      extractProviderModelIds("Gemini", {
+      extractProviderModelIds("Google", {
         models: [
           {
             name: "models/gemini-2.5-pro",
@@ -22,6 +22,19 @@ describe("provider model extraction", () => {
         ],
       }),
     ).toEqual(["gemini-2.5-pro"]);
+  });
+
+  it("normalizes legacy Gemini model extraction to Google", () => {
+    expect(
+      extractProviderModelIds("Gemini", {
+        models: [
+          {
+            name: "models/gemini-2.5-flash",
+            supportedGenerationMethods: ["generateContent"],
+          },
+        ],
+      }),
+    ).toEqual(["gemini-2.5-flash"]);
   });
 
   it("deduplicates and trims OpenAI-compatible model ids", () => {
@@ -44,6 +57,14 @@ describe("provider model extraction", () => {
         data: [{ id: "chat-model" }, { id: "chat-model" }],
       }),
     ).toEqual(["chat-model"]);
+  });
+
+  it("extracts Anthropic model ids from data lists", () => {
+    expect(
+      extractProviderModelIds("Anthropic", {
+        data: [{ id: "claude-sonnet-5" }, { id: " claude-haiku-5 " }],
+      }),
+    ).toEqual(["claude-sonnet-5", "claude-haiku-5"]);
   });
 
   it("caps model id length and total model count", () => {

@@ -4,7 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { clearByokPublicKeyCache, encryptSecret } from "../lib/byok/client";
-import { decryptSecretEnvelope, getByokPublicKey } from "../lib/byok/server";
+import {
+  decryptSecretEnvelope,
+  getByokPublicKey,
+  resolveProviderRuntimeConfig,
+} from "../lib/byok/server";
+import { ProviderRuntimeConfigSchema } from "../lib/api/schemas";
 import {
   clearLocalSecretKeyCache,
   encryptLocalSecret,
@@ -205,6 +210,29 @@ describe("BYOK secret envelopes", () => {
     ).resolves.toBe("sk-test-secret");
   });
 
+  it("decrypts legacy Gemini provider envelopes after provider type normalization", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      Response.json(await getByokPublicKey()),
+    );
+
+    const envelope = await encryptSecret(
+      "legacy-gemini-secret",
+      "provider:Gemini",
+    );
+    const provider = ProviderRuntimeConfigSchema.parse({
+      type: "Gemini",
+      apiKeySecret: envelope,
+    });
+
+    expect(provider.type).toBe("Google");
+    await expect(resolveProviderRuntimeConfig(provider)).resolves.toMatchObject(
+      {
+        type: "Google",
+        apiKey: "legacy-gemini-secret",
+      },
+    );
+  });
+
   it("builds provider BYOK envelopes from encrypted local secrets", async () => {
     vi.resetModules();
     resetByokKeyMaterial();
@@ -225,7 +253,7 @@ describe("BYOK secret envelopes", () => {
     const runtime = await buildProviderRuntimeConfig({
       id: "LOCAL1",
       name: "Local Gemini",
-      type: "Gemini",
+      type: "Google",
       baseUrl: "https://generativelanguage.googleapis.com",
       apiKey: "",
       apiKeySecret,
@@ -236,7 +264,7 @@ describe("BYOK secret envelopes", () => {
 
     expect(JSON.stringify(runtime)).not.toContain("local-provider-secret");
     await expect(
-      freshDecryptSecretEnvelope(runtime.apiKeySecret!, "provider:Gemini"),
+      freshDecryptSecretEnvelope(runtime.apiKeySecret!, "provider:Google"),
     ).resolves.toBe("local-provider-secret");
   });
 

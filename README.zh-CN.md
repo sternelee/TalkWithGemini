@@ -29,21 +29,21 @@ Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.j
 - 重构 System Settings，提供更清晰的分组控制、About 面板、部署健康可见性，以及本地数据导出/重置入口。
 - 新增模型原生图片生成/编辑，支持按顺序渲染图文混合输出块，并使用 OPFS 做图片显示缓存。
 - 扩展内置插件媒体工具：Agnes/Gemini 图片处理、独立的 OpenAI 兼容 Images API 与 OpenAI Responses 图片处理插件、插件级 Base URL/Model ID 配置、受支持接口的图片数量参数、压缩后的图片工具结果，以及 Agnes 图片/视频处理能力升级。
-- 为支持 reasoning 的 Gemini 和 OpenAI-compatible 模型新增 thinking intensity 控制。
+- 为支持 reasoning 的 Google/Gemini 和 OpenAI-compatible 模型新增 thinking intensity 控制。
 - 新增日文支持，覆盖应用界面、SEO metadata、助理语言路由、语音语言处理和公共 Skills 目录。
 - 加强 hosted 部署安全，加入 API request proof、共享存储检查、服务健康覆盖、更安全的 URL/密钥处理，以及 Cloudflare Worker 命令修复。
 - 新增基于 `CHANGELOG.md` 的 GitHub Release 自动化，以及仅在 fork 仓库运行的 upstream 同步 workflow。
 
 ## 功能特性
 
-- 支持 Gemini、OpenAI 和 OpenAI-compatible endpoint 的多供应商对话。
+- 支持 Google、Anthropic、OpenAI 和 OpenAI-compatible endpoint 的多供应商对话。
 - 对 metadata 声明支持图片输出/输入的模型提供原生图片生成和图片编辑，图文混排会按模型输出顺序渲染，并使用 OPFS + Blob URL 做图片显示缓存。
 - 本地优先的会话、分支、置顶对话、工作区、工作区文件和助理指令。
 - 支持 LobeHub Agent Registry 助理预设，也支持本地自定义助理。
 - 支持纯文本技能：本地化公共目录、安装/卸载、编辑内置技能、本地自定义技能、自动选择和工作区预设。
 - 支持 OpenAPI 风格插件工具和 remote streamable HTTP MCP 服务器，两者共用已安装/启用插件控制、插件鉴权和服务端执行链路。
-- 内置网页阅读、天气、Unsplash 搜索、Agnes/Gemini 图片处理、OpenAI 兼容图片处理、OpenAI Responses 图片处理、Agnes 视频生成工具。Agnes 图片处理支持图生图编辑，Agnes 视频生成支持公开图片 URL 生成视频和插件级模型 ID。图片处理插件和模型原生图片输出保持分离。
-- 支持 Gemini 原生 Google Search，以及 Tavily、Firecrawl、Exa、Bocha、SearXNG 等外部搜索。
+- 内置网页阅读、天气、Unsplash 搜索、Agnes/Google 图片处理、OpenAI 兼容图片处理、OpenAI Responses 图片处理、Agnes 视频生成工具。Agnes 图片处理支持图生图编辑，Agnes 视频生成支持公开图片 URL 生成视频和插件级模型 ID。图片处理插件和模型原生图片输出保持分离。
+- 支持 Google 原生 Google Search、OpenAI Web Search，以及 Tavily、Firecrawl、Exa、Bocha、SearXNG 等外部搜索。
 - 知识库 RAG 支持 OPFS 文件存储、Mineru/LlamaParse 文档解析和可选向量索引。
 - 支持本地记忆、可选记忆搜索、后台记忆提取和记忆整合。
 - 支持浏览器语音 API、ElevenLabs、Mimo 或兼容配置的语音输入输出。
@@ -140,6 +140,8 @@ NEXT_PUBLIC_SITE_URL=https://your-domain.com
 
 ```bash
 pnpm build:worker
+pnpm worker:size
+pnpm worker:dry-run
 pnpm preview:worker
 pnpm deploy:worker
 ```
@@ -226,8 +228,8 @@ UPSTASH_REDIS_REST_TOKEN="..."
 默认模型供应商：
 
 ```bash
-DEFAULT_PROVIDER_TYPE="Gemini"
-DEFAULT_PROVIDER_NAME="Google Gemini"
+DEFAULT_PROVIDER_TYPE="Google"
+DEFAULT_PROVIDER_NAME="Google"
 DEFAULT_PROVIDER_BASE_URL=""
 DEFAULT_PROVIDER_API_KEY="provider-key"
 DEFAULT_PROVIDER_MODELS="model-a,model-b"
@@ -318,7 +320,7 @@ flowchart LR
   Browser --> IndexedDB["IndexedDB\n会话 + 插件 + 技能 + 知识库 + 记忆"]
   Browser --> OPFS["OPFS\n上传 + 工作区文件"]
   Browser --> ApiRoutes["Next.js API routes"]
-  ApiRoutes --> Providers["模型供应商\nGemini / OpenAI / compatible"]
+  ApiRoutes --> Providers["模型供应商\nGoogle / Anthropic / OpenAI / compatible"]
   ApiRoutes --> Search["搜索供应商"]
   ApiRoutes --> Rag["RAG + 文档服务"]
   ApiRoutes --> Plugins["插件 API"]
@@ -342,7 +344,7 @@ flowchart LR
 
 插件是可执行工具，可以来自 OpenAPI manifest、内置定义，或从官方 MCP Registry 发现的 remote streamable HTTP MCP 服务器。启用的插件函数会以 tool 形式暴露给兼容模型，再由服务端插件路由执行。MCP v1 只支持远程 streamable HTTP：stdio、npm、Docker、本地进程 transport 和 OAuth 登录流暂不支持。MCP server URL 必须使用 HTTPS；本地和自托管部署允许调用 localhost 或局域网 HTTPS MCP endpoint，hosted 部署默认阻止这些目标，除非显式开启本地网络代理。内置图片处理插件结果保留在工具详情和压缩后的对话历史中，由模型决定是否以及如何在后续回复中引用生成或编辑后的图片。OpenAI 兼容 Images API 和 OpenAI Responses 图片处理是两个独立插件，便于分别管理密钥和启用状态。受支持的内置媒体插件提供插件级 API Base URL 与 Model ID 字段、可选图片数量参数、Agnes 图生图编辑，以及基于公开 HTTPS 图片 URL 的 Agnes 图生视频；Agnes 视频仍保持显式 `create_video` / `get_video_result` 两步流程。工具调用编排使用较高但有边界的循环上限，既允许多步任务，也避免递归工具调用失控。
 
-搜索可以使用 Gemini 模型的原生 Google Search，也可以对其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 Mineru 或 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
+搜索可以使用 Google 模型的原生 Google Search、OpenAI Web Search，也可以对包括 Anthropic 在内的其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 Mineru 或 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
 
 语音流程支持浏览器语音 API 和外部供应商。将 `DEFAULT_VOICE_PROVIDER` 设为 `elevenlabs` 或 `mimo` 可启用服务端默认语音供应商；留空则默认使用浏览器原生语音。默认模型值为空会禁用对应的 STT 或 TTS 能力，用户级密钥也可以由 UI 本地保存。
 
@@ -385,6 +387,8 @@ pnpm start            # 启动生产服务
 pnpm format           # 使用 Prettier 格式化仓库
 pnpm format:check     # 检查仓库格式
 pnpm build:worker     # 构建 Cloudflare Workers
+pnpm worker:size      # 检查 Worker gzip 体积预算
+pnpm worker:dry-run   # 校验 Worker 部署但不发布
 pnpm preview:worker   # 预览 Worker 构建
 pnpm deploy:worker    # 部署 Worker 构建并保留 dashboard 变量
 pnpm byok:generate    # 生成可复制的 BYOK key
@@ -440,6 +444,10 @@ TARGET_BRANCH=<fork default branch>
 ### 可以使用 OpenAI-compatible 供应商吗？
 
 可以。在设置中添加 OpenAI-compatible 供应商，或通过 `DEFAULT_PROVIDER_TYPE="OpenAI Compatible"` 和兼容 `/v1` base URL 配置部署默认值。
+
+### 可以使用 Anthropic 原生 Messages API 吗？
+
+可以。在设置中添加 Anthropic 供应商，或配置 `DEFAULT_PROVIDER_TYPE="Anthropic"`。官方 Base URL 是 `https://api.anthropic.com`；应用会通过官方 TypeScript SDK 调用原生 `/v1/messages` API。
 
 ### 为什么生产环境需要稳定的 BYOK private key？
 

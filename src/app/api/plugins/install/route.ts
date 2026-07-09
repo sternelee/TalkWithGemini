@@ -13,8 +13,52 @@ import { safeServerLogError } from "@/lib/utils/safeServerLog";
 import type { Plugin } from "@/types";
 import { decryptOptionalSecret } from "../../../../lib/byok/server";
 import { BYOK_CONTEXTS } from "../../../../lib/byok/shared";
-import { normalizeMcpToolFunctions } from "../../../../lib/mcp/registry";
+import {
+  MCP_REGISTRY_BASE_URL,
+  normalizeMcpRegistryServer,
+  normalizeMcpToolFunctions,
+} from "../../../../lib/mcp/registry";
 import { isPluginAuthRequired } from "../../../../lib/plugin/config";
+
+function isRegistryMcpMarketplacePlugin(plugin: Plugin): boolean {
+  if (plugin.source !== "mcp" || !plugin.id.startsWith("mcp:")) return false;
+  if (!plugin.manifestUrl) return false;
+
+  try {
+    const manifestUrl = new URL(plugin.manifestUrl);
+    const registryBaseUrl = new URL(MCP_REGISTRY_BASE_URL);
+    return manifestUrl.origin === registryBaseUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveTrustedMcpPlugin(plugin: Plugin): Promise<Plugin> {
+  if (!isRegistryMcpMarketplacePlugin(plugin)) return plugin;
+
+  const { response, data } = await safeFetchJson<unknown>(
+    plugin.manifestUrl,
+    { method: "GET" },
+    {
+      policy: {
+        ...getSafeUrlPolicy("pluginManifest"),
+        allowedHosts: ["registry.modelcontextprotocol.io"],
+      },
+      timeoutMs: 20_000,
+      maxResponseBytes: 3 * 1024 * 1024,
+    },
+  );
+  if (!response.ok) {
+    throw new Error("Failed to fetch MCP registry metadata");
+  }
+
+  const normalized = normalizeMcpRegistryServer(data);
+  if (!normalized || normalized.id !== plugin.id) {
+    throw new Error("MCP registry metadata did not match the requested plugin");
+  }
+
+  return normalized;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,9 +116,10 @@ export async function POST(request: NextRequest) {
       await registerServerPlugin(installedPlugin as Plugin);
       return NextResponse.json({ plugin: installedPlugin });
     } else if (plugin) {
+      const requestedPlugin = plugin as Plugin;
       // Install from marketplace
-      if (plugin.source === "mcp") {
-        if (!plugin.id) {
+      if (requestedPlugin.source === "mcp") {
+        if (!requestedPlugin.id) {
           return NextResponse.json(
             {
               error: "Missing plugin id",
@@ -85,7 +130,9 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        if (!plugin.mcp?.serverUrl || !plugin.mcp.serverName) {
+        const trustedPlugin = await resolveTrustedMcpPlugin(requestedPlugin);
+
+        if (!trustedPlugin.mcp?.serverUrl || !trustedPlugin.mcp.serverName) {
           return NextResponse.json(
             {
               error: "Missing MCP server metadata",
@@ -98,9 +145,9 @@ export async function POST(request: NextRequest) {
 
         const authValue = await decryptOptionalSecret(
           authConfig?.valueSecret,
-          BYOK_CONTEXTS.pluginAuth(plugin.id),
+          BYOK_CONTEXTS.pluginAuth(trustedPlugin.id),
         );
-        if (isPluginAuthRequired(plugin as Plugin) && !authValue) {
+        if (isPluginAuthRequired(trustedPlugin) && !authValue) {
           return NextResponse.json(
             {
               error:
@@ -113,32 +160,33 @@ export async function POST(request: NextRequest) {
         }
 
         const tools = await listMcpTools({
-          serverUrl: plugin.mcp.serverUrl,
-          staticHeaders: plugin.mcp.headers,
+          serverUrl: trustedPlugin.mcp.serverUrl,
+          staticHeaders: trustedPlugin.mcp.headers,
           ...(authValue
             ? {
                 authConfig: {
                   type:
                     authConfig?.type ||
-                    (plugin.auth?.type === "apiKey"
+                    (trustedPlugin.auth?.type === "apiKey"
                       ? "apiKey"
-                      : plugin.auth?.type === "oauth2"
+                      : trustedPlugin.auth?.type === "oauth2"
                         ? "oauth2"
                         : "bearer"),
                   key:
                     authConfig?.key ||
-                    plugin.auth?.name ||
-                    (plugin.auth?.type === "apiKey"
+                    trustedPlugin.auth?.name ||
+                    (trustedPlugin.auth?.type === "apiKey"
                       ? "X-API-Key"
                       : "Authorization"),
-                  addTo: authConfig?.addTo || plugin.auth?.in || "header",
+                  addTo:
+                    authConfig?.addTo || trustedPlugin.auth?.in || "header",
                   value: authValue,
                 },
               }
             : {}),
         });
         const functions = normalizeMcpToolFunctions(
-          plugin.mcp.serverName,
+          trustedPlugin.mcp.serverName,
           tools,
         );
 
@@ -160,13 +208,15 @@ export async function POST(request: NextRequest) {
           ]),
         );
         const installedPlugin: Plugin = {
-          ...(plugin as Plugin),
+          ...trustedPlugin,
           source: "mcp",
-          category: plugin.category || "MCP",
-          categories: plugin.categories?.length ? plugin.categories : ["MCP"],
+          category: trustedPlugin.category || "MCP",
+          categories: trustedPlugin.categories?.length
+            ? trustedPlugin.categories
+            : ["MCP"],
           functions,
           mcp: {
-            ...plugin.mcp,
+            ...trustedPlugin.mcp,
             toolNameMap,
           },
         };

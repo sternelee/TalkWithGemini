@@ -38,10 +38,60 @@ import {
   fetchWithByokRetry,
 } from "@/lib/byok/client";
 import {
+  ANTHROPIC_PROVIDER_TYPE,
+  GOOGLE_PROVIDER_TYPE,
+  OPENAI_COMPATIBLE_PROVIDER_TYPE,
+  OPENAI_PROVIDER_TYPE,
+  isAnthropicProviderType,
+  isGoogleProviderType,
+} from "@/lib/providers/providerTypes";
+import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
 import { supportsImageGeneration, supportsModality } from "@/lib/utils/model";
+
+type ProviderTypeOption = {
+  value: ProviderType;
+  label: string;
+  endpointPath: string;
+  endpointClassName: string;
+};
+
+function getProviderApiKeyHelpUrl(type: ProviderType | undefined) {
+  if (isGoogleProviderType(type)) {
+    return "https://aistudio.google.com/app/apikey";
+  }
+  if (isAnthropicProviderType(type)) {
+    return "https://console.anthropic.com/settings/keys";
+  }
+  if (type === OPENAI_PROVIDER_TYPE) {
+    return "https://platform.openai.com/api-keys";
+  }
+  return undefined;
+}
+
+function renderProviderTypeOption(option: ProviderTypeOption) {
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="shrink-0 font-medium">{option.label}</span>
+      <span
+        className={`min-w-0 truncate font-mono ${option.endpointClassName}`}
+      >
+        {option.endpointPath}
+      </span>
+    </span>
+  );
+}
+
+function getProviderBaseUrlPlaceholder(
+  type: ProviderType,
+  t: (key: string) => string,
+) {
+  if (isGoogleProviderType(type)) return t("googleBaseUrlPlaceholder");
+  if (isAnthropicProviderType(type)) return t("anthropicBaseUrlPlaceholder");
+  return t("openaiBaseUrlPlaceholder");
+}
 
 const ProviderSettings = () => {
   const t = useTranslations("Providers");
@@ -98,27 +148,31 @@ const ProviderSettings = () => {
   const providerBaseUrlInputId = `${currentProviderDomId}-provider-base-url`;
   const providerApiKeyInputId = `${currentProviderDomId}-provider-api-key`;
   const providerEnabledInputId = `${currentProviderDomId}-provider-enabled`;
-  const providerApiKeyHelpUrl =
-    currentProvider?.type === "Gemini"
-      ? "https://aistudio.google.com/app/apikey"
-      : currentProvider?.type === "OpenAI"
-        ? "https://platform.openai.com/api-keys"
-        : undefined;
-  const providerTypeOptions: Array<{
-    value: ProviderType;
-    label: string;
-  }> = [
+  const providerApiKeyHelpUrl = getProviderApiKeyHelpUrl(currentProvider?.type);
+  const providerTypeOptions: ProviderTypeOption[] = [
     {
-      value: "OpenAI Compatible",
+      value: OPENAI_COMPATIBLE_PROVIDER_TYPE,
       label: t("openaiCompatible"),
+      endpointPath: "/v1/chat/completions",
+      endpointClassName: "text-blue-500 dark:text-blue-400",
     },
     {
-      value: "OpenAI",
+      value: OPENAI_PROVIDER_TYPE,
       label: t("openaiResponses"),
+      endpointPath: "/v1/responses",
+      endpointClassName: "text-indigo-500 dark:text-indigo-400",
     },
     {
-      value: "Gemini",
-      label: "Gemini",
+      value: GOOGLE_PROVIDER_TYPE,
+      label: t("google"),
+      endpointPath: "/v1beta/models",
+      endpointClassName: "text-pink-500 dark:text-pink-400",
+    },
+    {
+      value: ANTHROPIC_PROVIDER_TYPE,
+      label: t("anthropic"),
+      endpointPath: "/v1/messages",
+      endpointClassName: "text-amber-500 dark:text-amber-400",
     },
   ];
 
@@ -449,6 +503,16 @@ const ProviderSettings = () => {
                       icon={Server}
                       ariaLabel={t("apiType")}
                       selectButtonClassName="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] text-gray-800 dark:text-foreground flex items-center justify-between disabled:cursor-not-allowed disabled:opacity-50"
+                      renderOption={(option) =>
+                        renderProviderTypeOption(option as ProviderTypeOption)
+                      }
+                      renderValue={(option, label) =>
+                        option
+                          ? renderProviderTypeOption(
+                              option as ProviderTypeOption,
+                            )
+                          : label
+                      }
                     />
                   </div>
                 )}
@@ -474,11 +538,10 @@ const ProviderSettings = () => {
                           baseUrl: e.target.value,
                         })
                       }
-                      placeholder={
-                        currentProvider.type === "Gemini"
-                          ? t("geminiBaseUrlPlaceholder")
-                          : t("openaiBaseUrlPlaceholder")
-                      }
+                      placeholder={getProviderBaseUrlPlaceholder(
+                        currentProvider.type,
+                        t,
+                      )}
                       className="w-full px-3 py-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-[border-color,box-shadow] font-mono text-gray-600 dark:text-foreground/85"
                     />
                     {currentProvider.baseUrl ? (
@@ -646,7 +709,7 @@ const ProviderSettings = () => {
                     {displayModels.map((model) => (
                       <div
                         key={model}
-                        className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-muted rounded-lg transition-colors group"
+                        className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-muted rounded-lg transition-colors group [content-visibility:auto] [contain-intrinsic-size:44px]"
                       >
                         <label className="flex items-center gap-3 cursor-pointer select-none flex-1 min-w-0 rounded-lg focus-within:ring-2 focus-within:ring-blue-500/60">
                           <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">

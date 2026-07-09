@@ -55,7 +55,7 @@ export interface ToolCall {
     recoverable?: boolean;
   };
   auth?: {
-    type: "bearer" | "apiKey" | "none";
+    type: "bearer" | "apiKey" | "oauth2" | "none";
     value?: string;
     key?: string;
     addTo?: "header" | "query";
@@ -109,6 +109,11 @@ export interface Message {
   attachments?: Attachment[];
   toolCalls?: ToolCall[];
   skillInvocations?: AppliedSkillInvocation[];
+  memoryContext?: {
+    injectedMemoryIds: string[];
+    promptContext: string;
+    createdAt?: number;
+  };
   model?: string;
   generationError?: {
     message: string;
@@ -120,6 +125,10 @@ export interface Message {
   isSearching?: boolean;
   outputBlocks?: MessageOutputBlock[];
   ragSources?: Source[];
+  ragError?: {
+    message: string;
+    code?: string;
+  };
   versions?: MessageVersion[];
   activeVersionId?: string;
   timing?: {

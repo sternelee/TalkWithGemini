@@ -25,7 +25,7 @@ import {
   PublicDeploymentStoreState,
   SERVER_DEFAULT_PROVIDER_ID,
 } from "./shared";
-import { isProviderType } from "../providers/providerTypes";
+import { normalizeProviderTypeValue } from "../providers/providerTypes";
 import { normalizeModelMetadata } from "../providers/metadata";
 import { getDeploymentMode } from "../security/deployment";
 import {
@@ -259,8 +259,7 @@ function clampInteger(
 
 function getDefaultProviderType(): ProviderType {
   const configured = env("DEFAULT_PROVIDER_TYPE");
-  if (isProviderType(configured)) return configured;
-  return "Gemini";
+  return normalizeProviderTypeValue(configured) || "Google";
 }
 
 export function getDefaultProviderApiKey(): string {

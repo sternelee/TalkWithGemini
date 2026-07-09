@@ -12,6 +12,7 @@ import {
   MCP_REGISTRY_BASE_URL,
   normalizeMcpRegistryServers,
 } from "../../lib/mcp/registry";
+import { DEFAULT_MCP_SERVER_LOGO_URL } from "../../lib/mcp/defaults";
 import { logDevError, logDevInfo, logDevWarn } from "../../lib/utils/devLogger";
 import { CACHE_CONFIG } from "../../config/api";
 import { MARKET_LIMITS } from "../../config/limits";
@@ -124,7 +125,7 @@ function createCustomMcpPlugin(input: CustomMcpServerInstallInput): Plugin {
     id,
     title,
     description: `Custom MCP server at ${url.origin}`,
-    logoUrl: "",
+    logoUrl: DEFAULT_MCP_SERVER_LOGO_URL,
     manifestUrl: "",
     source: "mcp",
     category: "MCP",
@@ -414,12 +415,12 @@ async function fetchMcpServerPageFromSources(
   fallbackUrl: string,
 ): Promise<McpServerPage> {
   try {
-    logDevInfo("Fetching MCP server page from registry...");
-    return await fetchMcpRegistryServerPage(options);
+    logDevInfo("Fetching MCP server page from API route...");
+    return await fetchMcpServerPageFromApi(fallbackUrl);
   } catch (error) {
-    logDevWarn("Falling back to MCP server API route");
-    logDevError("Error fetching MCP registry page:", error);
-    return fetchMcpServerPageFromApi(fallbackUrl);
+    logDevWarn("Falling back to direct MCP registry fetch");
+    logDevError("Error fetching MCP server page from API route:", error);
+    return fetchMcpRegistryServerPage(options);
   }
 }
 

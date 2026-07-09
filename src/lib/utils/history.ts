@@ -4,10 +4,21 @@
 
 import { Message } from "@/types";
 import {
+  convertAttachmentsToAnthropic,
   convertAttachmentsToGemini,
   convertAttachmentsToOpenAI,
   convertAttachmentsToOpenAIResponses,
 } from "./attachments";
+import { appendContextToChatInput } from "./chatInput";
+
+function getMessageContentForModel(message: Message): string {
+  if (message.role !== "user") return message.content;
+  const memoryContext = message.memoryContext?.promptContext?.trim();
+  if (!memoryContext) return message.content;
+  return appendContextToChatInput(message.content, memoryContext, {
+    separator: "\n\n",
+  });
+}
 
 /**
  * 准备 Gemini 格式的历史消息
@@ -17,10 +28,11 @@ export function prepareGeminiHistory(messages: Message[]) {
 
   for (const msg of messages) {
     const parts: any[] = [];
+    const content = getMessageContentForModel(msg);
 
     // 添加文本内容
-    if (msg.content) {
-      parts.push({ text: msg.content });
+    if (content) {
+      parts.push({ text: content });
     }
 
     // 添加附件
@@ -87,14 +99,15 @@ export function prepareOpenAIHistory(messages: Message[]) {
   const result: any[] = [];
 
   for (const msg of messages) {
+    const content = getMessageContentForModel(msg);
     if (msg.role === "user") {
-      const content: any[] = [{ type: "text", text: msg.content }];
+      const messageContent: any[] = [{ type: "text", text: content }];
 
       if (msg.attachments?.length) {
-        content.push(...convertAttachmentsToOpenAI(msg.attachments));
+        messageContent.push(...convertAttachmentsToOpenAI(msg.attachments));
       }
 
-      result.push({ role: "user", content });
+      result.push({ role: "user", content: messageContent });
     } else {
       // 模型消息
       if (msg.toolCalls?.length) {
@@ -141,14 +154,17 @@ export function prepareOpenAIResponsesInput(messages: Message[]) {
   const result: any[] = [];
 
   for (const msg of messages) {
+    const content = getMessageContentForModel(msg);
     if (msg.role === "user") {
-      const content: any[] = [{ type: "input_text", text: msg.content }];
+      const messageContent: any[] = [{ type: "input_text", text: content }];
 
       if (msg.attachments?.length) {
-        content.push(...convertAttachmentsToOpenAIResponses(msg.attachments));
+        messageContent.push(
+          ...convertAttachmentsToOpenAIResponses(msg.attachments),
+        );
       }
 
-      result.push({ role: "user", content });
+      result.push({ role: "user", content: messageContent });
       continue;
     }
 
@@ -185,6 +201,68 @@ export function prepareOpenAIResponsesInput(messages: Message[]) {
   return result;
 }
 
+function serializeAnthropicToolResult(result: unknown): string {
+  return typeof result === "string" ? result : JSON.stringify(result);
+}
+
+/**
+ * 准备 Anthropic Messages API 格式的历史消息
+ */
+export function prepareAnthropicMessages(messages: Message[]) {
+  const result: any[] = [];
+
+  for (const msg of messages) {
+    const modelContent = getMessageContentForModel(msg);
+    if (msg.role === "user") {
+      const content: any[] = [];
+      if (modelContent) content.push({ type: "text", text: modelContent });
+      if (msg.attachments?.length) {
+        content.push(...convertAttachmentsToAnthropic(msg.attachments));
+      }
+      if (content.length > 0) {
+        result.push({ role: "user", content });
+      }
+      continue;
+    }
+
+    const assistantContent: any[] = [];
+    if (msg.content) {
+      assistantContent.push({ type: "text", text: msg.content });
+    }
+
+    if (msg.toolCalls?.length) {
+      for (const tc of msg.toolCalls) {
+        assistantContent.push({
+          type: "tool_use",
+          id: tc.id,
+          name: tc.name,
+          input: tc.args ?? {},
+        });
+      }
+    }
+
+    if (assistantContent.length > 0) {
+      result.push({ role: "assistant", content: assistantContent });
+    }
+
+    const toolResults =
+      msg.toolCalls
+        ?.filter((tc) => tc.result !== undefined)
+        .map((tc) => ({
+          type: "tool_result",
+          tool_use_id: tc.id,
+          content: serializeAnthropicToolResult(tc.result),
+          ...(tc.isError ? { is_error: true } : {}),
+        })) || [];
+
+    if (toolResults.length > 0) {
+      result.push({ role: "user", content: toolResults });
+    }
+  }
+
+  return result;
+}
+
 /**
  * 压缩历史消息（保留最近的 N 条）
  */
@@ -207,7 +285,7 @@ export function estimateTokenCount(messages: Message[]): number {
 
   for (const msg of messages) {
     // 粗略估算：1 token ≈ 4 字符
-    total += Math.ceil(msg.content.length / 4);
+    total += Math.ceil(getMessageContentForModel(msg).length / 4);
 
     if (msg.reasoning) {
       total += Math.ceil(msg.reasoning.length / 4);

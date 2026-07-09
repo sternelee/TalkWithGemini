@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   settingsState: {} as Record<string, unknown>,
   memoryState: {} as Record<string, unknown>,
   coreState: {} as Record<string, unknown>,
+  searchCompatibility: { enabled: true, mode: "native" },
   supportsImageGeneration: vi.fn<(metadata?: ModelMetadata) => boolean>(
     () => false,
   ),
@@ -75,7 +76,7 @@ vi.mock("@/lib/utils/model", () => ({
 }));
 
 vi.mock("@/lib/settings/searchRag", () => ({
-  getSearchCompatibility: vi.fn(() => ({ enabled: true, mode: "native" })),
+  getSearchCompatibility: vi.fn(() => mocks.searchCompatibility),
   getSearchCompatibilityErrorMessage: vi.fn(() => "Search is unavailable"),
 }));
 
@@ -109,6 +110,8 @@ vi.mock("@/lib/utils/devLogger", () => ({
 vi.mock("../services/api/searchService", () => ({
   createSearchProvider: vi.fn(),
 }));
+
+import { createSearchProvider } from "../services/api/searchService";
 
 const encoder = new TextEncoder();
 
@@ -204,6 +207,8 @@ describe("chat service tool execution", () => {
     mocks.supportsImageGeneration.mockReturnValue(false);
     mocks.supportsTextOutput.mockReset();
     mocks.supportsTextOutput.mockReturnValue(true);
+    mocks.searchCompatibility = { enabled: true, mode: "native" };
+    vi.mocked(createSearchProvider).mockReset();
   });
 
   it("does not expose memory_search for ordinary prompts", async () => {
@@ -951,6 +956,79 @@ describe("chat service tool execution", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat/generate");
     expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/chat/generate-image");
+  });
+
+  it("stops generation when an explicit external search provider fails", async () => {
+    mocks.searchCompatibility = { enabled: true, mode: "external" };
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      search: { provider: "tavily", configs: { tavily: { apiKey: "search" } } },
+    };
+    vi.mocked(createSearchProvider).mockRejectedValue(new Error("search down"));
+    const outputSnapshots: MessageOutputBlock[][] = [];
+    const searchStatuses: Array<{ isSearching: boolean; hasResults: boolean }> =
+      [];
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          {
+            type: "content",
+            content: '{"shouldSearch":true,"query":"latest docs"}',
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockImplementation(async () =>
+        sseResponse([
+          { type: "content", content: "ordinary answer" },
+          { type: "done" },
+        ]),
+      );
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+
+    await expect(
+      streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Find current docs.",
+        [],
+        { useSearch: true },
+        () => undefined,
+        undefined,
+        (isSearching, results) => {
+          searchStatuses.push({
+            isSearching,
+            hasResults: Boolean(
+              results?.sources.length || results?.images.length,
+            ),
+          });
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        (outputBlocks) => outputSnapshots.push(outputBlocks),
+      ),
+    ).rejects.toThrow(/Search provider failed/i);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(outputSnapshots.at(-1)).toEqual([
+      expect.objectContaining({
+        type: "search",
+        isSearching: false,
+        error: "Search provider failed",
+      }),
+    ]);
+    expect(searchStatuses.at(-1)).toEqual({
+      isSearching: false,
+      hasResults: false,
+    });
   });
 
   it("uses the centralized high tool-round limit before stopping recursive calls", async () => {

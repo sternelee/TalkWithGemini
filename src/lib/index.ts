@@ -11,6 +11,7 @@ export * from "./providers/base";
 
 // 流式处理
 export * from "./streaming/sse";
+export * from "./streaming/anthropic";
 export * from "./streaming/gemini";
 export * from "./streaming/openai";
 

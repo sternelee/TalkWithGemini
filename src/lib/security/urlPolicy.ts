@@ -6,7 +6,13 @@ import {
   getOutboundPolicyProfile,
   type OutboundPolicyProfile,
 } from "./deployment";
-import { isOpenAIProviderType } from "../providers/providerTypes";
+import {
+  ANTHROPIC_PROVIDER_TYPE,
+  GOOGLE_PROVIDER_TYPE,
+  OPENAI_COMPATIBLE_PROVIDER_TYPE,
+  OPENAI_PROVIDER_TYPE,
+  normalizeProviderType,
+} from "../providers/providerTypes";
 
 export type OutboundContext =
   | "provider"
@@ -50,44 +56,123 @@ export interface ProviderRuntimeConfig {
   name?: string;
 }
 
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com";
+export const ANTHROPIC_API_VERSION_HEADER = "2023-06-01";
+
+const API_VERSION_SEGMENT_PATTERN = /^v\d+[a-z]*$/i;
+const DEFAULT_PROVIDER_API = {
+  [OPENAI_COMPATIBLE_PROVIDER_TYPE]: {
+    baseUrl: "https://api.openai.com",
+    version: "v1",
+    chatPath: "chat/completions",
+  },
+  [OPENAI_PROVIDER_TYPE]: {
+    baseUrl: "https://api.openai.com",
+    version: "v1",
+    chatPath: "responses",
+  },
+  [ANTHROPIC_PROVIDER_TYPE]: {
+    baseUrl: "https://api.anthropic.com",
+    version: "v1",
+    chatPath: "messages",
+  },
+  [GOOGLE_PROVIDER_TYPE]: {
+    baseUrl: "https://generativelanguage.googleapis.com",
+    version: "v1beta",
+    chatPath: "models",
+  },
+} as const satisfies Record<
+  ProviderType,
+  {
+    baseUrl: string;
+    version: string;
+    chatPath: string;
+  }
+>;
+
+function trimBaseUrl(baseUrl: string): string {
+  let normalized = baseUrl.trim();
+  if (normalized.endsWith("#")) normalized = normalized.slice(0, -1);
+  return normalized.replace(/\/+$/, "");
+}
+
+function getVersionedProviderBase(
+  baseUrl: string | undefined,
+  providerType: ProviderRuntimeConfig["type"] | string,
+) {
+  const type = normalizeProviderType(providerType);
+  const defaults = DEFAULT_PROVIDER_API[type];
+  const rawBaseUrl =
+    !baseUrl || baseUrl === "default" ? defaults.baseUrl : trimBaseUrl(baseUrl);
+  const parsed = new URL(rawBaseUrl);
+  const pathSegments = parsed.pathname.split("/").filter(Boolean);
+  const versionIndex = pathSegments.findIndex((segment) =>
+    API_VERSION_SEGMENT_PATTERN.test(segment),
+  );
+
+  if (versionIndex !== -1) {
+    const apiVersion = pathSegments[versionIndex];
+    const rootSegments = pathSegments.slice(0, versionIndex);
+    const root = new URL(parsed.toString());
+    root.pathname = rootSegments.length ? `/${rootSegments.join("/")}` : "";
+    root.search = "";
+    root.hash = "";
+
+    return {
+      type,
+      apiVersion,
+      baseUrl: trimBaseUrl(root.toString()),
+      versionedBaseUrl: trimBaseUrl(parsed.toString()),
+    };
+  }
+
+  const root = trimBaseUrl(parsed.toString());
+  return {
+    type,
+    apiVersion: defaults.version,
+    baseUrl: root,
+    versionedBaseUrl: `${root}/${defaults.version}`,
+  };
+}
 
 export function normalizeProviderBaseUrl(
   baseUrl: string | undefined,
   providerType: ProviderRuntimeConfig["type"] | string,
 ): string {
-  if (!baseUrl || baseUrl === "default") {
-    return isOpenAIProviderType(providerType)
-      ? DEFAULT_OPENAI_BASE_URL
-      : DEFAULT_GEMINI_BASE_URL;
-  }
+  return getVersionedProviderBase(baseUrl, providerType).versionedBaseUrl;
+}
 
-  let normalized = baseUrl.trim();
-  if (normalized.endsWith("#")) normalized = normalized.slice(0, -1);
-  normalized = normalized.replace(/\/+$/, "");
+export function getProviderGoogleSdkOptions(baseUrl: string | undefined): {
+  baseUrl: string;
+  apiVersion: string;
+} {
+  const resolved = getVersionedProviderBase(baseUrl, GOOGLE_PROVIDER_TYPE);
+  return {
+    baseUrl: resolved.baseUrl,
+    apiVersion: resolved.apiVersion,
+  };
+}
 
-  if (isOpenAIProviderType(providerType)) {
-    return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
-  }
+export function getProviderAnthropicSdkBaseUrl(
+  baseUrl: string | undefined,
+): string {
+  return getVersionedProviderBase(baseUrl, ANTHROPIC_PROVIDER_TYPE).baseUrl;
+}
 
-  if (providerType === "Gemini") {
-    return normalized.replace(/\/v1beta$/, "");
-  }
-
-  return normalized;
+export function getProviderChatUrl(
+  baseUrl: string | undefined,
+  providerType: ProviderRuntimeConfig["type"],
+): string {
+  const type = normalizeProviderType(providerType);
+  const normalized = normalizeProviderBaseUrl(baseUrl, type);
+  return `${normalized}/${DEFAULT_PROVIDER_API[type].chatPath}`;
 }
 
 export function getProviderModelsUrl(
   baseUrl: string | undefined,
   providerType: ProviderRuntimeConfig["type"],
 ): string {
-  const normalized = normalizeProviderBaseUrl(baseUrl, providerType);
-
-  if (providerType === "Gemini") {
-    return `${normalized}/v1beta/models`;
-  }
-
+  const type = normalizeProviderType(providerType);
+  const normalized = normalizeProviderBaseUrl(baseUrl, type);
   return `${normalized}/models`;
 }
 
@@ -119,23 +204,48 @@ export function isLocalhostName(hostname: string): boolean {
 export function isPrivateIpAddress(address: string): boolean {
   const value = address.toLowerCase();
 
-  const isPrivateIpv4Parts = (parts: number[]) => {
+  const parseIpv4Parts = (input: string): number[] | null => {
+    const parts = input.split(".").map((part) => Number(part));
     if (
       parts.length !== 4 ||
       parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
     ) {
-      return false;
+      return null;
     }
+    return parts;
+  };
 
-    const [a, b] = parts;
-    return (
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127)
-    );
+  const ipv4ToNumber = (parts: number[]) =>
+    parts.reduce((acc, part) => (acc << 8) + part, 0) >>> 0;
+
+  const isIpv4InCidr = (parts: number[], base: number, prefix: number) => {
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    return (ipv4ToNumber(parts) & mask) === (base & mask);
+  };
+
+  const isNonPublicIpv4 = (input: string) => {
+    const parts = parseIpv4Parts(input);
+    if (!parts) return false;
+
+    const cidrs: Array<[number, number]> = [
+      [0x00000000, 8],
+      [0x0a000000, 8],
+      [0x64400000, 10],
+      [0x7f000000, 8],
+      [0xa9fe0000, 16],
+      [0xac100000, 12],
+      [0xc0000000, 24],
+      [0xc0000200, 24],
+      [0xc0586300, 24],
+      [0xc0a80000, 16],
+      [0xc6120000, 15],
+      [0xc6336400, 24],
+      [0xcb007100, 24],
+      [0xe0000000, 4],
+      [0xf0000000, 4],
+    ];
+
+    return cidrs.some(([base, prefix]) => isIpv4InCidr(parts, base, prefix));
   };
 
   if (value === "::1" || value === "0:0:0:0:0:0:0:1" || value === "0.0.0.0") {
@@ -149,15 +259,23 @@ export function isPrivateIpAddress(address: string): boolean {
     }
 
     return (
+      value === "::" ||
+      value.startsWith("0:") ||
       value.startsWith("fc") ||
       value.startsWith("fd") ||
+      value.startsWith("fe8") ||
+      value.startsWith("fe9") ||
+      value.startsWith("fea") ||
+      value.startsWith("feb") ||
       value.startsWith("fe80:") ||
-      value === "::"
+      value.startsWith("ff") ||
+      value.startsWith("2001:db8") ||
+      value.startsWith("2001:0:") ||
+      value.startsWith("2002:")
     );
   }
 
-  const parts = value.split(".").map((part) => Number(part));
-  return isPrivateIpv4Parts(parts);
+  return isNonPublicIpv4(value);
 }
 
 export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {

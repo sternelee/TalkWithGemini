@@ -4,6 +4,11 @@
 
 import type { Message, ReasoningMode } from "@/types";
 import { ProviderFactory, ProviderConfig } from "../providers/base";
+import {
+  createAnthropicMessageText,
+  convertToolsToAnthropic,
+  streamAnthropicMessages,
+} from "../streaming/anthropic";
 import { streamGeminiResponse } from "../streaming/gemini";
 import {
   streamOpenAIChatCompletions,
@@ -16,14 +21,21 @@ import {
 } from "../streaming/sse";
 import {
   prepareGeminiHistory,
+  prepareAnthropicMessages,
   prepareOpenAIHistory,
   prepareOpenAIResponsesInput,
 } from "../utils/history";
-import { convertAttachmentsToOpenAIResponses } from "../utils/attachments";
+import {
+  convertAttachmentsToAnthropic,
+  convertAttachmentsToOpenAI,
+  convertAttachmentsToOpenAIResponses,
+} from "../utils/attachments";
 import { convertSchemaToGemini } from "../utils/schema";
 import { logDevWarn } from "../utils/devLogger";
 import {
   isOpenAIProviderType,
+  isAnthropicProviderType,
+  isGoogleProviderType,
   OPENAI_COMPATIBLE_PROVIDER_TYPE,
 } from "../providers/providerTypes";
 import { safeServerLogError } from "../utils/safeServerLog";
@@ -203,7 +215,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
         const content: any[] = [{ type: "text", text: newMessage }];
         if (attachments?.length) {
           // 转换附件格式
-          content.push(...attachments);
+          content.push(...convertAttachmentsToOpenAI(attachments));
         }
         messages.push({ role: "user", content });
 
@@ -223,10 +235,35 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           reasoningMode: config?.reasoningMode,
           onChunk: send,
         });
-      } else {
-        // Gemini
+      } else if (isAnthropicProviderType(provider.type)) {
         await ProviderFactory.assertProviderOutboundAllowed(provider);
-        const client = ProviderFactory.createGeminiClient(provider);
+        const client = ProviderFactory.createAnthropicClient(provider);
+        const messages = prepareAnthropicMessages(history);
+        const content: any[] = [];
+        if (newMessage) content.push({ type: "text", text: newMessage });
+        if (attachments?.length) {
+          content.push(...convertAttachmentsToAnthropic(attachments));
+        }
+        messages.push({
+          role: "user",
+          content: content.length > 0 ? content : " ",
+        });
+
+        await streamAnthropicMessages({
+          client,
+          model: modelName,
+          messages,
+          system: systemInstruction,
+          temperature: config?.temperature,
+          tools: convertToolsToAnthropic(tools),
+          useReasoning: config?.useReasoning,
+          reasoningMode: config?.reasoningMode,
+          onChunk: send,
+        });
+      } else if (isGoogleProviderType(provider.type)) {
+        // Google
+        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        const client = ProviderFactory.createGoogleClient(provider);
         const contents = prepareGeminiHistory(history);
 
         // 添加新消息
@@ -298,6 +335,8 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           reasoningMode: config?.reasoningMode,
           onChunk: send,
         });
+      } else {
+        throw new Error(`Unsupported provider type: ${provider.type}`);
       }
 
       send({ type: "done" });
@@ -338,12 +377,25 @@ export async function handleSimpleGeneration(
       temperature: 0.7,
     });
     return response.choices[0]?.message?.content || "";
-  } else {
-    const client = ProviderFactory.createGeminiClient(provider);
+  }
+
+  if (isAnthropicProviderType(provider.type)) {
+    const client = ProviderFactory.createAnthropicClient(provider);
+    return createAnthropicMessageText({
+      client,
+      model: modelName,
+      prompt,
+    });
+  }
+
+  if (isGoogleProviderType(provider.type)) {
+    const client = ProviderFactory.createGoogleClient(provider);
     const result = await client.models.generateContent({
       model: modelName,
       contents: { parts: [{ text: prompt }] },
     });
     return result.text || "";
   }
+
+  throw new Error(`Unsupported provider type: ${provider.type}`);
 }

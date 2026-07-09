@@ -59,6 +59,22 @@ describe("plugin config normalization", () => {
     expect(config.auth?.key).toHaveLength(PLUGIN_CONFIG_LIMITS.maxAuthKeyChars);
   });
 
+  it("preserves OAuth2 plugin auth configs instead of downgrading them", () => {
+    const config = normalizePluginConfig({
+      auth: {
+        type: "oauth2",
+        value: "token",
+        addTo: "header",
+      },
+    });
+
+    expect(config.auth).toMatchObject({
+      type: "oauth2",
+      value: "token",
+      addTo: "header",
+    });
+  });
+
   it("drops unsafe plugin endpoint overrides", () => {
     expect(
       normalizePluginConfig({

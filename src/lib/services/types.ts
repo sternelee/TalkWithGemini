@@ -11,6 +11,7 @@ export type ServiceHealthServiceKey =
   | "apiProof"
   | "accessPassword"
   | "hostedMode"
+  | "proxyHeaders"
   | "rateLimitStore"
   | "documentParseJobStore"
   | "pluginRegistry"

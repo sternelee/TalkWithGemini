@@ -9,6 +9,7 @@ import {
   SessionMessageTree,
 } from "@/types";
 import { Logo } from "../ui/Icons";
+import { PRODUCT_NAME } from "@/lib/product";
 import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useSetLocale } from "@/i18n/useSetLocale";
@@ -757,7 +758,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       ref={sidebarRef}
       role={isModal ? "dialog" : undefined}
       aria-modal={isModal || undefined}
-      aria-label={isModal ? "Neo Chat" : undefined}
+      aria-label={isModal ? PRODUCT_NAME : undefined}
       tabIndex={isModal ? -1 : undefined}
       onKeyDown={handleSidebarKeyDown}
       className={`
@@ -798,7 +799,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <Logo className="w-7 h-7" />
                 </div>
                 <span className="truncate bg-clip-text text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)] animate-in fade-in duration-300 whitespace-nowrap">
-                  Neo Chat
+                  {PRODUCT_NAME}
                 </span>
               </button>
               <Tooltip content={chatT("closeSidebar")} position="left">

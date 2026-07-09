@@ -212,6 +212,17 @@ const DeploymentHealth: React.FC = () => {
           : t("apiProofLocal"),
     },
     {
+      key: "proxyHeaders",
+      label: t("proxyHeaders"),
+      state: runtimeState("proxyHeaders") || "warning",
+      detail:
+        runtimeServices?.proxyHeaders?.code === "PROXY_HEADERS_TRUSTED"
+          ? t("proxyHeadersTrusted")
+          : deploymentMode === "hosted"
+            ? t("proxyHeadersUntrusted")
+            : t("proxyHeadersLocal"),
+    },
+    {
       key: "stores",
       label: t("sharedStores"),
       state:

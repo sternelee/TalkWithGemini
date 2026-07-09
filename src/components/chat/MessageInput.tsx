@@ -178,7 +178,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       installedSkills,
       pluginConfigs,
       voice,
-      updateVoiceSettings,
       search,
       rag,
       serverConfig,
@@ -1795,7 +1794,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                           ? t("disableSearchAria")
                           : t("enableSearchAria")
                     }
-                    aria-disabled={!searchCompatibility.enabled || undefined}
                     aria-pressed={
                       isSearchEnabled && searchCompatibility.enabled
                     }
@@ -2021,12 +2019,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       aria-pressed={isRecording}
                       className={`${iconButtonBaseClass} transition-[background-color,color,box-shadow] ${iconButtonFocusClass} ${isRecording ? "bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-800" : "text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-accent/50"}`}
                       onClick={toggleRecording}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        updateVoiceSettings({
-                          autoTranscribe: !voice.autoTranscribe,
-                        });
-                      }}
                     >
                       {isRecording ? (
                         <StopCircle size={16} aria-hidden="true" />

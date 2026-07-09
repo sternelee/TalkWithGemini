@@ -42,7 +42,7 @@ describe("provider config normalization", () => {
     );
   });
 
-  it("keeps selected models when no fetched model list exists", () => {
+  it("normalizes legacy Gemini providers to Google", () => {
     const provider = normalizeModelProvider({
       id: "A",
       type: "Gemini",
@@ -52,6 +52,22 @@ describe("provider config normalization", () => {
 
     expect(provider?.models).toEqual(["model-a"]);
     expect(provider?.modelsList).toEqual([]);
+    expect(provider?.type).toBe("Google");
+  });
+
+  it("accepts Anthropic and Google as provider types", () => {
+    expect(
+      normalizeModelProvider({
+        id: "CLAUDE",
+        type: "Anthropic",
+      })?.type,
+    ).toBe("Anthropic");
+    expect(
+      normalizeModelProvider({
+        id: "GOOGLE",
+        type: "Google",
+      })?.type,
+    ).toBe("Google");
   });
 
   it("accepts OpenAI Compatible as a provider type", () => {

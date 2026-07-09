@@ -7,6 +7,7 @@ import {
 import {
   assertMultipartRequestContentLengthUnderLimit,
   createApiErrorResponse,
+  parseJsonFormValue,
 } from "@/lib/api/middleware";
 import { DocumentParseSchema } from "@/lib/api/schemas";
 import { getUploadBlobValidationError } from "@/lib/api/uploads";
@@ -31,10 +32,7 @@ export async function POST(request: NextRequest) {
       DocumentParseSchema.parse({
         file: formData.get("file"),
         provider: formData.get("provider") || undefined,
-        apiKeySecret:
-          typeof apiKeySecretValue === "string"
-            ? JSON.parse(apiKeySecretValue)
-            : undefined,
+        apiKeySecret: parseJsonFormValue(apiKeySecretValue, "apiKeySecret"),
         apiKey: formData.get("apiKey") || undefined,
         apiToken: formData.get("apiToken") || undefined,
         useDefault: formData.get("useDefault") === "true",

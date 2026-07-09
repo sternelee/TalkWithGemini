@@ -3,24 +3,19 @@
  * 用于处理 API key 验证、Base URL 处理、流式响应等通用逻辑
  */
 
-import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
+import type { GoogleGenAI } from "@google/genai";
+import type Anthropic from "@anthropic-ai/sdk";
+import type OpenAI from "openai";
 import {
-  getProviderApiKey,
-  getSafeUrlPolicy,
-  normalizeProviderBaseUrl,
-} from "@/lib/security/urlPolicy";
-import { assertOutboundUrlAllowed } from "@/lib/security/safeFetch";
+  ProviderFactory,
+  type ProviderConfig as BaseProviderConfig,
+} from "../lib/providers/base";
 import { logDevError } from "../lib/utils/devLogger";
 
 /**
  * Provider 配置接口
  */
-export interface ProviderConfig {
-  type: "OpenAI" | "Gemini" | "OpenAI Compatible";
-  apiKey?: string;
-  baseUrl?: string;
-}
+export type ProviderConfig = BaseProviderConfig;
 
 /**
  * 获取有效的 Base URL
@@ -29,60 +24,45 @@ export function getEffectiveBaseUrl(
   baseUrl: string | undefined,
   providerType: string,
 ): string | undefined {
-  return normalizeProviderBaseUrl(baseUrl, providerType);
+  return ProviderFactory.getEffectiveBaseUrl(baseUrl, providerType);
 }
 
 /**
  * 验证并获取 API Key
  */
 export function validateAndGetApiKey(provider: ProviderConfig): string {
-  const apiKey = getProviderApiKey(provider);
-
-  if (!apiKey || apiKey.trim() === "") {
-    throw new Error(
-      `${provider.type} API key is not configured. Please add your API key in Settings.`,
-    );
-  }
-
-  return apiKey;
+  return ProviderFactory.validateApiKey(provider);
 }
 
 export async function assertProviderOutboundAllowed(
   provider: ProviderConfig,
 ): Promise<void> {
-  const baseUrl = getEffectiveBaseUrl(provider.baseUrl, provider.type);
-  if (!baseUrl) return;
-
-  await assertOutboundUrlAllowed(baseUrl, {
-    policy: getSafeUrlPolicy("provider"),
-    timeoutMs: 10_000,
-  });
+  await ProviderFactory.assertProviderOutboundAllowed(provider);
 }
 
 /**
  * 创建 OpenAI 客户端实例
  */
 export function createOpenAIClient(provider: ProviderConfig): OpenAI {
-  const apiKey = validateAndGetApiKey(provider);
-  const baseUrl = getEffectiveBaseUrl(provider.baseUrl, "OpenAI");
-
-  return new OpenAI({
-    apiKey,
-    baseURL: baseUrl,
-  });
+  return ProviderFactory.createOpenAIClient(provider);
 }
 
 /**
- * 创建 Gemini 客户端实例
+ * 创建 Anthropic 客户端实例
  */
-export function createGeminiClient(provider: ProviderConfig): GoogleGenAI {
-  const apiKey = validateAndGetApiKey(provider);
-  const baseUrl = getEffectiveBaseUrl(provider.baseUrl, "Gemini");
+export function createAnthropicClient(provider: ProviderConfig): Anthropic {
+  return ProviderFactory.createAnthropicClient(provider);
+}
 
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: { baseUrl },
-  });
+/**
+ * 创建 Google 客户端实例
+ */
+export function createGoogleClient(provider: ProviderConfig): GoogleGenAI {
+  return ProviderFactory.createGoogleClient(provider);
+}
+
+export function createGeminiClient(provider: ProviderConfig): GoogleGenAI {
+  return createGoogleClient(provider);
 }
 
 /**

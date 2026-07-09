@@ -34,7 +34,11 @@ import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { executeCode } from "@/services/api/chatService";
 import { runInSandbox } from "@/utils/sandbox";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isAnthropicProviderType,
+  isGoogleProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import { resolveOPFSUrl, isOPFSUrl } from "@/utils/opfs";
 import {
   getSafeExternalHref,
@@ -342,6 +346,8 @@ const DiagramStatus = ({
   tone?: "muted" | "error";
 }) => (
   <div
+    role={tone === "error" ? "alert" : "status"}
+    aria-live={tone === "error" ? "assertive" : "polite"}
     className={`markdown-diagram-status ${
       tone === "error" ? "markdown-diagram-status-error" : ""
     }`}
@@ -1313,19 +1319,27 @@ const ArtifactBlock = ({
   const executionModeLabel = React.useMemo(() => {
     if (isJS) return t("jsSandboxExecution");
     if (!isPython) return t("codeExecution");
-    if (isOpenAIProviderType(selectedProvider?.type)) {
+    if (
+      isOpenAIProviderType(selectedProvider?.type) ||
+      isAnthropicProviderType(selectedProvider?.type)
+    ) {
       return t("pythonSimulation");
     }
-    if (selectedProvider?.type === "Gemini") return t("geminiCodeExecution");
+    if (isGoogleProviderType(selectedProvider?.type)) {
+      return t("geminiCodeExecution");
+    }
     return t("modelCodeExecution");
   }, [isJS, isPython, selectedProvider?.type, t]);
   const executionNoticeText = React.useMemo(() => {
     if (isJS) return t("jsSandboxNotice");
     if (!isPython) return null;
-    if (isOpenAIProviderType(selectedProvider?.type)) {
+    if (
+      isOpenAIProviderType(selectedProvider?.type) ||
+      isAnthropicProviderType(selectedProvider?.type)
+    ) {
       return t("pythonSimulationNotice");
     }
-    if (selectedProvider?.type === "Gemini") {
+    if (isGoogleProviderType(selectedProvider?.type)) {
       return t("geminiCodeExecutionNotice");
     }
     return t("modelCodeExecutionNotice");

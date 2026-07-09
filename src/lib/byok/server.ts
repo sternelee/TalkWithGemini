@@ -10,6 +10,10 @@ import { base64UrlToBytes } from "./encoding";
 import type { ProviderRuntimeConfig } from "../security/urlPolicy";
 import { getDefaultProviderRuntimeConfig } from "../defaultConfig/server";
 import { getSpkiKeyId, parsePkcs8RsaPrivateKeyPem } from "./pem";
+import {
+  GOOGLE_PROVIDER_TYPE,
+  LEGACY_GEMINI_PROVIDER_TYPE,
+} from "../providers/providerTypes";
 
 interface ByokKeyMaterial extends ByokPublicKeyResponse {
   privateKey: CryptoKey;
@@ -178,6 +182,19 @@ export async function decryptOptionalSecret(
   return decryptSecretEnvelope(envelope, expectedContext);
 }
 
+function getProviderSecretContext(provider: ProviderRuntimeConfig): string {
+  const context = `provider:${provider.type}`;
+  const legacyGeminiContext = `provider:${LEGACY_GEMINI_PROVIDER_TYPE}`;
+  if (
+    provider.type === GOOGLE_PROVIDER_TYPE &&
+    provider.apiKeySecret?.context === legacyGeminiContext
+  ) {
+    return legacyGeminiContext;
+  }
+
+  return context;
+}
+
 export async function resolveProviderRuntimeConfig(
   provider: ProviderRuntimeConfig,
 ): Promise<ProviderRuntimeConfig> {
@@ -189,7 +206,7 @@ export async function resolveProviderRuntimeConfig(
 
   const apiKey = await decryptOptionalSecret(
     provider.apiKeySecret,
-    `provider:${provider.type}`,
+    getProviderSecretContext(provider),
   );
 
   return apiKey ? { ...provider, apiKey } : provider;

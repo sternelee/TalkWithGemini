@@ -817,6 +817,7 @@ const ChatApp = () => {
     session: typeof currentSession | null | undefined,
     text: string,
     attachments: Attachment[],
+    existingMemoryContext?: Message["memoryContext"],
   ) => {
     const effectiveContext = getEffectiveContextForSession(session);
     const processedData = await processMessageForSending({
@@ -826,16 +827,21 @@ const ChatApp = () => {
       modelMetadata,
       customModelMetadata,
       ragConfig: rag,
+      ragEnabled: chatConfig.useRAG !== false,
       knowledgeCollections,
       workspaceKnowledgeCollectionIds:
         effectiveContext.workspaceKnowledgeCollectionIds,
     });
 
     const memoryState = useMemoryStore.getState();
-    const directMemoryContext =
-      memoryState._hasHydrated &&
-      memoryState.settings.enabled &&
-      memoryState.settings.searchEnabled
+    const directMemoryContext = existingMemoryContext?.promptContext
+      ? {
+          text: existingMemoryContext.promptContext,
+          injectedMemoryIds: existingMemoryContext.injectedMemoryIds,
+        }
+      : memoryState._hasHydrated &&
+          memoryState.settings.enabled &&
+          memoryState.settings.searchEnabled
         ? buildDirectMemoryPromptContext({
             memories: memoryState.memories,
             query: text,
@@ -843,9 +849,21 @@ const ChatApp = () => {
               session?.memoryContext?.injectedMemoryIds || [],
           })
         : { text: "", injectedMemoryIds: [] };
+    const memoryContext =
+      directMemoryContext.text &&
+      directMemoryContext.injectedMemoryIds.length > 0
+        ? {
+            injectedMemoryIds: directMemoryContext.injectedMemoryIds,
+            promptContext: directMemoryContext.text,
+            createdAt: existingMemoryContext?.createdAt || Date.now(),
+          }
+        : undefined;
 
     return {
       ...processedData,
+      userMessage: memoryContext
+        ? { ...processedData.userMessage, memoryContext }
+        : processedData.userMessage,
       finalText: directMemoryContext.text
         ? appendContextToChatInput(
             processedData.finalText,
@@ -935,6 +953,7 @@ const ChatApp = () => {
         finalText,
         finalAttachments,
         ragSources,
+        ragError,
         userMessage,
         injectedMemoryIds,
       } = processedData;
@@ -952,7 +971,11 @@ const ChatApp = () => {
       if (!isGenerationRunActive(generation)) return;
 
       // Add Placeholder Bot Message
-      const botMsg = createBotMessagePlaceholder(modelDisplayName, ragSources);
+      const botMsg = createBotMessagePlaceholder(
+        modelDisplayName,
+        ragSources,
+        ragError,
+      );
       const currentBotMsgId = botMsg.id;
       botMsgId = currentBotMsgId;
       startTime = botMsg.timestamp;
@@ -1327,12 +1350,14 @@ const ChatApp = () => {
         finalText,
         finalAttachments,
         ragSources,
+        ragError,
         effectiveContext,
         injectedMemoryIds,
       } = await processPromptForModel(
         sessionMeta,
         promptText,
         promptAttachments,
+        lastUserMsg.memoryContext,
       );
       commitInjectedMemoryContext(
         currentSessionId,
@@ -1348,9 +1373,10 @@ const ChatApp = () => {
         autoSelect: skillAutoSelect,
         signal: generation.controller.signal,
       });
-      if (ragSources.length > 0) {
+      if (ragSources.length > 0 || ragError) {
         updateMessage(currentSessionId, branchMessageId, {
           ragSources,
+          ragError,
         });
       }
       if (skillResolution.invocations.length > 0) {
@@ -1597,6 +1623,7 @@ const ChatApp = () => {
         finalText,
         finalAttachments,
         ragSources,
+        ragError,
         userMessage,
         effectiveContext,
         injectedMemoryIds,
@@ -1626,6 +1653,7 @@ const ChatApp = () => {
       const modelPlaceholder = createBotMessagePlaceholder(
         modelDisplayName,
         ragSources,
+        ragError,
       );
       startTime = modelPlaceholder.timestamp;
 

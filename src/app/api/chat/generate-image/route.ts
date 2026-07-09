@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v7 as uuidv7 } from "uuid";
 import {
   assertProviderOutboundAllowed,
-  createGeminiClient,
+  createGoogleClient,
 } from "@/utils/apiHelpers";
 import {
   createApiErrorResponse,
@@ -18,7 +18,10 @@ import {
 import { resolveProviderRuntimeConfig } from "@/lib/byok/server";
 import { normalizeGeneratedImageAttachments } from "@/lib/utils/generatedImages";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isGoogleProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import type { Attachment } from "@/types";
 
 function base64ToBlob(data: string, mimeType: string): Blob {
@@ -177,10 +180,10 @@ export async function POST(request: NextRequest) {
         images: [],
         message: "No images generated.",
       });
-    } else {
-      // Gemini
+    } else if (isGoogleProviderType(provider.type)) {
+      // Google
       await assertProviderOutboundAllowed(provider);
-      const ai = createGeminiClient(provider);
+      const ai = createGoogleClient(provider);
 
       if (attachments?.length) {
         const response: any = await ai.models.generateContent({
@@ -253,6 +256,11 @@ export async function POST(request: NextRequest) {
         message: "No images generated.",
       });
     }
+
+    return NextResponse.json(
+      { error: `${provider.type} does not support image generation` },
+      { status: 400 },
+    );
   } catch (error: any) {
     safeServerLogError("Image generation error:", error);
     if (error instanceof Error && error.name === "ZodError") {

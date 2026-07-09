@@ -7,7 +7,7 @@ import { normalizeProviderModelId } from "./models";
 import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import {
   OPENAI_COMPATIBLE_PROVIDER_TYPE,
-  isProviderType,
+  normalizeProviderType as normalizeProviderTypeValue,
 } from "./providerTypes";
 
 function trimString(value: unknown, maxChars: number): string {
@@ -15,7 +15,7 @@ function trimString(value: unknown, maxChars: number): string {
 }
 
 function normalizeProviderType(value: unknown): ProviderType {
-  return isProviderType(value) ? value : OPENAI_COMPATIBLE_PROVIDER_TYPE;
+  return normalizeProviderTypeValue(value, OPENAI_COMPATIBLE_PROVIDER_TYPE);
 }
 
 export function migrateCoreSettingsState<T extends { providers?: unknown }>(

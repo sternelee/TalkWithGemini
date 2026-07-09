@@ -1,5 +1,6 @@
 import { PROVIDER_MODEL_LIMITS } from "../../config/limits";
 import type { ProviderType } from "../../types";
+import { isGoogleProviderType } from "./providerTypes";
 
 export function normalizeProviderModelId(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -11,17 +12,18 @@ export function normalizeProviderModelId(value: unknown): string | null {
 }
 
 export function extractProviderModelIds(
-  providerType: ProviderType,
+  providerType: ProviderType | "Gemini",
   data: any,
 ): string[] {
-  const models = providerType === "Gemini" ? data?.models : data?.data;
+  const isGoogle = isGoogleProviderType(providerType);
+  const models = isGoogle ? data?.models : data?.data;
   if (!Array.isArray(models)) return [];
 
   const seen = new Set<string>();
   const result: string[] = [];
 
   for (const model of models) {
-    if (providerType === "Gemini") {
+    if (isGoogle) {
       const methods = model?.supportedGenerationMethods;
       if (!Array.isArray(methods) || !methods.includes("generateContent")) {
         continue;
@@ -29,7 +31,7 @@ export function extractProviderModelIds(
     }
 
     const modelId = normalizeProviderModelId(
-      providerType === "Gemini" ? model?.name : model?.id,
+      isGoogle ? model?.name : model?.id,
     );
     if (!modelId || seen.has(modelId)) continue;
 

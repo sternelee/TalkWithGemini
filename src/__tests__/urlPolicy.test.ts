@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getProviderApiKey,
+  getProviderChatUrl,
+  getProviderGoogleSdkOptions,
   getProviderModelsUrl,
   getSafeUrlPolicy,
   isPrivateIpAddress,
@@ -27,6 +29,9 @@ describe("url policy and provider runtime helpers", () => {
     expect(
       normalizeProviderBaseUrl("https://api.example.com/v1/", "OpenAI"),
     ).toBe("https://api.example.com/v1");
+    expect(
+      normalizeProviderBaseUrl("https://api.example.com/v2", "OpenAI"),
+    ).toBe("https://api.example.com/v2");
   });
 
   it("normalizes OpenAI Compatible base URLs like OpenAI", () => {
@@ -38,19 +43,45 @@ describe("url policy and provider runtime helpers", () => {
     ).toBe("https://compat.example.com/v1");
   });
 
-  it("keeps Gemini SDK base URL at the service root", () => {
+  it("normalizes Anthropic base URLs to the Messages and Models API roots", () => {
+    expect(
+      normalizeProviderBaseUrl("https://api.anthropic.com", "Anthropic"),
+    ).toBe("https://api.anthropic.com/v1");
+    expect(getProviderChatUrl("https://api.anthropic.com", "Anthropic")).toBe(
+      "https://api.anthropic.com/v1/messages",
+    );
+    expect(getProviderModelsUrl("https://api.anthropic.com", "Anthropic")).toBe(
+      "https://api.anthropic.com/v1/models",
+    );
     expect(
       normalizeProviderBaseUrl(
-        "https://generativelanguage.googleapis.com/v1beta",
-        "Gemini",
+        "https://gateway.example.com/anthropic/v1",
+        "Anthropic",
       ),
-    ).toBe("https://generativelanguage.googleapis.com");
+    ).toBe("https://gateway.example.com/anthropic/v1");
+  });
+
+  it("splits Google SDK base URL from API version and allows version override", () => {
+    expect(
+      normalizeProviderBaseUrl(
+        "https://generativelanguage.googleapis.com",
+        "Google",
+      ),
+    ).toBe("https://generativelanguage.googleapis.com/v1beta");
     expect(
       getProviderModelsUrl(
         "https://generativelanguage.googleapis.com",
-        "Gemini",
+        "Google",
       ),
     ).toBe("https://generativelanguage.googleapis.com/v1beta/models");
+    expect(
+      getProviderGoogleSdkOptions(
+        "https://generativelanguage.googleapis.com/v1",
+      ),
+    ).toEqual({
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiVersion: "v1",
+    });
   });
 
   it("does not use legacy provider environment variables as API key fallbacks", () => {
@@ -58,7 +89,8 @@ describe("url policy and provider runtime helpers", () => {
     process.env.API_KEY = "api-env-secret";
     process.env.OPENAI_API_KEY = "openai-env-secret";
 
-    expect(getProviderApiKey({ type: "Gemini" })).toBe("");
+    expect(getProviderApiKey({ type: "Google" })).toBe("");
+    expect(getProviderApiKey({ type: "Anthropic" })).toBe("");
     expect(getProviderApiKey({ type: "OpenAI" })).toBe("");
     expect(getProviderApiKey({ type: "OpenAI Compatible" })).toBe("");
   });
@@ -178,6 +210,25 @@ describe("url policy and provider runtime helpers", () => {
     expect(isPrivateIpAddress("::ffff:172.16.0.2")).toBe(true);
     expect(isPrivateIpAddress("::ffff:169.254.10.20")).toBe(true);
     expect(isPrivateIpAddress("100.64.0.1")).toBe(true);
+  });
+
+  it("treats special-use IP ranges as non-public proxy targets", () => {
+    for (const address of [
+      "0.0.0.1",
+      "198.18.0.1",
+      "224.0.0.1",
+      "240.0.0.1",
+      "::ffff:198.18.0.1",
+      "2001:db8::1",
+      "ff02::1",
+    ]) {
+      expect(isPrivateIpAddress(address), address).toBe(true);
+    }
+
+    expect(isPrivateIpAddress("93.184.216.34")).toBe(false);
+    expect(isPrivateIpAddress("2606:2800:220:1:248:1893:25c8:1946")).toBe(
+      false,
+    );
   });
 
   it("blocks redirects from trusted plugin URLs to private network targets", async () => {

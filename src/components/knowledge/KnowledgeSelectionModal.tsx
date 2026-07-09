@@ -12,7 +12,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useKnowledgeStore } from "@/store/core/knowledgeStore";
-import { Attachment, Collection } from "@/types";
+import { Attachment, Collection, KnowledgeFileStatus } from "@/types";
 import {
   createKnowledgeCollectionAttachment,
   createKnowledgeFileAttachment,
@@ -29,6 +29,34 @@ const menuItemFocusClass =
 const collectionKey = (collectionId: string) => `collection:${collectionId}`;
 const fileKey = (collectionId: string, fileId: string) =>
   `file:${collectionId}:${fileId}`;
+
+const getKnowledgeStatusLabelKey = (
+  status: KnowledgeFileStatus,
+):
+  | "statusUploading"
+  | "statusParsing"
+  | "statusIndexing"
+  | "statusIndexed"
+  | "statusSaved"
+  | "statusError"
+  | "statusUnknown" => {
+  switch (status) {
+    case "uploading":
+      return "statusUploading";
+    case "parsing":
+      return "statusParsing";
+    case "indexing":
+      return "statusIndexing";
+    case "indexed":
+      return "statusIndexed";
+    case "saved":
+      return "statusSaved";
+    case "error":
+      return "statusError";
+    default:
+      return "statusUnknown";
+  }
+};
 
 const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
   onClose,
@@ -237,7 +265,7 @@ const KnowledgeSelectionModal: React.FC<KnowledgeSelectionModalProps> = ({
                     {file.name}
                   </span>
                   <span className="block truncate text-xs text-gray-500 dark:text-muted-foreground">
-                    {file.status}
+                    {t(getKnowledgeStatusLabelKey(file.status))}
                   </span>
                 </span>
               </button>

@@ -3,6 +3,7 @@ import { VoiceTranscribeRequestSchema } from "@/lib/api/schemas";
 import {
   assertMultipartRequestContentLengthUnderLimit,
   createApiErrorResponse,
+  parseJsonFormValue,
 } from "@/lib/api/middleware";
 import { safeFetchJson } from "@/lib/security/safeFetch";
 import { getSafeUrlPolicy } from "@/lib/security/urlPolicy";
@@ -14,7 +15,10 @@ import {
   decryptSecretEnvelope,
   resolveProviderRuntimeConfig,
 } from "@/lib/byok/server";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isGoogleProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import {
   getDefaultElevenLabsApiKey,
   getDefaultElevenLabsSttModel,
@@ -41,10 +45,6 @@ type MimoTranscriptionResponse = {
     };
   }>;
 };
-
-function parseJsonFormValue(value: FormDataEntryValue | null): unknown {
-  return typeof value === "string" ? JSON.parse(value) : undefined;
-}
 
 function getAudioExtension(mimeType: string): string {
   if (mimeType.includes("mp4")) return "mp4";
@@ -136,10 +136,16 @@ export async function POST(request: NextRequest) {
     const { provider, apiKeySecret, modelId, modelProvider, language } =
       VoiceTranscribeRequestSchema.parse({
         provider: formData.get("provider"),
-        apiKeySecret: parseJsonFormValue(formData.get("apiKeySecret")),
+        apiKeySecret: parseJsonFormValue(
+          formData.get("apiKeySecret"),
+          "apiKeySecret",
+        ),
         apiKey: formData.get("apiKey") || undefined,
         modelId: formData.get("modelId") || undefined,
-        modelProvider: parseJsonFormValue(formData.get("modelProvider")),
+        modelProvider: parseJsonFormValue(
+          formData.get("modelProvider"),
+          "modelProvider",
+        ),
         language: formData.get("language") || undefined,
       });
 
@@ -281,7 +287,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ text: response.text || "" });
       }
 
-      const gemini = ProviderFactory.createGeminiClient(resolvedProvider);
+      if (!isGoogleProviderType(resolvedProvider.type)) {
+        return NextResponse.json(
+          { error: `${resolvedProvider.type} does not support transcription` },
+          { status: 400 },
+        );
+      }
+
+      const gemini = ProviderFactory.createGoogleClient(resolvedProvider);
       const response = await gemini.models.generateContent({
         model: modelId,
         contents: {

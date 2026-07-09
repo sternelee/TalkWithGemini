@@ -4,7 +4,7 @@ import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import { hasPluginAuthValue } from "../security/localSecretResolvers";
 import { getSafeUrlPolicy, validateOutboundUrl } from "../security/urlPolicy";
 
-const AUTH_TYPES = new Set(["bearer", "apiKey", "none"]);
+const AUTH_TYPES = new Set(["bearer", "apiKey", "oauth2", "none"]);
 const AUTH_LOCATIONS = new Set(["header", "query"]);
 
 function trimString(value: unknown, maxChars: number): string {

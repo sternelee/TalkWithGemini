@@ -13,6 +13,10 @@ import {
 import { useUIStore, PreviewImage } from "@/store/core/uiStore";
 import { resolveOPFSUrl, isOPFSUrl } from "@/utils/opfs";
 import { resolveObjectUrlWithLifecycle } from "@/lib/utils/objectUrlLifecycle";
+import {
+  trapModalFocus,
+  useModalLifecycle,
+} from "@/components/ui/useModalLifecycle";
 
 const ResolvedImage = ({
   image,
@@ -86,7 +90,6 @@ const ImagePreview = () => {
   const [isVisible, setIsVisible] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const frameIds: number[] = [];
@@ -138,25 +141,11 @@ const ImagePreview = () => {
     [currentIndex, images.length, setImagePreviewIndex],
   );
 
-  useEffect(() => {
-    if (isOpen) {
-      previousFocusRef.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      return;
-    }
-
-    if (previousFocusRef.current?.isConnected) {
-      previousFocusRef.current.focus({ preventScroll: true });
-    }
-    previousFocusRef.current = null;
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!shouldRender || !isOpen) return;
-    closeButtonRef.current?.focus({ preventScroll: true });
-  }, [shouldRender, isOpen]);
+  useModalLifecycle({
+    open: isOpen,
+    dialogRef,
+    initialFocusRef: closeButtonRef,
+  });
 
   const handlePrev = useCallback(
     (e?: React.MouseEvent) => {
@@ -194,36 +183,7 @@ const ImagePreview = () => {
         return;
       }
 
-      if (e.key !== "Tab") return;
-
-      const dialog = dialogRef.current;
-      if (!dialog) return;
-
-      const focusableElements = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => element.getClientRects().length > 0);
-
-      if (focusableElements.length === 0) {
-        e.preventDefault();
-        dialog.focus({ preventScroll: true });
-        return;
-      }
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements[focusableElements.length - 1];
-
-      if (!dialog.contains(document.activeElement)) {
-        e.preventDefault();
-        firstElement.focus({ preventScroll: true });
-      } else if (e.shiftKey && document.activeElement === firstElement) {
-        e.preventDefault();
-        lastElement.focus({ preventScroll: true });
-      } else if (!e.shiftKey && document.activeElement === lastElement) {
-        e.preventDefault();
-        firstElement.focus({ preventScroll: true });
-      }
+      trapModalFocus(e, dialogRef.current);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -236,7 +196,13 @@ const ImagePreview = () => {
   return (
     <div
       ref={dialogRef}
-      className={`fixed inset-0 z-9999 flex flex-col bg-black/20 dark:bg-black/80 backdrop-blur-2xl transition-opacity duration-300 ease-in-out ${isVisible ? "opacity-100" : "opacity-0"}`}
+      className={`fixed inset-0 z-9999 flex flex-col overscroll-contain bg-black/20 backdrop-blur-2xl transition-opacity duration-300 ease-in-out dark:bg-black/80 ${isVisible ? "opacity-100" : "opacity-0"}`}
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        paddingRight: "env(safe-area-inset-right)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+      }}
       onClick={closeImagePreview}
       role="dialog"
       aria-modal="true"

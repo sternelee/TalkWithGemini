@@ -4,48 +4,19 @@ import {
   clearRateLimitStoreForTesting,
   incrementRateLimitBucket,
 } from "./rateLimitStore";
+import {
+  getApiRateLimitPolicy,
+  isMutatingApiRouteMethod,
+} from "./apiRoutePolicy";
+import { getDeploymentMode } from "./deployment";
 import { enforceApiRequestProof } from "./requestProof";
 
 export const REQUEST_GUARD_ERROR_CODES = {
   csrf: "CSRF_ORIGIN_BLOCKED",
   rateLimited: "RATE_LIMITED",
+  productionLocalOpen: "PRODUCTION_LOCAL_OPEN_API_BLOCKED",
+  sharedStoreRequired: "SHARED_STORE_REQUIRED",
 } as const;
-
-interface RateLimitRule {
-  windowMs: number;
-  maxRequests: number;
-  methods?: readonly string[];
-}
-
-const DEFAULT_RATE_LIMIT: RateLimitRule = {
-  windowMs: 60_000,
-  maxRequests: 120,
-};
-
-const RATE_LIMIT_RULES: Array<[RegExp, RateLimitRule]> = [
-  [/^\/api\/access\/verify$/, { windowMs: 60_000, maxRequests: 10 }],
-  [/^\/api\/chat(?:\/|$)/, { windowMs: 60_000, maxRequests: 60 }],
-  [/^\/api\/search$/, { windowMs: 60_000, maxRequests: 30 }],
-  [/^\/api\/rag(?:\/|$)/, { windowMs: 60_000, maxRequests: 30 }],
-  [/^\/api\/voice(?:\/|$)/, { windowMs: 60_000, maxRequests: 20 }],
-  [/^\/api\/doc-parse(?:\/|$)/, { windowMs: 60_000, maxRequests: 10 }],
-  [/^\/api\/plugins\/execute$/, { windowMs: 60_000, maxRequests: 30 }],
-  [/^\/api\/plugins\/install$/, { windowMs: 60_000, maxRequests: 20 }],
-  [
-    /^\/api\/agents(?:\/|$)/,
-    { windowMs: 60_000, maxRequests: 30, methods: ["GET"] },
-  ],
-  [
-    /^\/api\/plugins\/list$/,
-    { windowMs: 60_000, maxRequests: 15, methods: ["GET"] },
-  ],
-  [
-    /^\/api\/providers\/models$/,
-    { windowMs: 60_000, maxRequests: 30, methods: ["GET"] },
-  ],
-];
-
-const mutatingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function jsonError(
   status: number,
@@ -59,24 +30,6 @@ function jsonError(
   return response;
 }
 
-function methodMatchesRule(method: string, rule: RateLimitRule): boolean {
-  if (rule.methods) return rule.methods.includes(method);
-  return mutatingMethods.has(method);
-}
-
-function getRateLimitRule(
-  pathname: string,
-  method: string,
-): RateLimitRule | null {
-  const methodName = method.toUpperCase();
-  const pathRule = RATE_LIMIT_RULES.find(
-    ([pattern, rule]) =>
-      pattern.test(pathname) && methodMatchesRule(methodName, rule),
-  )?.[1];
-  if (pathRule) return pathRule;
-  return mutatingMethods.has(methodName) ? DEFAULT_RATE_LIMIT : null;
-}
-
 function envBool(name: string): boolean {
   const value = process.env[name]?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
@@ -84,6 +37,24 @@ function envBool(name: string): boolean {
 
 function shouldTrustProxyHeaders(): boolean {
   return envBool("TRUST_PROXY_HEADERS");
+}
+
+function isProductionLocalOpenApiBlocked(): boolean {
+  return (
+    process.env.NODE_ENV === "production" &&
+    getDeploymentMode() === "local" &&
+    !process.env.ACCESS_PASSWORD?.trim() &&
+    !envBool("ALLOW_INSECURE_LOCAL_PRODUCTION")
+  );
+}
+
+function isSharedStoreConfigurationError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /required|RATE_LIMIT_STORE|UPSTASH_REDIS_REST_URL|UPSTASH_REDIS_REST_TOKEN/i.test(
+      error.message,
+    )
+  );
 }
 
 export function getRateLimitClientIp(request: NextRequest): string {
@@ -112,7 +83,7 @@ function getRequestOrigin(request: NextRequest): string {
 }
 
 export function isMutatingRequest(request: NextRequest): boolean {
-  return mutatingMethods.has(request.method.toUpperCase());
+  return isMutatingApiRouteMethod(request.method);
 }
 
 export function validateSameOriginRequest(
@@ -157,7 +128,7 @@ export async function enforceRateLimit(
   request: NextRequest,
   now = Date.now(),
 ): Promise<NextResponse | null> {
-  const rule = getRateLimitRule(request.nextUrl.pathname, request.method);
+  const rule = getApiRateLimitPolicy(request.nextUrl.pathname, request.method);
   if (!rule) return null;
 
   const key = `${getRateLimitClientIp(request)}:${request.method}:${request.nextUrl.pathname}`;
@@ -183,10 +154,28 @@ export async function applyRequestGuards(
   const originResponse = validateSameOriginRequest(request);
   if (originResponse) return originResponse;
 
-  const proofResponse = await enforceApiRequestProof(request);
-  if (proofResponse) return proofResponse;
+  if (isProductionLocalOpenApiBlocked()) {
+    return jsonError(503, {
+      error:
+        "Production local API access requires ACCESS_PASSWORD or ALLOW_INSECURE_LOCAL_PRODUCTION=true.",
+      code: REQUEST_GUARD_ERROR_CODES.productionLocalOpen,
+    });
+  }
 
-  return enforceRateLimit(request);
+  try {
+    const proofResponse = await enforceApiRequestProof(request);
+    if (proofResponse) return proofResponse;
+
+    return await enforceRateLimit(request);
+  } catch (error) {
+    if (isSharedStoreConfigurationError(error)) {
+      return jsonError(503, {
+        error: "A shared request guard store is required in hosted mode.",
+        code: REQUEST_GUARD_ERROR_CODES.sharedStoreRequired,
+      });
+    }
+    throw error;
+  }
 }
 
 export function clearRequestRateLimitBuckets(): void {

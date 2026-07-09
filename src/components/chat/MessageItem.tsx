@@ -286,6 +286,16 @@ const UserMessageEditor = ({
 
   useEffect(() => {
     const textarea = textareaRef.current;
+    if (!textarea || typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
+
+    requestAnimationFrame(() => {
+      textarea.focus({ preventScroll: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
@@ -358,7 +368,6 @@ const UserMessageEditor = ({
         }}
         className="max-h-72 min-h-28 w-full resize-none bg-transparent px-3 py-3 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-ring"
         aria-label={t("editUserMessageAria")}
-        autoFocus
       />
       {polishError ? (
         <div className="px-3 pb-2 text-xs text-red-600 dark:text-red-300">
@@ -1104,6 +1113,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   // RAG Data
   const ragSources = message.ragSources || [];
+  const ragError = message.ragError?.message;
 
   // Tool Data
   const skillInvocations = message.skillInvocations || [];
@@ -1485,7 +1495,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
           ) : (
             <>
               {/* RAG Block Component */}
-              <RAGBlock sources={ragSources} />
+              <RAGBlock sources={ragSources} error={ragError} />
 
               {skillInvocations.length > 0 && (
                 <div className="mb-3 flex flex-wrap gap-1.5">

@@ -44,6 +44,8 @@ export const CustomSelect = ({
   className = "",
   selectButtonClassName,
   ariaLabel,
+  renderOption,
+  renderValue,
 }: {
   id?: string;
   value: string;
@@ -53,6 +55,11 @@ export const CustomSelect = ({
   className?: string;
   selectButtonClassName?: string;
   ariaLabel?: string;
+  renderOption?: (option: SelectOption) => React.ReactNode;
+  renderValue?: (
+    option: SelectOption | undefined,
+    label: string,
+  ) => React.ReactNode;
 }) => {
   const t = useTranslations("Common");
   const [isOpen, setIsOpen] = useState(false);
@@ -125,6 +132,21 @@ export const CustomSelect = ({
     );
     const lastIndex = flatOptions.length - 1;
 
+    if (event.key === "Escape" && isOpen) {
+      event.preventDefault();
+      handleClose();
+      return;
+    }
+
+    if ((event.key === "Enter" || event.key === " ") && !isOpen) {
+      event.preventDefault();
+      clearCloseTimer();
+      setIsClosing(false);
+      setIsOpen(true);
+      setHighlightedValue(value || flatOptions[0].value);
+      return;
+    }
+
     if (event.key === "ArrowDown") {
       event.preventDefault();
       clearCloseTimer();
@@ -163,7 +185,7 @@ export const CustomSelect = ({
       return;
     }
 
-    if (event.key === "Enter" && isOpen) {
+    if ((event.key === "Enter" || event.key === " ") && isOpen) {
       event.preventDefault();
       commitOption(highlightedValue || value);
     }
@@ -192,6 +214,7 @@ export const CustomSelect = ({
   };
 
   const selectedLabel = getSelectedLabel();
+  const selectedOption = flatOptions.find((option) => option.value === value);
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -200,9 +223,13 @@ export const CustomSelect = ({
         id={id}
         disabled={!hasOptions}
         aria-label={ariaLabel}
+        role="combobox"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={isOpen ? listboxId : undefined}
+        aria-activedescendant={
+          isOpen && highlightedValue ? getOptionId(highlightedValue) : undefined
+        }
         onClick={handleToggle}
         onKeyDown={handleListboxKeyDown}
         className={
@@ -214,7 +241,11 @@ export const CustomSelect = ({
           {Icon && (
             <Icon size={16} className="text-gray-500" aria-hidden="true" />
           )}
-          <span className="truncate">{selectedLabel || t("select")}</span>
+          {renderValue ? (
+            renderValue(selectedOption, selectedLabel || t("select"))
+          ) : (
+            <span className="truncate">{selectedLabel || t("select")}</span>
+          )}
         </div>
         <ChevronDown
           size={14}
@@ -230,9 +261,6 @@ export const CustomSelect = ({
         id={listboxId}
         role="listbox"
         ariaLabel={ariaLabel}
-        aria-activedescendant={
-          isOpen && highlightedValue ? getOptionId(highlightedValue) : undefined
-        }
         placement="bottom-start"
         matchAnchorWidth
         maxHeight={240}
@@ -251,51 +279,73 @@ export const CustomSelect = ({
                     {group.label}
                   </div>
                   {group.options.map((opt) => (
-                    <button
-                      type="button"
+                    <div
                       role="option"
+                      tabIndex={-1}
                       id={getOptionId(opt.value)}
                       aria-selected={value === opt.value}
                       key={opt.value}
                       onClick={() => {
                         commitOption(opt.value);
                       }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          commitOption(opt.value);
+                        }
+                      }}
+                      onMouseEnter={() => setHighlightedValue(opt.value)}
                       className={`mb-0.5 flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                         value === opt.value || highlightedValue === opt.value
                           ? "bg-accent text-accent-foreground font-medium"
                           : "text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                       }`}
                     >
-                      <span className="truncate">{opt.label}</span>
+                      {renderOption ? (
+                        renderOption(opt)
+                      ) : (
+                        <span className="truncate">{opt.label}</span>
+                      )}
                       {value === opt.value && (
                         <Check size={14} aria-hidden="true" />
                       )}
-                    </button>
+                    </div>
                   ))}
                 </div>
               ))
             : // Render Flat Options
               (options as SelectOption[]).map((opt) => (
-                <button
-                  type="button"
+                <div
                   role="option"
+                  tabIndex={-1}
                   id={getOptionId(opt.value)}
                   aria-selected={value === opt.value}
                   key={opt.value}
                   onClick={() => {
                     commitOption(opt.value);
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      commitOption(opt.value);
+                    }
+                  }}
+                  onMouseEnter={() => setHighlightedValue(opt.value)}
                   className={`mb-0.5 flex w-full items-center justify-between rounded-sm px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     value === opt.value || highlightedValue === opt.value
                       ? "bg-accent text-accent-foreground font-medium"
                       : "text-popover-foreground hover:bg-accent hover:text-accent-foreground"
                   }`}
                 >
-                  <span className="truncate">{opt.label}</span>
+                  {renderOption ? (
+                    renderOption(opt)
+                  ) : (
+                    <span className="truncate">{opt.label}</span>
+                  )}
                   {value === opt.value && (
                     <Check size={14} aria-hidden="true" />
                   )}
-                </button>
+                </div>
               ))}
         </div>
       </AnchoredPortal>

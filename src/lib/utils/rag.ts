@@ -24,6 +24,11 @@ type IndexedKnowledgeFileSelector = {
   fileId: string;
 };
 
+export interface RagQueryError {
+  message: string;
+  code: "RAG_QUERY_FAILED";
+}
+
 /**
  * Citation instructions for Knowledge Base usage
  */
@@ -136,10 +141,12 @@ export const processRAGAttachments = async (
   convertedContent: string;
   finalAttachments: Attachment[];
   ragSources: Source[];
+  ragError?: RagQueryError;
 }> => {
   let convertedContent = "";
   const finalAttachments: Attachment[] = [];
   let ragSources: Source[] = [];
+  let ragError: RagQueryError | undefined;
   const contextBudget = createPromptContextBudget();
 
   if (kbAttachments.length === 0) {
@@ -285,12 +292,16 @@ export const processRAGAttachments = async (
       }
     } catch (e) {
       logDevError("RAG Pre-flight failed:", e);
+      ragError = {
+        code: "RAG_QUERY_FAILED",
+        message: "The selected knowledge base could not be queried.",
+      };
       convertedContent +=
         "\n\n[Knowledge Base Error]\nThe selected knowledge base could not be queried. Continue with the available conversation context and tell the user the knowledge lookup failed.\n";
     }
   }
 
-  return { convertedContent, finalAttachments, ragSources };
+  return { convertedContent, finalAttachments, ragSources, ragError };
 };
 
 /**

@@ -10,7 +10,7 @@ describe("search compatibility", () => {
     expect(
       getSearchCompatibility({
         searchProvider: "google",
-        modelProviderType: "Gemini",
+        modelProviderType: "Google",
       }),
     ).toEqual({
       enabled: true,
@@ -68,11 +68,22 @@ describe("search compatibility", () => {
     });
   });
 
-  it("allows Firecrawl search without an API key", () => {
+  it("requires a key for hosted Firecrawl but allows configured self-hosted Firecrawl", () => {
     expect(
       getSearchCompatibility({
         searchProvider: "firecrawl",
         searchConfig: { apiKey: "" },
+        modelProviderType: "OpenAI",
+      }),
+    ).toMatchObject({
+      enabled: false,
+      reason: "missing_search_api_key",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "firecrawl",
+        searchConfig: { apiKey: "", baseUrl: "https://firecrawl.example" },
         modelProviderType: "OpenAI",
       }),
     ).toEqual({
@@ -87,7 +98,7 @@ describe("search compatibility", () => {
       getSearchCompatibility({
         searchProvider: "searxng",
         searchConfig: { baseUrl: "" },
-        modelProviderType: "Gemini",
+        modelProviderType: "Google",
       }),
     ).toMatchObject({
       enabled: false,

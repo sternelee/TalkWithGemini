@@ -3,13 +3,14 @@
 import { ExternalLink, GitBranch, Globe2, Package, Scale } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Logo } from "../ui/Icons";
+import { PRODUCT_COPYRIGHT, PRODUCT_NAME } from "@/lib/product";
 
-const PROJECT_NAME = "Neo Chat";
+const PROJECT_NAME = PRODUCT_NAME;
 const PROJECT_VERSION = "2.1.0";
 const OFFICIAL_SITE_URL = "https://neo.u14.app";
 const OFFICIAL_REPO_URL = "https://github.com/u14app/neo-chat";
 const LICENSE_URL = "https://github.com/u14app/neo-chat/blob/main/LICENSE";
-const COPYRIGHT_TEXT = "Copyright (c) 2026 Neo Chat contributors";
+const COPYRIGHT_TEXT = PRODUCT_COPYRIGHT;
 
 function getDisplayHost(url: string): string {
   try {

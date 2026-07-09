@@ -1,5 +1,6 @@
 import { MARKET_LIMITS, PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
 import type { Plugin, PluginFunction } from "../../types";
+import { DEFAULT_MCP_SERVER_LOGO_URL } from "./defaults";
 
 export const MCP_REGISTRY_BASE_URL =
   "https://registry.modelcontextprotocol.io/v0.1";
@@ -350,7 +351,9 @@ export function normalizeMcpRegistryServers(
           MARKET_LIMITS.maxPluginDescriptionChars,
         ) || "No description provided",
       logoUrl:
-        normalizeWebUrl(server.iconUrl) || normalizeWebUrl(server.logoUrl),
+        normalizeWebUrl(server.iconUrl) ||
+        normalizeWebUrl(server.logoUrl) ||
+        DEFAULT_MCP_SERVER_LOGO_URL,
       manifestUrl: `${MCP_REGISTRY_BASE_URL}/servers/${encodedName}/versions/${encodedVersion}`,
       externalDocsUrl: getExternalDocsUrl(server) || undefined,
       functions: [],
@@ -372,4 +375,8 @@ export function normalizeMcpRegistryServers(
   }
 
   return plugins;
+}
+
+export function normalizeMcpRegistryServer(value: unknown): Plugin | null {
+  return normalizeMcpRegistryServers([value], { maxServers: 1 })[0] || null;
 }

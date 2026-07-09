@@ -36,7 +36,7 @@ const serverConfig: PublicServerConfig = {
     available: true,
     id: SERVER_DEFAULT_PROVIDER_ID,
     name: "Hosted Default",
-    type: "Gemini",
+    type: "Google",
     models: ["gemini-default"],
     defaultModels: {
       titleGeneration: "gemini-default",
@@ -152,7 +152,7 @@ describe("server default store injection", () => {
         {
           id: "GEMINI",
           name: "Google Gemini",
-          type: "Gemini",
+          type: "Google",
           baseUrl: "https://generativelanguage.googleapis.com",
           apiKey: "user-key",
           enabled: true,
@@ -404,7 +404,7 @@ describe("server default store injection", () => {
           {
             id: "GEMINI",
             name: "Google Gemini",
-            type: "Gemini",
+            type: "Google",
             baseUrl: "https://generativelanguage.googleapis.com",
             apiKey: "",
             enabled: true,
@@ -414,7 +414,7 @@ describe("server default store injection", () => {
           {
             id: "GEMINI_CUSTOM",
             name: "My Gemini",
-            type: "Gemini",
+            type: "Google",
             baseUrl: "https://generativelanguage.googleapis.com",
             apiKey: "user-key",
             enabled: true,

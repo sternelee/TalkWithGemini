@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { isApiProofProtectedRoute } from "./apiRoutePolicy";
 import { getDeploymentMode } from "./deployment";
 import { incrementRateLimitBucket } from "./rateLimitStore";
 
@@ -56,18 +57,6 @@ declare global {
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-const protectedPathPatterns = [
-  /^\/api\/chat(?:\/|$)/,
-  /^\/api\/search$/,
-  /^\/api\/rag(?:\/|$)/,
-  /^\/api\/voice(?:\/|$)/,
-  /^\/api\/doc-parse(?:\/|$)/,
-  /^\/api\/plugins\/execute$/,
-  /^\/api\/plugins\/install$/,
-  /^\/api\/plugins\/list$/,
-  /^\/api\/providers\/models$/,
-] as const;
 
 function getCrypto(): Crypto {
   if (!globalThis.crypto?.subtle) {
@@ -134,8 +123,11 @@ export function isApiProofRequired(): boolean {
   return getDeploymentMode() === "hosted";
 }
 
-export function isApiProofProtectedPath(pathname: string): boolean {
-  return protectedPathPatterns.some((pattern) => pattern.test(pathname));
+export function isApiProofProtectedPath(
+  pathname: string,
+  method = "POST",
+): boolean {
+  return isApiProofProtectedRoute(pathname, method);
 }
 
 export function getApiProofPublicStatus(): ApiProofPublicStatus {
@@ -355,7 +347,7 @@ export async function enforceApiRequestProof(
 ): Promise<NextResponse | null> {
   if (
     !isApiProofRequired() ||
-    !isApiProofProtectedPath(request.nextUrl.pathname)
+    !isApiProofProtectedPath(request.nextUrl.pathname, request.method)
   ) {
     return null;
   }

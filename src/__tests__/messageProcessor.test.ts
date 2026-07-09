@@ -266,6 +266,90 @@ describe("message preprocessing", () => {
     expect(result.ragSources).toHaveLength(1);
   });
 
+  it("keeps selected knowledge local when the chat-level RAG toggle is off", async () => {
+    const fileAttachment = createKnowledgeFileAttachment({
+      collectionId: "collection_1",
+      fileId: "file_1",
+      fileName: "notes.md",
+    });
+
+    const result = await processMessageForSending({
+      text: "Summarize notes",
+      attachments: [fileAttachment],
+      selectedModel: "provider:model",
+      modelMetadata: {
+        model: { attachment: false },
+      },
+      customModelMetadata: {},
+      ragConfig: {
+        enabled: true,
+        useDefaultVectorStore: true,
+        serverVectorStoreAvailable: true,
+      },
+      ragEnabled: false,
+      knowledgeCollections: [
+        {
+          id: "collection_1",
+          name: "Manual KB",
+          files: [
+            {
+              id: "file_1",
+              name: "notes.md",
+              type: "text/plain",
+              status: "indexed",
+              ragId: "file_1",
+              ragChunkCount: 1,
+              uploadedAt: 1,
+              path: "opfs://kb/notes",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(mocks.queryRAG).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalled();
+    expect(result.finalText).toContain("knowledge file text");
+    expect(result.ragSources).toEqual([]);
+  });
+
+  it("returns a structured RAG error when knowledge lookup fails", async () => {
+    mocks.queryRAG.mockRejectedValue(new Error("vector store unavailable"));
+
+    const collectionAttachment = createKnowledgeCollectionAttachment({
+      collectionId: "collection_1",
+      collectionName: "Manual KB",
+    });
+
+    const result = await processMessageForSending({
+      text: "Use the docs",
+      attachments: [collectionAttachment],
+      selectedModel: "provider:model",
+      modelMetadata: {
+        model: { attachment: false },
+      },
+      customModelMetadata: {},
+      ragConfig: {
+        enabled: true,
+        useDefaultVectorStore: true,
+        serverVectorStoreAvailable: true,
+      },
+      knowledgeCollections: [
+        {
+          id: "collection_1",
+          name: "Manual KB",
+          files: [],
+        },
+      ],
+    });
+
+    expect(result.ragError).toMatchObject({
+      code: "RAG_QUERY_FAILED",
+    });
+    expect(result.ragError?.message).toMatch(/knowledge base/i);
+    expect(result.finalText).toContain("[Knowledge Base Error]");
+  });
+
   it("keeps unindexed knowledge file attachments on the local context path when RAG is enabled", async () => {
     const fileAttachment = createKnowledgeFileAttachment({
       collectionId: "collection_1",

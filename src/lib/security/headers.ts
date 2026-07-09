@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import type { DeploymentMode } from "./deployment";
 import { getDeploymentMode } from "./deployment";
+import { THEME_INIT_SCRIPT } from "../themeInitScript";
 
 export interface SecurityHeader {
   key: string;
@@ -8,6 +10,9 @@ export interface SecurityHeader {
 
 function buildCsp(mode: DeploymentMode): string {
   const isHosted = mode === "hosted";
+  const themeScriptHash = createHash("sha256")
+    .update(THEME_INIT_SCRIPT)
+    .digest("base64");
 
   return [
     "default-src 'self'",
@@ -15,7 +20,9 @@ function buildCsp(mode: DeploymentMode): string {
     "object-src 'none'",
     "frame-ancestors 'none'",
     "form-action 'self'",
-    `script-src 'self' 'unsafe-inline'${isHosted ? "" : " 'unsafe-eval'"}`,
+    isHosted
+      ? `script-src 'self' 'sha256-${themeScriptHash}'`
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: https:${isHosted ? "" : " http:"}`,
     "media-src 'self' data: blob:",

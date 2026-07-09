@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { PLUGIN_EXECUTION_LIMITS } from "../config/limits";
+import { streamAnthropicMessages } from "../lib/streaming/anthropic";
 import { streamGeminiResponse } from "../lib/streaming/gemini";
 import {
   streamOpenAIChatCompletions,
@@ -776,6 +777,134 @@ describe("streamed tool-call normalization", () => {
 
     const request = (client.responses.create as any).mock.calls[0][0];
     expect(request.reasoning).toEqual({ summary: "auto" });
+  });
+
+  it("streams Anthropic Messages API text, usage, and tool calls via the official SDK surface", async () => {
+    const messages: SSEMessage[] = [];
+    const client = {
+      messages: {
+        create: vi.fn(async () =>
+          asyncChunks([
+            {
+              type: "message_start",
+              message: {
+                usage: { input_tokens: 7, output_tokens: 0 },
+              },
+            },
+            {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text: "Hello" },
+            },
+            {
+              type: "content_block_start",
+              index: 1,
+              content_block: {
+                type: "tool_use",
+                id: "toolu_lookup",
+                name: "lookup",
+                input: {},
+              },
+            },
+            {
+              type: "content_block_delta",
+              index: 1,
+              delta: {
+                type: "input_json_delta",
+                partial_json: '{"q":"neo"}',
+              },
+            },
+            {
+              type: "content_block_stop",
+              index: 1,
+            },
+            {
+              type: "message_delta",
+              usage: { output_tokens: 5 },
+            },
+            { type: "ping" },
+            { type: "message_stop" },
+          ]),
+        ),
+      },
+    };
+
+    await streamAnthropicMessages({
+      client: client as any,
+      model: "claude-test",
+      messages: [{ role: "user", content: "Hello" }],
+      onChunk: (message) => messages.push(message),
+    });
+
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        { type: "content", content: "Hello" },
+        {
+          type: "usage",
+          usage: {
+            prompt_tokens: 7,
+            completion_tokens: 5,
+            total_tokens: 12,
+          },
+        },
+      ]),
+    );
+    expect(toolCallMessages(messages)[0].toolCall).toMatchObject({
+      id: "toolu_lookup",
+      name: "lookup",
+      args: { q: "neo" },
+      status: "pending",
+    });
+    expect(client.messages.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "claude-test",
+        max_tokens: 4096,
+        stream: true,
+      }),
+    );
+  });
+
+  it("requests Anthropic adaptive thinking in auto reasoning mode", async () => {
+    const client = {
+      messages: {
+        create: vi.fn(async () => asyncChunks([])),
+      },
+    };
+
+    await streamAnthropicMessages({
+      client: client as any,
+      model: "claude-test",
+      messages: [{ role: "user", content: "Think" }],
+      reasoningMode: "auto",
+      onChunk: () => undefined,
+    });
+
+    const request = (client.messages.create as any).mock.calls[0][0];
+    expect(request.thinking).toEqual({ type: "adaptive" });
+  });
+
+  it("maps Anthropic explicit reasoning modes to thinking budgets", async () => {
+    const client = {
+      messages: {
+        create: vi.fn(async () => asyncChunks([])),
+      },
+    };
+
+    await streamAnthropicMessages({
+      client: client as any,
+      model: "claude-test",
+      messages: [{ role: "user", content: "Think harder" }],
+      reasoningMode: "high",
+      temperature: 0.2,
+      onChunk: () => undefined,
+    });
+
+    const request = (client.messages.create as any).mock.calls[0][0];
+    expect(request.thinking).toEqual({
+      type: "enabled",
+      budget_tokens: 3072,
+    });
+    expect(request).not.toHaveProperty("temperature");
   });
 
   it("normalizes Gemini tool calls with unique IDs and argument errors", async () => {

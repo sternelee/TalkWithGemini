@@ -6,15 +6,28 @@ import { Library, ChevronDown, BookText } from "lucide-react";
 
 interface RAGBlockProps {
   sources: Source[];
+  error?: string;
 }
 
-const RAGBlock: React.FC<RAGBlockProps> = ({ sources }) => {
+const RAGBlock: React.FC<RAGBlockProps> = ({ sources, error }) => {
   const t = useTranslations("Knowledge");
   const [isExpanded, setIsExpanded] = useState(false);
   const contentId = useId();
   const buttonId = useId();
+  const hasSources = sources.length > 0;
 
-  if (!sources || sources.length === 0) return null;
+  if (!hasSources && !error) return null;
+
+  if (error && !hasSources) {
+    return (
+      <div
+        role="alert"
+        className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+      >
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div className="mb-3 rounded-lg border border-purple-200 dark:border-purple-800/60 overflow-hidden bg-purple-50/50 dark:bg-purple-900/10 transition-colors duration-300">

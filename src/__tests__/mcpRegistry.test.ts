@@ -41,6 +41,7 @@ describe("MCP registry normalization", () => {
       source: "mcp",
       title: "io.github/context7",
       description: "Context-aware docs lookup.",
+      logoUrl: "/mcp-logo.svg",
       manifestUrl:
         "https://registry.modelcontextprotocol.io/v0.1/servers/io.github%2Fcontext7/versions/1.2.3",
       externalDocsUrl: "https://github.com/example/context7",
@@ -55,6 +56,28 @@ describe("MCP registry normalization", () => {
         toolNameMap: {},
       },
     });
+  });
+
+  it("preserves registry-provided MCP logos over the default", () => {
+    const plugins = normalizeMcpRegistryServers({
+      servers: [
+        {
+          server: {
+            name: "io.github/branded",
+            version: "1.0.0",
+            iconUrl: "https://example.com/mcp.svg",
+            remotes: [
+              {
+                type: "streamable-http",
+                url: "https://mcp.example.com/mcp",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(plugins[0]?.logoUrl).toBe("https://example.com/mcp.svg");
   });
 
   it("builds stable MCP tool names within the chat tool schema limit", () => {

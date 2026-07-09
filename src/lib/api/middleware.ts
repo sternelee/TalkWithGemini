@@ -5,6 +5,7 @@
 import { NextRequest } from "next/server";
 import { API_INPUT_LIMITS } from "../../config/limits";
 import {
+  ApiError,
   handleApiError,
   LengthRequiredError,
   PayloadTooLargeError,
@@ -108,6 +109,19 @@ export function assertMultipartRequestContentLengthUnderLimit(
 
   if (contentLengthBytes > maxBytes) {
     throw new PayloadTooLargeError();
+  }
+}
+
+export function parseJsonFormValue(
+  value: FormDataEntryValue | null,
+  label = "form value",
+): unknown {
+  if (typeof value !== "string") return undefined;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new ApiError(`Invalid ${label} JSON`, 400, "INVALID_SECRET_JSON");
   }
 }
 

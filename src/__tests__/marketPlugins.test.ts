@@ -92,6 +92,26 @@ describe("market plugin normalization", () => {
     ).toBeNull();
   });
 
+  it("keeps root-relative plugin logos for local default assets", () => {
+    expect(
+      normalizeMarketPlugin({
+        id: "mcp:local-logo:1.0.0",
+        source: "mcp",
+        title: "Local Logo MCP",
+        logoUrl: "/mcp-logo.svg",
+        manifestUrl: "",
+        mcp: {
+          transport: "streamable-http",
+          serverUrl: "https://mcp.example.com/mcp",
+          serverName: "local-logo",
+          toolNameMap: {},
+        },
+      }),
+    ).toMatchObject({
+      logoUrl: "/mcp-logo.svg",
+    });
+  });
+
   it("deduplicates and caps plugin lists", () => {
     const plugins = Array.from(
       { length: MARKET_LIMITS.maxPlugins + 10 },

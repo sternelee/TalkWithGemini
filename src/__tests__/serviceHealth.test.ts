@@ -104,6 +104,20 @@ describe("service health status", () => {
     });
   });
 
+  it("warns when hosted rate limits cannot identify clients by trusted proxy headers", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("TRUST_PROXY_HEADERS", "false");
+
+    const { getServiceHealthStatus } =
+      await import("../lib/services/serviceHealth");
+    const health = getServiceHealthStatus({ now: 1_700_000_000_000 });
+
+    expect(health.services.proxyHeaders).toMatchObject({
+      status: "policy_blocked",
+      code: "PROXY_HEADERS_UNTRUSTED",
+    });
+  });
+
   it("marks public deployments left in local mode as policy blocked", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "local");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://chat.example.com");

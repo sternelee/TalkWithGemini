@@ -24,6 +24,10 @@ Build command: pnpm build:worker
 Deploy command: pnpm exec opennextjs-cloudflare deploy -- --keep-vars
 ```
 
+Use Node 22 and Corepack-managed `pnpm@10.30.3` for local builds, CI, Docker,
+and Workers Builds. Worker PRs should also pass `pnpm worker:size` and
+`pnpm worker:dry-run` after `pnpm build:worker`.
+
 `--keep-vars` preserves dashboard-managed runtime variables and secrets across
 deployments. Without it, deployments can replace dashboard variables with only
 the values present in `wrangler.jsonc`.
@@ -56,11 +60,12 @@ pnpm byok:generate
 
 ## Deployment Safety
 
-| Variable                    | Purpose                                                                                                  |
-| --------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `DEPLOYMENT_MODE`           | `local` allows local/private proxy targets; `hosted` blocks them by default and expects shared stores.   |
-| `ALLOW_LOCAL_NETWORK_PROXY` | Explicit override for local/private-network proxy access. Keep disabled for hosted internet deployments. |
-| `TRUST_PROXY_HEADERS`       | Trust forwarded proxy headers only when the hosting platform strips spoofed values.                      |
+| Variable                          | Purpose                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEPLOYMENT_MODE`                 | `local` allows local/private proxy targets; `hosted` blocks them by default and expects shared stores.                                      |
+| `ALLOW_INSECURE_LOCAL_PRODUCTION` | Explicitly allows production `local` mode without `ACCESS_PASSWORD`. Use only for private deployments that are not exposed to the internet. |
+| `ALLOW_LOCAL_NETWORK_PROXY`       | Explicit override for local/private-network proxy access. Keep disabled for hosted internet deployments.                                    |
+| `TRUST_PROXY_HEADERS`             | Trust forwarded proxy headers only when the hosting platform strips spoofed values.                                                         |
 
 `TRUST_PROXY_HEADERS` affects request identity used by deployment diagnostics
 and rate limiting. Leave it `false` unless Neo Chat is behind a trusted proxy
@@ -96,13 +101,13 @@ registry lookups survive across instances.
 
 ## Default Model Provider
 
-| Variable                    | Purpose                                                                                                                                     |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_PROVIDER_TYPE`     | Default provider type, such as `Gemini`, `OpenAI`, or `OpenAI Compatible`.                                                                  |
-| `DEFAULT_PROVIDER_NAME`     | Display name for the default provider.                                                                                                      |
-| `DEFAULT_PROVIDER_BASE_URL` | Base URL for OpenAI-compatible providers.                                                                                                   |
-| `DEFAULT_PROVIDER_API_KEY`  | Deployment-level API key for the default provider.                                                                                          |
-| `DEFAULT_PROVIDER_MODELS`   | Model IDs exposed by the default provider. Supports comma-separated IDs, JSON string arrays, and JSON object arrays with optional metadata. |
+| Variable                    | Purpose                                                                                                                                                                    |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEFAULT_PROVIDER_TYPE`     | Default provider type: `Google`, `Anthropic`, `OpenAI`, or `OpenAI Compatible`. Legacy `Gemini` is still accepted and normalized to `Google`.                              |
+| `DEFAULT_PROVIDER_NAME`     | Display name for the default provider.                                                                                                                                     |
+| `DEFAULT_PROVIDER_BASE_URL` | Base URL for the default provider. Google defaults to `/v1beta`, while OpenAI-compatible and Anthropic default to `/v1` unless a version segment such as `/v2` is present. |
+| `DEFAULT_PROVIDER_API_KEY`  | Deployment-level API key for the default provider.                                                                                                                         |
+| `DEFAULT_PROVIDER_MODELS`   | Model IDs exposed by the default provider. Supports comma-separated IDs, JSON string arrays, and JSON object arrays with optional metadata.                                |
 
 `DEFAULT_PROVIDER_MODELS` JSON object entries may include display metadata,
 capability aliases, and explicit modalities:

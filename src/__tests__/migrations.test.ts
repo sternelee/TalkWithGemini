@@ -209,7 +209,7 @@ describe("storage migrations", () => {
     expect(core.state.language).toBe("zh");
     expect(core.state.providers[0]).toMatchObject({
       id: "GEMINI",
-      type: "Gemini",
+      type: "Google",
       apiKey: "legacy-key",
       baseUrl: "https://proxy.example.com",
     });

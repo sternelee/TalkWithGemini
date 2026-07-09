@@ -131,6 +131,21 @@ function hostedModeHealth(hosted: boolean): ServiceHealthItem {
   return item("hostedMode", "local_only", "LOCAL_MODE");
 }
 
+function proxyHeadersHealth(hosted: boolean): ServiceHealthItem {
+  if (!hosted) {
+    return item("proxyHeaders", "local_only", "PROXY_HEADERS_LOCAL_MODE");
+  }
+  if (envBool("TRUST_PROXY_HEADERS")) {
+    return item("proxyHeaders", "available", "PROXY_HEADERS_TRUSTED");
+  }
+  return item(
+    "proxyHeaders",
+    "policy_blocked",
+    "PROXY_HEADERS_UNTRUSTED",
+    "Hosted rate limits will share one anonymous client bucket until trusted proxy headers are enabled.",
+  );
+}
+
 function defaultModelHealth(): ServiceHealthItem {
   if (env("DEFAULT_PROVIDER_API_KEY")) {
     return item("defaultModel", "available", "DEFAULT_MODEL_CONFIGURED");
@@ -212,6 +227,7 @@ export function getServiceHealthStatus(
       apiProof: apiProofHealth(),
       accessPassword: accessPasswordHealth(hosted),
       hostedMode: hostedModeHealth(hosted),
+      proxyHeaders: proxyHeadersHealth(hosted),
       rateLimitStore: storeHealth("rateLimitStore", "RATE_LIMIT_STORE", hosted),
       documentParseJobStore: storeHealth(
         "documentParseJobStore",

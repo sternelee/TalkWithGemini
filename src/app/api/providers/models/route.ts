@@ -8,11 +8,15 @@ import { ProviderRuntimeConfigSchema } from "@/lib/api/schemas";
 import { safeFetchJson } from "@/lib/security/safeFetch";
 import { extractProviderModelIds } from "@/lib/providers/models";
 import {
+  ANTHROPIC_API_VERSION_HEADER,
   getProviderApiKey,
   getProviderModelsUrl,
   getSafeUrlPolicy,
 } from "@/lib/security/urlPolicy";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isAnthropicProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import { resolveProviderRuntimeConfig } from "@/lib/byok/server";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
@@ -39,6 +43,9 @@ export async function POST(request: NextRequest) {
     const headers: Record<string, string> = {};
     if (isOpenAIProviderType(provider.type)) {
       headers.Authorization = `Bearer ${apiKey}`;
+    } else if (isAnthropicProviderType(provider.type)) {
+      headers["x-api-key"] = apiKey;
+      headers["anthropic-version"] = ANTHROPIC_API_VERSION_HEADER;
     } else {
       headers["x-goog-api-key"] = apiKey;
     }

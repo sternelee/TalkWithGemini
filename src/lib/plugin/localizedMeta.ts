@@ -9,6 +9,8 @@
  * declarations and must remain in English to keep tool-calling behavior stable.
  */
 
+import { DEFAULT_MCP_SERVER_LOGO_URL } from "../mcp/defaults";
+
 export type ConfigPluginKey =
   | "pluginJinaTitle"
   | "pluginJinaDescription"
@@ -66,18 +68,40 @@ const BUILT_IN_PLUGIN_I18N: Record<
 };
 
 /**
- * Returns a copy of the plugin with its `title`/`description` replaced by the
- * localized strings from the `Config` namespace. Non-built-in plugins (remote /
- * custom) are returned unchanged.
+ * Returns a display-ready plugin copy. Built-in plugins get localized
+ * `title`/`description` strings from the `Config` namespace; MCP plugins with
+ * no logo get the local default MCP logo.
  */
-export function localizePluginMeta<
-  T extends { id: string; title: string; description: string },
->(plugin: T, t: (key: ConfigPluginKey) => string): T {
+type PluginDisplayMeta = {
+  id: string;
+  title: string;
+  description: string;
+  logoUrl?: string;
+  source?: string;
+};
+
+function getDisplayLogoUrl(plugin: PluginDisplayMeta): string | undefined {
+  if (plugin.logoUrl?.trim()) return plugin.logoUrl;
+  return plugin.source === "mcp" ? DEFAULT_MCP_SERVER_LOGO_URL : plugin.logoUrl;
+}
+
+export function localizePluginMeta<T extends PluginDisplayMeta>(
+  plugin: T,
+  t: (key: ConfigPluginKey) => string,
+): T {
   const mapping = BUILT_IN_PLUGIN_I18N[plugin.id];
-  if (!mapping) return plugin;
+  const logoUrl = getDisplayLogoUrl(plugin);
+  const hasLogoChange = logoUrl !== plugin.logoUrl;
+  if (!mapping && !hasLogoChange) return plugin;
+
   return {
     ...plugin,
-    title: t(mapping.titleKey),
-    description: t(mapping.descriptionKey),
+    ...(hasLogoChange ? { logoUrl } : {}),
+    ...(mapping
+      ? {
+          title: t(mapping.titleKey),
+          description: t(mapping.descriptionKey),
+        }
+      : {}),
   };
 }

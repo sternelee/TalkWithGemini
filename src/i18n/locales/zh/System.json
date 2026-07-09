@@ -66,7 +66,7 @@
   "keepHistory": "保留历史（轮次）",
   "dataManagement": "数据管理",
   "exportAllData": "导出全部数据",
-  "exportAllDataDesc": "将对话、设置、供应商、插件、助理和知识库元数据下载为本地 JSON 备份。",
+  "exportAllDataDesc": "将对话、设置、供应商、插件、助理和知识库元数据下载为本地 JSON 备份。OPFS 文件内容只记录引用，不会打包进导出文件。",
   "exportData": "导出数据",
   "exporting": "正在导出…",
   "exportAria": "导出全部本地数据",

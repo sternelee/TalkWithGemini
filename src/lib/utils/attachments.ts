@@ -88,6 +88,36 @@ export function convertAttachmentsToOpenAIResponses(attachments: Attachment[]) {
 }
 
 /**
+ * 将附件转换为 Anthropic Messages API 输入格式
+ */
+export function convertAttachmentsToAnthropic(attachments: Attachment[]) {
+  return attachments
+    .map((att) => {
+      if (!att.mimeType.startsWith("image/")) return null;
+
+      if (att.url) {
+        return {
+          type: "image" as const,
+          source: {
+            type: "url" as const,
+            url: att.url,
+          },
+        };
+      }
+
+      return {
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: att.mimeType,
+          data: att.data || "",
+        },
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
  * 检查附件是否为图片
  */
 export function isImageAttachment(attachment: Attachment): boolean {

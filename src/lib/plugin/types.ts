@@ -54,7 +54,7 @@ export interface PluginConfig {
   baseUrl?: string;
   model?: string;
   auth?: {
-    type: "bearer" | "apiKey" | "none";
+    type: "bearer" | "apiKey" | "oauth2" | "none";
     value?: string;
     localValueSecret?: LocalEncryptedSecretEnvelope;
     key?: string;

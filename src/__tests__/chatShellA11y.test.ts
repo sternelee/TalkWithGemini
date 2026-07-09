@@ -90,4 +90,65 @@ describe("chat shell accessibility", () => {
     expect(modal).toContain("title={plugin.title}");
     expect(modal).toContain("title={col.name}");
   });
+
+  it("uses shared modal containment for image preview", () => {
+    const imagePreview = readFileSync(
+      resolve(process.cwd(), "src/components/media/ImagePreview.tsx"),
+      "utf8",
+    );
+
+    expect(imagePreview).toContain("useModalLifecycle");
+    expect(imagePreview).toContain("trapModalFocus");
+    expect(imagePreview).toContain("overscroll-contain");
+    expect(imagePreview).toContain("env(safe-area-inset-bottom)");
+    expect(imagePreview).toContain('e.key === "ArrowRight"');
+    expect(imagePreview).toContain('e.key === "ArrowLeft"');
+  });
+
+  it("does not hide composer mode changes behind mouse-only gestures", () => {
+    const messageInput = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageInput.tsx"),
+      "utf8",
+    );
+    const voiceButtonSection = messageInput.slice(
+      messageInput.indexOf("stopRecordingAria"),
+      messageInput.indexOf(
+        "</Tooltip>",
+        messageInput.indexOf("stopRecordingAria"),
+      ),
+    );
+
+    expect(voiceButtonSection).not.toContain("onContextMenu");
+    expect(voiceButtonSection).not.toContain(
+      "autoTranscribe: !voice.autoTranscribe",
+    );
+  });
+
+  it("keeps searchable unavailable reasons reachable to assistive tech", () => {
+    const messageInput = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageInput.tsx"),
+      "utf8",
+    );
+    const searchButtonSection = messageInput.slice(
+      messageInput.indexOf("{/* Search Button */}"),
+      messageInput.indexOf("{/* File Upload Button */}"),
+    );
+
+    expect(searchButtonSection).not.toContain("aria-disabled");
+    expect(searchButtonSection).toContain("getSearchUnavailableMessage");
+  });
+
+  it("does not force mobile keyboards open when editing an old message", () => {
+    const messageItem = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageItem.tsx"),
+      "utf8",
+    );
+    const editorSection = messageItem.slice(
+      messageItem.indexOf("const UserMessageEditor"),
+      messageItem.indexOf("const MessageItem"),
+    );
+
+    expect(editorSection).not.toContain("autoFocus");
+    expect(editorSection).toContain("preventScroll");
+  });
 });

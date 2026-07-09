@@ -31,6 +31,8 @@ describe("security headers", () => {
     const csp = getCspValue("hosted");
 
     expect(getDirective(csp, "script-src")).not.toContain("'unsafe-eval'");
+    expect(getDirective(csp, "script-src")).not.toContain("'unsafe-inline'");
+    expect(getDirective(csp, "script-src")).toContain("'sha256-");
     expect(getDirective(csp, "img-src")).not.toContain("http:");
     expect(getDirective(csp, "connect-src")).not.toContain("http:");
   });

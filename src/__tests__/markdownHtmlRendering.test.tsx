@@ -422,6 +422,10 @@ describe("MarkdownRenderer HTML support", () => {
     expect(source).toContain(
       "const mermaidRenderHost = mermaidRenderHostRef.current",
     );
+    expect(source).toContain('role={tone === "error" ? "alert" : "status"}');
+    expect(source).toContain(
+      'aria-live={tone === "error" ? "assertive" : "polite"}',
+    );
     expect(source).toMatch(
       /mermaid\.render\(\s*`\$\{renderId\}-\$\{hashDiagramKey\(cacheKey\)\}`,\s*trimmedSource,\s*mermaidRenderHost/u,
     );
@@ -439,6 +443,8 @@ describe("MarkdownRenderer HTML support", () => {
     );
 
     expect(html).toContain('data-markdown-diagram="mindmap"');
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
     expect(html).toContain("diagramStreaming");
     expect(html).toContain("diagramMindmap");
   });

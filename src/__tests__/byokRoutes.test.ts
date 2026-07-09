@@ -447,6 +447,32 @@ describe("BYOK route integration", () => {
     );
   });
 
+  it("returns a stable validation error for malformed document parser secret JSON", async () => {
+    const { POST } = await import("../app/api/doc-parse/route");
+    const formData = new FormData();
+    formData.set(
+      "file",
+      new File(["hello"], "notes.txt", { type: "text/plain" }),
+    );
+    formData.set("provider", "mineru");
+    formData.set("apiKeySecret", "{not-json");
+
+    const response = await POST(
+      new Request("https://neo.test/api/doc-parse", {
+        method: "POST",
+        headers: { "content-length": "2048" },
+        body: formData,
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "INVALID_SECRET_JSON",
+    });
+    expect(mocks.decryptSecretEnvelope).not.toHaveBeenCalled();
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
+  });
+
   it("rejects plaintext voice API keys in transcription multipart requests", async () => {
     const { POST } = await import("../app/api/voice/transcribe/route");
     const formData = new FormData();
@@ -475,6 +501,32 @@ describe("BYOK route integration", () => {
     expect(JSON.stringify(await response.json())).not.toContain(
       "voice-plaintext",
     );
+  });
+
+  it("returns a stable validation error for malformed voice secret JSON", async () => {
+    const { POST } = await import("../app/api/voice/transcribe/route");
+    const formData = new FormData();
+    formData.set(
+      "audio",
+      new File(["audio"], "speech.webm", { type: "audio/webm" }),
+    );
+    formData.set("provider", "elevenlabs");
+    formData.set("apiKeySecret", "{not-json");
+
+    const response = await POST(
+      new Request("https://neo.test/api/voice/transcribe", {
+        method: "POST",
+        headers: { "content-length": "2048" },
+        body: formData,
+      }) as any,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "INVALID_SECRET_JSON",
+    });
+    expect(mocks.decryptSecretEnvelope).not.toHaveBeenCalled();
+    expect(mocks.safeFetchJson).not.toHaveBeenCalled();
   });
 
   it("rejects transcription multipart requests without a trustworthy content length before parsing", async () => {

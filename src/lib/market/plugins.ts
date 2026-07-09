@@ -31,6 +31,16 @@ function trimWebUrl(value: unknown, maxChars: number): string {
   }
 }
 
+function trimDisplayImageUrl(value: unknown, maxChars: number): string {
+  const candidate = trimString(value, maxChars);
+  if (!candidate) return "";
+  if (candidate.startsWith("/") && !candidate.startsWith("//")) {
+    return candidate;
+  }
+
+  return trimWebUrl(candidate, maxChars);
+}
+
 function trimHttpsUrl(value: unknown, maxChars: number): string {
   const candidate = trimString(value, maxChars);
   if (!candidate) return "";
@@ -169,7 +179,10 @@ export function normalizeMarketPlugin(value: unknown): Plugin | null {
     description:
       trimString(raw.description, MARKET_LIMITS.maxPluginDescriptionChars) ||
       "No description provided",
-    logoUrl: trimWebUrl(raw.logoUrl, MARKET_LIMITS.maxPluginLogoUrlChars),
+    logoUrl: trimDisplayImageUrl(
+      raw.logoUrl,
+      MARKET_LIMITS.maxPluginLogoUrlChars,
+    ),
     manifestUrl,
     externalDocsUrl:
       trimWebUrl(raw.externalDocsUrl, MARKET_LIMITS.maxPluginDocsUrlChars) ||

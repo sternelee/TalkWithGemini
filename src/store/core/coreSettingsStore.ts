@@ -41,7 +41,7 @@ const EMPTY_DEFAULT_MODELS: DefaultModels = {
 const LEGACY_GEMINI_PROVIDER = {
   id: "GEMINI",
   name: "Google Gemini",
-  type: "Gemini",
+  type: "Google",
   baseUrl: "https://generativelanguage.googleapis.com",
 };
 

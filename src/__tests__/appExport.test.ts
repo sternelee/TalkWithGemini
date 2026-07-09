@@ -22,6 +22,12 @@ describe("app export helpers", () => {
       exportVersion: APP_EXPORT_VERSION,
       storageVersion: STORAGE_VERSION,
       exportedAt: "2026-07-01T00:00:00.000Z",
+      metadata: {
+        opfs: {
+          mode: "references-only",
+          includesBlobs: false,
+        },
+      },
       data: {
         coreSettings: { theme: "dark" },
         settings: { activePlugins: ["weather"] },

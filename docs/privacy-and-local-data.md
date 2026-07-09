@@ -21,7 +21,9 @@ Generated images from native image models are saved as message output data in
 IndexedDB with the rest of the chat message. When users export app data, those
 image output blocks are included in the exported conversation payload. PNG/PDF
 message exports render the visible output blocks, while full app export
-preserves the stored message data.
+preserves the stored message data. Full app export is a metadata JSON export:
+it can include `opfs://` references, but it does not bundle OPFS file blobs or
+runtime `blob:` URLs.
 
 Image attachments keep their original `data` or remote `url` as the canonical
 message data. OPFS image copies are display caches mapped from that original
@@ -76,7 +78,7 @@ the content required to complete user-requested actions.
 
 Depending on configuration, user content may be sent to:
 
-- Model providers such as Gemini, OpenAI, or OpenAI-compatible endpoints.
+- Model providers such as Google, Anthropic, OpenAI, or OpenAI-compatible endpoints.
 - Search providers such as Tavily, Firecrawl, Exa, Bocha, or SearXNG.
 - RAG/vector services and document parsers such as Mineru or LlamaParse.
 - Voice providers such as ElevenLabs or Mimo.

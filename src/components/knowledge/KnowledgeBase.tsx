@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useState, useRef, useMemo, useId } from "react";
 import { createPortal } from "react-dom";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Folder,
   Search,
@@ -679,6 +679,7 @@ const FileRow: React.FC<{
   isReindexing?: boolean;
 }> = ({ file, onDelete, onClick, onReindex, isReindexing = false }) => {
   const t = useTranslations("Knowledge");
+  const locale = useLocale();
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -749,7 +750,9 @@ const FileRow: React.FC<{
             <span className="shrink-0">{formatBytes(file.size)}</span>
             <span className="shrink-0">•</span>
             <span className="shrink-0">
-              {new Date(file.uploadedAt).toLocaleDateString()}
+              {new Intl.DateTimeFormat(locale).format(
+                new Date(file.uploadedAt),
+              )}
             </span>
           </div>
         </div>

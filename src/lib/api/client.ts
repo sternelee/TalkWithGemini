@@ -1,3 +1,5 @@
+import { isApiProofProtectedRoute } from "../security/apiRoutePolicy";
+
 const API_PROOF_SESSION_PATH = "/api/request-proof/session";
 const API_PROOF_REFRESH_SKEW_MS = 60_000;
 const API_PROOF_HEADERS = {
@@ -5,18 +7,6 @@ const API_PROOF_HEADERS = {
   nonce: "x-neo-api-proof-nonce",
   signature: "x-neo-api-proof-signature",
 } as const;
-
-const protectedApiProofPathPatterns = [
-  /^\/api\/chat(?:\/|$)/,
-  /^\/api\/search$/,
-  /^\/api\/rag(?:\/|$)/,
-  /^\/api\/voice(?:\/|$)/,
-  /^\/api\/doc-parse(?:\/|$)/,
-  /^\/api\/plugins\/execute$/,
-  /^\/api\/plugins\/install$/,
-  /^\/api\/plugins\/list$/,
-  /^\/api\/providers\/models$/,
-] as const;
 
 interface RequestProofSessionResponse {
   enabled: boolean;
@@ -74,12 +64,6 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const buffer = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(buffer).set(bytes);
   return buffer;
-}
-
-function isProtectedApiProofPath(pathname: string): boolean {
-  return protectedApiProofPathPatterns.some((pattern) =>
-    pattern.test(pathname),
-  );
 }
 
 function resolveFetchUrl(input: RequestInfo | URL): URL | null {
@@ -265,7 +249,8 @@ export async function signedApiFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const url = resolveFetchUrl(input);
-  if (!url || !isProtectedApiProofPath(url.pathname)) {
+  const method = getFetchMethod(input, init);
+  if (!url || !isApiProofProtectedRoute(url.pathname, method)) {
     return fetch(input, init);
   }
 
@@ -274,7 +259,6 @@ export async function signedApiFetch(
     return fetch(input, init);
   }
 
-  const method = getFetchMethod(input, init);
   const target = `${url.pathname}${url.search}`;
   const timestamp = String(Math.trunc(Date.now() + session.serverTimeOffsetMs));
   const nonce = createApiProofNonce();

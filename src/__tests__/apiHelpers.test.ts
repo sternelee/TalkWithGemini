@@ -25,7 +25,7 @@ describe("API helper provider credentials", () => {
     process.env.API_KEY = "api-env-secret";
     process.env.OPENAI_API_KEY = "openai-env-secret";
 
-    expect(() => validateAndGetApiKey({ type: "Gemini" })).toThrow(
+    expect(() => validateAndGetApiKey({ type: "Google" })).toThrow(
       /API key is not configured/,
     );
     expect(() => validateAndGetApiKey({ type: "OpenAI" })).toThrow(

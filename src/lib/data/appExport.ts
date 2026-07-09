@@ -19,6 +19,12 @@ export interface AppExportPayload {
   exportVersion: typeof APP_EXPORT_VERSION;
   storageVersion: typeof STORAGE_VERSION;
   exportedAt: string;
+  metadata: {
+    opfs: {
+      mode: "references-only";
+      includesBlobs: false;
+    };
+  };
   data: {
     coreSettings?: unknown;
     settings?: unknown;
@@ -82,6 +88,12 @@ export function createAppExportPayload(
     exportVersion: APP_EXPORT_VERSION,
     storageVersion: STORAGE_VERSION,
     exportedAt: input.exportedAt || new Date().toISOString(),
+    metadata: {
+      opfs: {
+        mode: "references-only",
+        includesBlobs: false,
+      },
+    },
     data: {
       coreSettings: input.coreSettings,
       settings: input.settings,

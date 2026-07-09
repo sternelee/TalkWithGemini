@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   assertProviderOutboundAllowed,
+  createAnthropicClient,
+  createGoogleClient,
   createOpenAIClient,
-  createGeminiClient,
 } from "@/utils/apiHelpers";
 import {
   ModelNameSchema,
@@ -14,8 +15,13 @@ import {
   readJsonRequestBody,
 } from "@/lib/api/middleware";
 import { resolveProviderRuntimeConfig } from "@/lib/byok/server";
-import { isOpenAIProviderType } from "@/lib/providers/providerTypes";
+import {
+  isAnthropicProviderType,
+  isGoogleProviderType,
+  isOpenAIProviderType,
+} from "@/lib/providers/providerTypes";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
+import { createAnthropicMessageText } from "@/lib/streaming/anthropic";
 
 const ExecuteCodeSchema = z.object({
   provider: ProviderRuntimeConfigSchema,
@@ -55,9 +61,26 @@ ${code}
       return NextResponse.json({
         output: response.choices[0].message.content || "No output returned.",
       });
-    } else {
-      // Gemini
-      const ai = createGeminiClient(provider);
+    }
+
+    if (isAnthropicProviderType(provider.type)) {
+      const anthropic = createAnthropicClient(provider);
+      const output = await createAnthropicMessageText({
+        client: anthropic,
+        model: modelName,
+        prompt,
+        system:
+          "You explain and simulate Python code. You do not have a real execution sandbox. Provide ONLY the likely output, and mention uncertainty only if the result depends on external state.",
+      });
+
+      return NextResponse.json({
+        output: output || "No output returned.",
+      });
+    }
+
+    if (isGoogleProviderType(provider.type)) {
+      // Google
+      const ai = createGoogleClient(provider);
 
       const response = await ai.models.generateContent({
         model: modelName,
@@ -104,6 +127,11 @@ ${code}
 
       return NextResponse.json({ output: response.text || "No output." });
     }
+
+    return NextResponse.json(
+      { error: `${provider.type} does not support code execution` },
+      { status: 400 },
+    );
   } catch (error: any) {
     safeServerLogError("Code execution error:", error);
     if (error instanceof Error && error.name === "ZodError") {

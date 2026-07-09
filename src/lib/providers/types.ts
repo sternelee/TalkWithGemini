@@ -1,6 +1,7 @@
 import type { LocalEncryptedSecretEnvelope } from "../security/localSecrets";
 
-export type ProviderType = "Gemini" | "OpenAI" | "OpenAI Compatible";
+export type ProviderType =
+  "OpenAI Compatible" | "OpenAI" | "Anthropic" | "Google";
 
 export interface ModelProvider {
   id: string;

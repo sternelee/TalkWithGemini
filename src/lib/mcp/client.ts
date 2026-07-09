@@ -33,7 +33,7 @@ export interface McpTool {
 }
 
 const MCP_CLIENT_INFO = {
-  name: "talk-with-gemini",
+  name: "neo-chat",
   version: "1.0.0",
 };
 const MCP_REQUEST_TIMEOUT_MS = 30_000;

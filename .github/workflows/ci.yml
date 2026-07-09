@@ -34,6 +34,9 @@ jobs:
       - name: Format Check
         run: pnpm format:check
 
+      - name: Artifact Hygiene
+        run: pnpm hygiene:artifacts
+
       - name: Lint
         run: pnpm lint
 
@@ -46,5 +49,14 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Build Cloudflare Worker
+        run: pnpm build:worker
+
+      - name: Check Worker Size
+        run: pnpm worker:size
+
+      - name: Cloudflare Worker Dry Run
+        run: pnpm worker:dry-run
+
       - name: Audit dependencies
-        run: pnpm audit --audit-level low
+        run: pnpm audit --prod --audit-level moderate

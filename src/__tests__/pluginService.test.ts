@@ -194,23 +194,29 @@ describe("plugin market service cache", () => {
   it("caches MCP server market data separately from OpenAPI plugins", async () => {
     storeMock.state.marketPlugins = [pluginA];
     storeMock.state.marketPluginsTimestamp = Date.now();
+    const mcpPlugin: Plugin = {
+      id: "mcp:io.github/context7:1.2.3",
+      title: "io.github/context7",
+      description: "Context-aware docs lookup.",
+      logoUrl: "/mcp-logo.svg",
+      manifestUrl:
+        "https://registry.modelcontextprotocol.io/v0.1/servers/io.github%2Fcontext7/versions/1.2.3",
+      source: "mcp",
+      functions: [],
+      category: "MCP",
+      categories: ["MCP"],
+      auth: { type: "none", required: false },
+      mcp: {
+        transport: "streamable-http",
+        serverUrl: "https://mcp.example.com/mcp",
+        serverName: "io.github/context7",
+        serverVersion: "1.2.3",
+        toolNameMap: {},
+      },
+    };
     const fetchMock = vi.fn(async () =>
       jsonResponse({
-        servers: [
-          {
-            server: {
-              name: "io.github/context7",
-              version: "1.2.3",
-              description: "Context-aware docs lookup.",
-              remotes: [
-                {
-                  type: "streamable-http",
-                  url: "https://mcp.example.com/mcp",
-                },
-              ],
-            },
-          },
-        ],
+        plugins: [mcpPlugin],
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -220,10 +226,11 @@ describe("plugin market service cache", () => {
     const mcpServers = await fetchMcpServerList(true);
     const openApiPlugins = await fetchApiGuruList();
 
-    const registryUrl = new URL(String(getFetchCalls(fetchMock)[0]?.[0]));
-    expect(registryUrl.origin).toBe("https://registry.modelcontextprotocol.io");
-    expect(registryUrl.pathname).toBe("/v0.1/servers");
-    expect(registryUrl.searchParams.get("version")).toBe("latest");
+    const requestUrl = new URL(
+      String(getFetchCalls(fetchMock)[0]?.[0]),
+      "http://localhost",
+    );
+    expect(requestUrl.pathname).toBe("/api/mcp/servers");
     expect(mcpServers).toEqual([
       expect.objectContaining({
         id: "mcp:io.github/context7:1.2.3",
@@ -240,25 +247,31 @@ describe("plugin market service cache", () => {
     ]);
   });
 
-  it("fetches paged MCP servers directly from the MCP registry", async () => {
+  it("fetches paged MCP servers from the MCP server route", async () => {
+    const mcpPlugin: Plugin = {
+      id: "mcp:io.github/context7:1.2.3",
+      title: "io.github/context7",
+      description: "Context-aware docs lookup.",
+      logoUrl: "/mcp-logo.svg",
+      manifestUrl:
+        "https://registry.modelcontextprotocol.io/v0.1/servers/io.github%2Fcontext7/versions/1.2.3",
+      source: "mcp",
+      functions: [],
+      category: "MCP",
+      categories: ["MCP"],
+      auth: { type: "none", required: false },
+      mcp: {
+        transport: "streamable-http",
+        serverUrl: "https://mcp.example.com/mcp",
+        serverName: "io.github/context7",
+        serverVersion: "1.2.3",
+        toolNameMap: {},
+      },
+    };
     const fetchMock = vi.fn(async () =>
       jsonResponse({
-        servers: [
-          {
-            server: {
-              name: "io.github/context7",
-              version: "1.2.3",
-              description: "Context-aware docs lookup.",
-              remotes: [
-                {
-                  type: "streamable-http",
-                  url: "https://mcp.example.com/mcp",
-                },
-              ],
-            },
-          },
-        ],
-        metadata: { nextCursor: "next-cursor" },
+        plugins: [mcpPlugin],
+        nextCursor: "next-cursor",
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -271,13 +284,14 @@ describe("plugin market service cache", () => {
       limit: 1,
     });
 
-    const requestUrl = new URL(String(getFetchCalls(fetchMock)[0]?.[0]));
-    expect(requestUrl.origin).toBe("https://registry.modelcontextprotocol.io");
-    expect(requestUrl.pathname).toBe("/v0.1/servers");
+    const requestUrl = new URL(
+      String(getFetchCalls(fetchMock)[0]?.[0]),
+      "http://localhost",
+    );
+    expect(requestUrl.pathname).toBe("/api/mcp/servers");
     expect(requestUrl.searchParams.get("cursor")).toBe("start-cursor");
     expect(requestUrl.searchParams.get("search")).toBe("context");
-    expect(requestUrl.searchParams.get("version")).toBe("latest");
-    expect(requestUrl.searchParams.get("limit")).toBe("100");
+    expect(requestUrl.searchParams.get("limit")).toBe("1");
     expect(page).toEqual({
       plugins: [
         expect.objectContaining({
@@ -294,7 +308,7 @@ describe("plugin market service cache", () => {
     expect(storeMock.state.setMarketMcpServers).not.toHaveBeenCalled();
   });
 
-  it("falls back to the MCP server route when direct registry fetching fails", async () => {
+  it("uses the MCP server route first and falls back to direct registry fetching", async () => {
     const mcpPlugin: Plugin = {
       id: "mcp:io.github/context7:1.2.3",
       title: "io.github/context7",
@@ -315,7 +329,22 @@ describe("plugin market service cache", () => {
     const fetchMock = vi.fn(async () =>
       fetchMock.mock.calls.length === 1
         ? jsonResponse({ error: "registry unavailable" }, { status: 503 })
-        : jsonResponse({ plugins: [mcpPlugin], nextCursor: "next-cursor" }),
+        : jsonResponse({
+            servers: [
+              {
+                name: "io.github/context7",
+                version: "1.2.3",
+                description: "Context-aware docs lookup.",
+                remotes: [
+                  {
+                    type: "streamable-http",
+                    url: "https://mcp.example.com/mcp",
+                  },
+                ],
+              },
+            ],
+            metadata: { nextCursor: "next-cursor" },
+          }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -324,21 +353,31 @@ describe("plugin market service cache", () => {
     const page = await fetchMcpServerPage({
       cursor: "start-cursor",
       search: "context",
-      limit: 20,
+      limit: 1,
     });
 
-    const directUrl = new URL(String(getFetchCalls(fetchMock)[0]?.[0]));
     const requestUrl = new URL(
-      String(getFetchCalls(fetchMock)[1]?.[0]),
+      String(getFetchCalls(fetchMock)[0]?.[0]),
       "http://localhost",
     );
-    expect(directUrl.origin).toBe("https://registry.modelcontextprotocol.io");
     expect(requestUrl.pathname).toBe("/api/mcp/servers");
     expect(requestUrl.searchParams.get("cursor")).toBe("start-cursor");
     expect(requestUrl.searchParams.get("search")).toBe("context");
-    expect(requestUrl.searchParams.get("limit")).toBe("20");
+    expect(requestUrl.searchParams.get("limit")).toBe("1");
+    const directUrl = new URL(String(getFetchCalls(fetchMock)[1]?.[0]));
+    expect(directUrl.origin).toBe("https://registry.modelcontextprotocol.io");
     expect(page).toEqual({
-      plugins: [expect.objectContaining(mcpPlugin)],
+      plugins: [
+        expect.objectContaining({
+          id: mcpPlugin.id,
+          title: mcpPlugin.title,
+          source: "mcp",
+          mcp: expect.objectContaining({
+            serverUrl: mcpPlugin.mcp?.serverUrl,
+            serverName: mcpPlugin.mcp?.serverName,
+          }),
+        }),
+      ],
       nextCursor: "next-cursor",
     });
     expect(storeMock.state.setMarketMcpServers).not.toHaveBeenCalled();
@@ -422,6 +461,7 @@ describe("plugin market service cache", () => {
         id: expect.stringMatching(/^custom-mcp-private-docs-\d+$/),
         source: "mcp",
         title: "Private Docs",
+        logoUrl: "/mcp-logo.svg",
         auth: { type: "none", required: false },
         mcp: {
           transport: "streamable-http",

@@ -20,7 +20,19 @@ describe("settings UI primitives", () => {
     expect(settingsUi).toContain('event.key === "ArrowDown"');
     expect(settingsUi).toContain('event.key === "Home"');
     expect(settingsUi).toContain('event.key === "End"');
+    expect(settingsUi).toContain('event.key === "Escape"');
+    expect(settingsUi).toContain('event.key === " "');
+    expect(settingsUi).toContain("onMouseEnter={() => setHighlightedValue");
+    expect(settingsUi).toContain('role="combobox"');
     expect(settingsUi).toContain("aria-activedescendant");
+    const anchoredPortalSection = settingsUi.slice(
+      settingsUi.indexOf("<AnchoredPortal"),
+      settingsUi.indexOf("</AnchoredPortal>"),
+    );
+    expect(anchoredPortalSection).not.toContain("aria-activedescendant");
+    expect(settingsUi).not.toContain(
+      'type="button"\n                      role="option"',
+    );
     expect(settingsUi).toContain(
       "focus-visible:ring-2 focus-visible:ring-blue-500/60",
     );
@@ -120,6 +132,24 @@ describe("settings UI primitives", () => {
     expect(ja.ModelEditor.capImageGeneration).toBe("画像生成");
   });
 
+  it("renders model metadata editing as a global page dialog", () => {
+    const modelEditor = readFileSync(
+      resolve(process.cwd(), "src/components/settings/ModelEditor.tsx"),
+      "utf8",
+    );
+
+    expect(modelEditor).toContain("createPortal");
+    expect(modelEditor).toContain("document.body");
+    expect(modelEditor).toContain("useModalLifecycle");
+    expect(modelEditor).toContain("trapModalFocus");
+    expect(modelEditor).toContain("safe-area-inset-bottom");
+    expect(modelEditor).toContain('role="dialog"');
+    expect(modelEditor).toContain('aria-modal="true"');
+    expect(modelEditor).toContain("tabIndex={-1}");
+    expect(modelEditor).toContain("fixed inset-0");
+    expect(modelEditor).not.toContain("absolute inset-0");
+  });
+
   it("uses the settings select style for provider type selection", () => {
     const providerSettings = readFileSync(
       resolve(process.cwd(), "src/components/settings/ProviderSettings.tsx"),
@@ -136,6 +166,13 @@ describe("settings UI primitives", () => {
     expect(providerSettings).toContain("CustomSelect");
     expect(providerTypeSection).toContain("<CustomSelect");
     expect(providerTypeSection).toContain("providerTypeOptions");
+    expect(providerSettings).toContain("/v1/chat/completions");
+    expect(providerSettings).toContain("/v1/responses");
+    expect(providerSettings).toContain("/v1/messages");
+    expect(providerSettings).toContain("/v1beta/models");
+    expect(providerSettings).toContain("ANTHROPIC_PROVIDER_TYPE");
+    expect(providerSettings).toContain("GOOGLE_PROVIDER_TYPE");
+    expect(providerTypeSection).toContain("renderProviderTypeOption");
     expect(providerTypeSection).toContain("selectButtonClassName");
     expect(providerTypeSection).toContain("bg-gray-50");
     expect(providerTypeSection).toContain("dark:bg-muted");
@@ -146,5 +183,16 @@ describe("settings UI primitives", () => {
     expect(providerTypeSection).not.toContain("openaiCompatibleDesc");
     expect(providerTypeSection).not.toContain("openaiResponsesDesc");
     expect(providerTypeSection).not.toContain("geminiDesc");
+    expect(providerTypeSection).not.toContain('value: "Gemini"');
+  });
+
+  it("keeps large provider model lists from forcing full eager layout", () => {
+    const providerSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/ProviderSettings.tsx"),
+      "utf8",
+    );
+
+    expect(providerSettings).toContain("[content-visibility:auto]");
+    expect(providerSettings).toContain("[contain-intrinsic-size:");
   });
 });

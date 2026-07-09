@@ -89,7 +89,7 @@ vi.mock("../lib/api/client", async () => {
 const providerWithoutLocalKey: ModelProvider = {
   id: "env-provider",
   name: "Env Gemini",
-  type: "Gemini",
+  type: "Google",
   baseUrl: "https://generativelanguage.googleapis.com",
   apiKey: "",
   enabled: true,
@@ -143,7 +143,7 @@ describe("BYOK service requests", () => {
     );
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.provider).toMatchObject({
-      type: "Gemini",
+      type: "Google",
       name: "Env Gemini",
     });
     expect(JSON.stringify(body)).not.toContain("apiKey");
@@ -205,7 +205,7 @@ describe("BYOK service requests", () => {
     const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
     const modelProvider = JSON.parse(String(body.get("modelProvider")));
     expect(modelProvider).toMatchObject({
-      type: "Gemini",
+      type: "Google",
       name: "Env Gemini",
     });
     expect(JSON.stringify(modelProvider)).not.toContain("apiKey");
@@ -226,7 +226,7 @@ describe("BYOK service requests", () => {
 
     const body = getJsonRequestBody(fetchMock);
     expect(body.modelProvider).toMatchObject({
-      type: "Gemini",
+      type: "Google",
       name: "Env Gemini",
     });
     expect(JSON.stringify(body)).not.toContain("apiKey");

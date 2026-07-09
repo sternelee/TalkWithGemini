@@ -12,6 +12,7 @@ import {
 import { getRemoteAttachmentUrlError } from "../security/remoteAttachment";
 import { getPluginExecutionArgsError } from "../plugin/execution";
 import { BYOK_ALG } from "../byok/shared";
+import { normalizeProviderType } from "../providers/providerTypes";
 
 const Base64UrlStringSchema = z.string().regex(/^[A-Za-z0-9_-]+$/);
 
@@ -51,7 +52,13 @@ function omitPlainSecretField<
 
 export const ProviderRuntimeConfigSchema = z
   .object({
-    type: z.enum(["OpenAI", "Gemini", "OpenAI Compatible"]),
+    type: z.enum([
+      "OpenAI Compatible",
+      "OpenAI",
+      "Anthropic",
+      "Google",
+      "Gemini",
+    ]),
     source: z.literal("server-default").optional(),
     apiKey: z.unknown().optional(),
     apiKeySecret: EncryptedSecretEnvelopeSchema.optional(),
@@ -67,7 +74,10 @@ export const ProviderRuntimeConfigSchema = z
       "Provider API key",
     );
   })
-  .transform((provider) => omitPlainSecretField(provider, "apiKey"));
+  .transform((provider) => ({
+    ...omitPlainSecretField(provider, "apiKey"),
+    type: normalizeProviderType(provider.type),
+  }));
 
 const JsonLikeSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -119,7 +129,15 @@ export const ToolCallSchema = z
     name: z.string().min(1).max(128),
     args: z.record(z.string(), JsonLikeSchema).default({}),
     status: z
-      .enum(["pending", "running", "success", "error", "skipped"])
+      .enum([
+        "pending",
+        "awaiting_confirmation",
+        "running",
+        "success",
+        "error",
+        "skipped",
+        "denied",
+      ])
       .optional(),
     result: JsonLikeSchema.optional(),
     isError: z.boolean().optional(),
@@ -134,6 +152,12 @@ export const ToolCallSchema = z
           ? "success"
           : "pending"),
   }));
+
+const MessageMemoryContextSchema = z.object({
+  injectedMemoryIds: z.array(z.string().min(1).max(160)).max(100).default([]),
+  promptContext: z.string().min(1).max(8_000),
+  createdAt: z.number().optional(),
+});
 
 export const SkillInvocationSchema = z
   .object({
@@ -161,6 +185,7 @@ export const MessageSchema = z.object({
     .max(PLUGIN_EXECUTION_LIMITS.maxStreamedToolCalls)
     .optional(),
   skillInvocations: z.array(SkillInvocationSchema).max(20).optional(),
+  memoryContext: MessageMemoryContextSchema.optional(),
   model: ModelNameSchema.optional(),
 });
 

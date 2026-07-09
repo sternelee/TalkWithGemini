@@ -84,4 +84,45 @@ describe("chat stream logging", () => {
       }),
     );
   });
+
+  it("converts current OpenAI Compatible image attachments before streaming", async () => {
+    mocks.streamOpenAIChatCompletions.mockImplementation(async (request) => {
+      request.onChunk({ type: "content", content: "ok" });
+    });
+
+    const { handleChatStream } = await import("../lib/api/chat-handler");
+    const response = await handleChatStream({
+      provider: {
+        type: "OpenAI Compatible",
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "sk-secret",
+      },
+      modelName: "compat-vision",
+      history: [],
+      newMessage: "Describe this",
+      attachments: [
+        {
+          id: "att_1",
+          mimeType: "image/png",
+          fileName: "image.png",
+          data: "aW1hZ2U=",
+        },
+      ],
+    });
+
+    await response.text();
+
+    const request = mocks.streamOpenAIChatCompletions.mock.calls[0]?.[0];
+    expect(request.messages.at(-1)).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "Describe this" },
+        {
+          type: "image_url",
+          image_url: { url: "data:image/png;base64,aW1hZ2U=" },
+        },
+      ],
+    });
+    expect(JSON.stringify(request.messages)).not.toContain('"mimeType"');
+  });
 });

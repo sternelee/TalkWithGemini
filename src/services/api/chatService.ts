@@ -21,7 +21,10 @@ import {
   supportsImageGeneration,
   supportsTextOutput,
 } from "@/lib/utils/model";
-import { isOpenAIProviderType } from "../../lib/providers/providerTypes";
+import {
+  isGoogleProviderType,
+  isOpenAIProviderType,
+} from "../../lib/providers/providerTypes";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import { cacheGeneratedImageAttachments } from "../../lib/utils/generatedImages";
@@ -763,6 +766,9 @@ export const streamChatResponse = async (
         emitOutputBlocks();
       }
       onSearchStatus(false, { sources: [], images: [] });
+      if (externalSearchStarted) {
+        throw new Error("Search provider failed");
+      }
     }
   }
 
@@ -936,7 +942,8 @@ export const streamChatResponse = async (
             tools,
             enableImageGeneration:
               supportsImageGeneration(selectedModelMetadata) &&
-              (provider.type === "OpenAI" || provider.type === "Gemini"),
+              (provider.type === "OpenAI" ||
+                isGoogleProviderType(provider.type)),
             enableGoogleSearch:
               requestConfig?.useSearch &&
               searchCompatibility.mode === "gemini-google",
