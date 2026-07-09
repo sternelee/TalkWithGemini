@@ -14,6 +14,7 @@ export type OutboundContext =
   | "rag"
   | "plugin"
   | "pluginManifest"
+  | "mcp"
   | "docs"
   | "voice"
   | "agent"
@@ -175,6 +176,16 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
         allowLocalhost: localNetworkProxyAllowed,
         allowPrivateNetwork: localNetworkProxyAllowed,
         allowLocalHttp: localNetworkProxyAllowed,
+        hostedProxyBlocked:
+          profile.mode === "hosted" && !localNetworkProxyAllowed,
+        profile,
+      };
+    case "mcp":
+      return {
+        context,
+        allowedProtocols: ["https:"],
+        allowLocalhost: localNetworkProxyAllowed,
+        allowPrivateNetwork: localNetworkProxyAllowed,
         hostedProxyBlocked:
           profile.mode === "hosted" && !localNetworkProxyAllowed,
         profile,

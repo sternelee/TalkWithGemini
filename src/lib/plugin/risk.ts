@@ -5,7 +5,8 @@ export function getPluginFunctionRisk(
 ): PluginFunctionRisk {
   if (functionDef.risk) return functionDef.risk;
 
-  const method = functionDef.method.toUpperCase();
+  const method = functionDef.method?.toUpperCase();
+  if (!method) return "external";
   if (method === "GET") return "read";
   if (method === "DELETE") return "destructive";
   return "write";

@@ -70,7 +70,10 @@ Calls speech-to-text and text-to-speech routes. Browser-native, ElevenLabs, and 
 
 ### `pluginService.ts`
 
-Fetches plugin marketplace data and installs plugin manifests.
+Fetches plugin marketplace data, fetches remote streamable HTTP MCP server
+cards directly from the MCP Registry with the app registry route as a fallback,
+keeps those two market caches separate, and installs both OpenAPI plugins and
+MCP-backed plugins through the shared plugin install route.
 
 ### `skillService.ts`
 

@@ -52,6 +52,46 @@ describe("market plugin normalization", () => {
     ).toBeNull();
   });
 
+  it("keeps MCP metadata HTTPS-only while allowing LAN endpoints", () => {
+    expect(
+      normalizeMarketPlugin({
+        id: "mcp:lan:1.0.0",
+        source: "mcp",
+        title: "LAN MCP",
+        manifestUrl:
+          "https://registry.modelcontextprotocol.io/v0.1/servers/lan",
+        mcp: {
+          transport: "streamable-http",
+          serverUrl: "https://192.168.1.10/mcp",
+          serverName: "lan",
+          headers: { "X-Client": "neo-chat" },
+          toolNameMap: {},
+        },
+      }),
+    ).toMatchObject({
+      source: "mcp",
+      mcp: {
+        serverUrl: "https://192.168.1.10/mcp",
+        headers: { "X-Client": "neo-chat" },
+      },
+    });
+
+    expect(
+      normalizeMarketPlugin({
+        id: "mcp:lan-http:1.0.0",
+        source: "mcp",
+        title: "LAN HTTP MCP",
+        manifestUrl: "",
+        mcp: {
+          transport: "streamable-http",
+          serverUrl: "http://192.168.1.10/mcp",
+          serverName: "lan-http",
+          toolNameMap: {},
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("deduplicates and caps plugin lists", () => {
     const plugins = Array.from(
       { length: MARKET_LIMITS.maxPlugins + 10 },

@@ -1,7 +1,7 @@
 interface PluginFunctionLike {
   name: string;
-  path: string;
-  method: string;
+  path?: string;
+  method?: string;
 }
 
 interface PluginLike {
@@ -21,6 +21,15 @@ export function getPluginFunctionDefinitionError(
   }
 
   if (
+    !declaredFunction.path ||
+    !declaredFunction.method ||
+    !functionDef.path ||
+    !functionDef.method
+  ) {
+    return "Plugin function path or method is missing";
+  }
+
+  if (
     declaredFunction.path !== functionDef.path ||
     declaredFunction.method.toUpperCase() !== functionDef.method.toUpperCase()
   ) {
@@ -33,7 +42,7 @@ export function getPluginFunctionDefinitionError(
 export function getPluginFunctionPathError(
   functionDef: Pick<PluginFunctionLike, "path">,
 ): string | null {
-  const path = functionDef.path.trim();
+  const path = functionDef.path?.trim() || "";
 
   if (!path) {
     return "Plugin function path is missing";

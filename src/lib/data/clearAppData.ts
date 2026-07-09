@@ -177,6 +177,8 @@ async function clearCacheData(): Promise<void> {
     ...state,
     marketPlugins: [],
     marketPluginsTimestamp: 0,
+    marketMcpServers: [],
+    marketMcpServersTimestamp: 0,
     marketAgents: [],
     marketAgentsTimestamp: 0,
     marketAgentsLocale: "",

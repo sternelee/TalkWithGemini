@@ -286,12 +286,30 @@ const PluginFunctionSchema = z
       .regex(/^[A-Za-z0-9_-]+$/),
     description: z.string().max(2_048).optional(),
     parameters: FunctionParametersSchema.optional(),
-    path: z.string().min(1).max(1_024),
+    path: z.string().min(1).max(1_024).optional(),
     method: z
       .enum(["GET", "POST", "PUT", "PATCH", "DELETE"])
-      .or(z.enum(["get", "post", "put", "patch", "delete"])),
+      .or(z.enum(["get", "post", "put", "patch", "delete"]))
+      .optional(),
+    mcpToolName: z.string().min(1).max(256).optional(),
+    risk: z.enum(["read", "write", "destructive", "external"]).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((functionDef, ctx) => {
+    if (functionDef.mcpToolName) return;
+    if (functionDef.path && functionDef.method) return;
+
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "Plugin function must declare either REST path/method or mcpToolName",
+    });
+  });
+
+const PluginHeaderMapSchema = z.record(
+  z.string().min(1).max(120),
+  z.string().max(4_096),
+);
 
 const PluginSchema = z
   .object({
@@ -306,6 +324,18 @@ const PluginSchema = z
     categories: z.array(z.string().max(120)).max(20).optional(),
     added: z.string().max(120).optional(),
     functions: z.array(PluginFunctionSchema).max(40).optional(),
+    source: z.enum(["builtin", "openapi", "mcp"]).optional(),
+    mcp: z
+      .object({
+        transport: z.literal("streamable-http"),
+        serverUrl: z.string().min(1).max(2_048),
+        serverName: z.string().min(1).max(300),
+        serverVersion: z.string().max(120).optional(),
+        headers: PluginHeaderMapSchema.optional(),
+        toolNameMap: z.record(z.string(), z.string()).optional(),
+      })
+      .strict()
+      .optional(),
     builtIn: z.boolean().optional(),
     auth: z
       .object({
@@ -383,6 +413,7 @@ export const PluginInstallSchema = z
   .object({
     plugin: PluginSchema.partial().optional(),
     customInput: z.string().max(2_000_000).optional(),
+    authConfig: PluginAuthConfigSchema,
   })
   .strict();
 

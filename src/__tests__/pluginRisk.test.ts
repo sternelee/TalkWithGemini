@@ -3,7 +3,7 @@ import { getPluginFunctionRisk } from "../lib/plugin/risk";
 import type { PluginFunction } from "../types";
 
 const fn = (
-  method: PluginFunction["method"],
+  method: NonNullable<PluginFunction["method"]>,
   risk?: PluginFunction["risk"],
 ): PluginFunction => ({
   name: `${method.toLowerCase()}_thing`,

@@ -66,8 +66,10 @@ function formatCacheAge(milliseconds: number): string {
  * Clear all market data cache
  */
 export const clearAllMarketCache = (): void => {
-  const { setMarketPlugins, setMarketAgents } = useSettingsStore.getState();
+  const { setMarketPlugins, setMarketMcpServers, setMarketAgents } =
+    useSettingsStore.getState();
   setMarketPlugins([]);
+  setMarketMcpServers([]);
   setMarketAgents([]);
   logDevInfo("All market cache cleared");
 };

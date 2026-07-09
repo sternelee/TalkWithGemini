@@ -41,7 +41,7 @@ Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.j
 - 本地优先的会话、分支、置顶对话、工作区、工作区文件和助理指令。
 - 支持 LobeHub Agent Registry 助理预设，也支持本地自定义助理。
 - 支持纯文本技能：本地化公共目录、安装/卸载、编辑内置技能、本地自定义技能、自动选择和工作区预设。
-- 支持 OpenAPI 风格插件工具、插件鉴权和服务端执行。
+- 支持 OpenAPI 风格插件工具和 remote streamable HTTP MCP 服务器，两者共用已安装/启用插件控制、插件鉴权和服务端执行链路。
 - 内置网页阅读、天气、Unsplash 搜索、Agnes/Gemini 图片处理、OpenAI 兼容图片处理、OpenAI Responses 图片处理、Agnes 视频生成工具。Agnes 图片处理支持图生图编辑，Agnes 视频生成支持公开图片 URL 生成视频和插件级模型 ID。图片处理插件和模型原生图片输出保持分离。
 - 支持 Gemini 原生 Google Search，以及 Tavily、Firecrawl、Exa、Bocha、SearXNG 等外部搜索。
 - 知识库 RAG 支持 OPFS 文件存储、Mineru/LlamaParse 文档解析和可选向量索引。
@@ -340,7 +340,7 @@ flowchart LR
 
 技能是纯文本的提示词上下文模块。应用会从 `public/data/skills` 加载本地化元数据目录，只在需要时获取完整技能定义，并把已安装、已编辑和自定义技能保存在本地。活跃技能可以手动选择，也可以来自工作区预设，或在发送消息时自动选择。
 
-插件是 OpenAPI 风格工具，可以来自 manifest 或内置定义。启用的插件函数会以 tool 形式暴露给兼容模型，再由服务端插件路由执行。内置图片处理插件结果保留在工具详情和压缩后的对话历史中，由模型决定是否以及如何在后续回复中引用生成或编辑后的图片。OpenAI 兼容 Images API 和 OpenAI Responses 图片处理是两个独立插件，便于分别管理密钥和启用状态。受支持的内置媒体插件提供插件级 API Base URL 与 Model ID 字段、可选图片数量参数、Agnes 图生图编辑，以及基于公开 HTTPS 图片 URL 的 Agnes 图生视频；Agnes 视频仍保持显式 `create_video` / `get_video_result` 两步流程。工具调用编排使用较高但有边界的循环上限，既允许多步任务，也避免递归工具调用失控。
+插件是可执行工具，可以来自 OpenAPI manifest、内置定义，或从官方 MCP Registry 发现的 remote streamable HTTP MCP 服务器。启用的插件函数会以 tool 形式暴露给兼容模型，再由服务端插件路由执行。MCP v1 只支持远程 streamable HTTP：stdio、npm、Docker、本地进程 transport 和 OAuth 登录流暂不支持。MCP server URL 必须使用 HTTPS；本地和自托管部署允许调用 localhost 或局域网 HTTPS MCP endpoint，hosted 部署默认阻止这些目标，除非显式开启本地网络代理。内置图片处理插件结果保留在工具详情和压缩后的对话历史中，由模型决定是否以及如何在后续回复中引用生成或编辑后的图片。OpenAI 兼容 Images API 和 OpenAI Responses 图片处理是两个独立插件，便于分别管理密钥和启用状态。受支持的内置媒体插件提供插件级 API Base URL 与 Model ID 字段、可选图片数量参数、Agnes 图生图编辑，以及基于公开 HTTPS 图片 URL 的 Agnes 图生视频；Agnes 视频仍保持显式 `create_video` / `get_video_result` 两步流程。工具调用编排使用较高但有边界的循环上限，既允许多步任务，也避免递归工具调用失控。
 
 搜索可以使用 Gemini 模型的原生 Google Search，也可以对其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 Mineru 或 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
 

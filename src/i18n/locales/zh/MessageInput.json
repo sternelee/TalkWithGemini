@@ -19,6 +19,7 @@
   "activePluginsCount": "{count} 个已启用插件",
   "activePluginsAria": "{count} 个已启用插件",
   "installedPlugins": "已安装插件",
+  "mcpServers": "MCP 服务器",
   "enablePlugin": "启用 {title}",
   "disablePlugin": "禁用 {title}",
   "pluginsMissingAuth": "已配置的插件缺少授权。",

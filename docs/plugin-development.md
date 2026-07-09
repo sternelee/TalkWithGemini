@@ -1,10 +1,12 @@
 # Plugin Development
 
-Neo Chat plugins expose OpenAPI-style tools to compatible model providers.
-Enabled plugin functions are sent to the model as tools, and runtime tool calls
-execute through server routes. Plugins are different from Skills: Skills are
-text-only prompt-context instructions stored locally, while plugins are
-network-capable tools executed by the server-side plugin route.
+Neo Chat plugins expose executable tools to compatible model providers. A
+plugin can come from an OpenAPI manifest, a built-in definition, or a remote
+streamable HTTP MCP server. Enabled plugin functions are sent to the model as
+tools, and runtime tool calls execute through server routes. Plugins are
+different from Skills: Skills are text-only prompt-context instructions stored
+locally, while plugins and MCP servers are network-capable tools executed by
+the server-side plugin route.
 
 ## Plugin Shape
 
@@ -22,8 +24,10 @@ Required plugin fields:
 | `manifestUrl` | URL for the source manifest or OpenAPI document.                        |
 | `functions`   | Tool functions exposed by the plugin.                                   |
 
-Optional fields include `externalDocsUrl`, `baseUrl`, `category`,
-`categories`, `added`, `builtIn`, and `auth`.
+Optional fields include `externalDocsUrl`, `baseUrl`, `source`, `mcp`,
+`category`, `categories`, `added`, `builtIn`, and `auth`. Existing OpenAPI
+plugins may omit `source`; built-ins use `builtin`, imported OpenAPI plugins
+use `openapi`, and MCP-backed plugins use `mcp`.
 
 Plugin IDs must be stable. Built-in plugin IDs are reserved; a custom plugin or
 manifest import cannot replace a built-in tool definition.
@@ -32,18 +36,59 @@ manifest import cannot replace a built-in tool definition.
 
 Each function should define:
 
-| Field         | Purpose                                                                        |
-| ------------- | ------------------------------------------------------------------------------ |
-| `name`        | Tool name. Keep it stable and model-friendly.                                  |
-| `description` | Short description sent to the model.                                           |
-| `parameters`  | JSON-schema-like parameter object.                                             |
-| `path`        | Relative request path. Absolute URLs and protocol-relative paths are rejected. |
-| `method`      | HTTP method, usually `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`.               |
-| `risk`        | Optional risk level: `read`, `write`, `destructive`, or `external`.            |
+| Field         | Purpose                                                                                               |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| `name`        | Tool name. Keep it stable and model-friendly.                                                         |
+| `description` | Short description sent to the model.                                                                  |
+| `parameters`  | JSON-schema-like parameter object.                                                                    |
+| `path`        | Relative request path for REST/OpenAPI tools. Absolute URLs and protocol-relative paths are rejected. |
+| `method`      | HTTP method for REST/OpenAPI tools, usually `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`.               |
+| `mcpToolName` | Original remote MCP tool name. MCP functions omit `path` and `method`.                                |
+| `risk`        | Optional risk level: `read`, `write`, `destructive`, or `external`.                                   |
 
 If risk is omitted, Neo Chat infers it from the HTTP method: `GET` maps to
 `read`, `DELETE` maps to `destructive`, and other non-GET methods map to
-`write`.
+`write`. MCP tools should use `external` because the side effects are owned by
+the remote server.
+
+## MCP Servers
+
+MCP support is intentionally folded into the existing plugin system. Installed
+MCP servers live in `installedPlugins`, enabled MCP servers live in
+`activePlugins`, and credentials live in `pluginConfigs` using the same BYOK
+local-secret path as OpenAPI plugins. There is no separate `activeMcpServers`
+store.
+
+Version 1 supports only remote `streamable-http` MCP servers discovered from
+the official MCP Registry. It does not launch local stdio processes, npm
+packages, Docker containers, or OAuth login flows. MCP server URLs are
+HTTPS-only. Local and self-hosted deployments may call localhost or private
+network HTTPS endpoints for LAN MCP servers; hosted deployments block those
+targets unless `ALLOW_LOCAL_NETWORK_PROXY=true` is set.
+
+During installation, the server route opens a short-lived MCP SDK client,
+calls `listTools`, converts the tools into `PluginFunction` entries, registers
+the resulting plugin in the server registry, and returns it to the browser for
+local installation. Local tool names use a deterministic format:
+
+```text
+mcp_<server_slug>__<sanitized_tool_name>
+```
+
+Names are capped at the chat tool-schema limit and get a short hash suffix
+when truncation or same-plugin collisions occur. The model sees only the local
+tool name. Execution maps it back through `plugin.mcp.toolNameMap` or
+`function.mcpToolName`, then calls MCP `callTool({ name, arguments })`.
+
+MCP results are returned through the same `/api/plugins/execute` response
+shape as REST plugin results and are compacted before storage if they exceed
+plugin execution limits.
+
+Registry metadata can provide static remote headers, which are stored in
+`plugin.mcp.headers` and sent with MCP `listTools` and `callTool` requests.
+Registry secret or required header metadata is mapped to the existing plugin
+auth UI. If a server requires auth before `listTools`, installation returns a
+clear auth-required error until a pre-install credential flow is added.
 
 ## Authentication
 
@@ -132,6 +177,9 @@ pnpm test -- src/__tests__/pluginConfig.test.ts
 pnpm test -- src/__tests__/pluginManifest.test.ts
 pnpm test -- src/__tests__/pluginResolve.test.ts
 pnpm test -- src/__tests__/serverPluginRegistry.test.ts
+pnpm test -- src/__tests__/mcpRegistry.test.ts
+pnpm test -- src/__tests__/mcpInstallRoute.test.ts
+pnpm test -- src/__tests__/mcpExecuteRoute.test.ts
 ```
 
 Run the full project checks before opening a pull request:

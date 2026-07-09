@@ -26,9 +26,11 @@ import {
 import { useSettingsStore } from "@/store/core/settingsStore";
 import {
   fetchApiGuruList,
+  fetchMcpServerPage,
   getCachedPlugins,
   installPlugin,
   installCustomPlugin,
+  installCustomMcpServer,
 } from "@/services/api/pluginService";
 import { Plugin } from "@/types";
 import SafeImage from "@/components/ui/SafeImage";
@@ -53,6 +55,8 @@ import {
 interface PluginMarketProps {
   onClose: () => void;
 }
+
+type MarketSource = "plugins" | "mcp";
 
 const ITEMS_PER_PAGE = 20;
 const CUSTOM_PLUGIN_INPUT_MAX_CHARS = 2_000_000;
@@ -358,6 +362,247 @@ const CustomPluginModal = ({
   );
 };
 
+const CustomMcpServerModal = ({
+  onClose,
+  onInstall,
+}: {
+  onClose: () => void;
+  onInstall: (plugin: Plugin, bearerToken?: string) => Promise<void> | void;
+}) => {
+  const t = useTranslations("Plugin");
+  const [name, setName] = useState("");
+  const [serverUrl, setServerUrl] = useState("");
+  const [bearerToken, setBearerToken] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+  const installRequestRef = useRef(0);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const modalId = useId();
+  const titleId = `${modalId}-title`;
+  const descriptionId = `${modalId}-description`;
+  const nameInputId = `${modalId}-name`;
+  const urlInputId = `${modalId}-url`;
+  const tokenInputId = `${modalId}-token`;
+  const errorId = `${modalId}-error`;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    closeButtonRef.current?.focus({ preventScroll: true });
+
+    return () => {
+      isMountedRef.current = false;
+      installRequestRef.current += 1;
+      if (previousFocusRef.current?.isConnected) {
+        previousFocusRef.current.focus({ preventScroll: true });
+      }
+      previousFocusRef.current = null;
+    };
+  }, []);
+
+  const handleClose = () => {
+    if (!isLoading) onClose();
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      handleClose();
+      return;
+    }
+
+    trapModalFocus(event, dialogRef.current);
+  };
+
+  const handleInstall = async () => {
+    if (!name.trim() || !serverUrl.trim()) return;
+    const requestId = installRequestRef.current + 1;
+    installRequestRef.current = requestId;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const token = bearerToken.trim() || undefined;
+      const plugin = await installCustomMcpServer({
+        name,
+        serverUrl,
+        bearerToken: token,
+      });
+      if (!isMountedRef.current || installRequestRef.current !== requestId) {
+        return;
+      }
+      await onInstall(plugin, token);
+      if (!isMountedRef.current || installRequestRef.current !== requestId) {
+        return;
+      }
+      onClose();
+    } catch (e) {
+      if (isMountedRef.current && installRequestRef.current === requestId) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      if (isMountedRef.current && installRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          handleClose();
+        }
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-border dark:bg-card"
+      >
+        <div className="flex justify-between items-center">
+          <h2
+            id={titleId}
+            className="flex items-center gap-2 text-lg font-bold text-gray-800 dark:text-foreground"
+          >
+            <Blocks size={20} className="text-blue-500" aria-hidden="true" />
+            {t("addCustomMcpServer")}
+          </h2>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            aria-label={t("closeCustomMcpInstaller")}
+            onClick={handleClose}
+            className="rounded-full p-1 text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-muted"
+            disabled={isLoading}
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label
+              htmlFor={nameInputId}
+              className="text-sm font-medium text-gray-700 dark:text-foreground/85"
+            >
+              {t("mcpServerNameLabel")}
+            </label>
+            <input
+              id={nameInputId}
+              type="text"
+              name="custom-mcp-name"
+              value={name}
+              maxLength={120}
+              autoComplete="off"
+              placeholder={t("mcpServerNamePlaceholder")}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 transition-[border-color,box-shadow] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted dark:text-foreground"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor={urlInputId}
+              className="text-sm font-medium text-gray-700 dark:text-foreground/85"
+            >
+              {t("mcpServerUrlLabel")}
+            </label>
+            <input
+              id={urlInputId}
+              type="url"
+              name="custom-mcp-url"
+              value={serverUrl}
+              maxLength={2048}
+              autoComplete="off"
+              placeholder={t("mcpServerUrlPlaceholder")}
+              aria-describedby={`${descriptionId}${error ? ` ${errorId}` : ""}`}
+              onChange={(event) => setServerUrl(event.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 font-mono text-sm text-gray-800 transition-[border-color,box-shadow] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted dark:text-foreground"
+            />
+            <p id={descriptionId} className="text-[10px] text-gray-500">
+              {t("mcpServerUrlHint")}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              htmlFor={tokenInputId}
+              className="text-sm font-medium text-gray-700 dark:text-foreground/85"
+            >
+              {t("mcpBearerTokenLabel")}
+            </label>
+            <input
+              id={tokenInputId}
+              type="password"
+              name="custom-mcp-bearer-token"
+              value={bearerToken}
+              maxLength={PLUGIN_CONFIG_LIMITS.maxAuthValueChars}
+              autoComplete="off"
+              placeholder={t("mcpBearerTokenPlaceholder")}
+              onChange={(event) => setBearerToken(event.target.value)}
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 transition-[border-color,box-shadow] focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-border dark:bg-muted dark:text-foreground"
+            />
+            <p className="text-[10px] text-gray-500">
+              {t("mcpBearerTokenHint")}
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <div
+            id={errorId}
+            role="alert"
+            className="flex items-center gap-2 rounded-lg bg-red-50 p-3 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400"
+          >
+            <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
+            {error}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={isLoading}
+            className="rounded-lg px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-60 dark:text-muted-foreground dark:hover:bg-muted"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            aria-label={t("installCustomMcpAria")}
+            aria-busy={isLoading || undefined}
+            onClick={handleInstall}
+            disabled={isLoading || !name.trim() || !serverUrl.trim()}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isLoading ? (
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Download size={16} aria-hidden="true" />
+            )}
+            {t("install")}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
 const PluginDetailsModal = ({
   plugin,
   onClose,
@@ -398,7 +643,10 @@ const PluginDetailsModal = ({
   const authDescriptionId = `${modalId}-auth-description`;
   const safeManifestUrl = getSafeWebHref(plugin.manifestUrl);
   const safeDocsUrl = getSafeWebHref(plugin.externalDocsUrl);
-  const pluginBaseUrl = plugin.baseUrl || t("notAvailable");
+  const pluginBaseUrl =
+    plugin.source === "mcp"
+      ? plugin.mcp?.serverUrl || t("notAvailable")
+      : plugin.baseUrl || t("notAvailable");
   const pluginAuthType = plugin.auth?.type || "none";
   const pluginAuthLocation = plugin.auth?.in || "header";
   const supportsEndpointConfig = ENDPOINT_CONFIG_PLUGIN_IDS.has(plugin.id);
@@ -748,7 +996,7 @@ const PluginDetailsModal = ({
                           {formatToolName(fn.name)}
                         </div>
                         <span className="text-[10px] text-gray-400 uppercase tracking-wide font-medium bg-gray-100 dark:bg-card px-1.5 py-0.5 rounded">
-                          {fn.method}
+                          {fn.mcpToolName ? t("mcp") : fn.method}
                         </span>
                       </div>
                       <div className="text-[10px] text-gray-400 font-mono mb-1">
@@ -977,6 +1225,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     installedPlugins,
     activePlugins,
     addInstalledPlugin,
+    updatePluginConfig,
     togglePluginActive,
     pluginConfigs,
     _hasHydrated,
@@ -989,6 +1238,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     [installedPlugins, tConfig],
   );
   const [availablePlugins, setAvailablePlugins] = useState<Plugin[]>([]);
+  const [activeSource, setActiveSource] = useState<MarketSource>("plugins");
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -997,10 +1247,18 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   const [selectedPluginForDetails, setSelectedPluginForDetails] =
     useState<Plugin | null>(null);
   const [showCustomPluginModal, setShowCustomPluginModal] = useState(false);
+  const [showCustomMcpServerModal, setShowCustomMcpServerModal] =
+    useState(false);
+  const [mcpPageCursors, setMcpPageCursors] = useState<string[]>([""]);
+  const [mcpNextCursor, setMcpNextCursor] = useState("");
   const isMountedRef = useRef(true);
   const pluginListRequestRef = useRef(0);
   const installingIdsRef = useRef<Set<string>>(new Set());
   const searchInputId = useId();
+  const sourceTabs: Array<{ value: MarketSource; label: string }> = [
+    { value: "plugins", label: t("plugins") },
+    { value: "mcp", label: t("mcp") },
+  ];
 
   // Pagination & Categorization State
   const [currentPage, setCurrentPage] = useState(1);
@@ -1020,6 +1278,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
 
   useEffect(() => {
     if (!_hasHydrated) return;
+    if (activeSource !== "plugins") return;
 
     const cachedPlugins = getCachedPlugins();
     if (cachedPlugins.length > 0) {
@@ -1031,6 +1290,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     const load = async () => {
       const requestId = pluginListRequestRef.current + 1;
       pluginListRequestRef.current = requestId;
+      setAvailablePlugins([]);
       setIsLoading(true);
       try {
         const list = await fetchApiGuruList();
@@ -1057,7 +1317,50 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       }
     };
     load();
-  }, [_hasHydrated, t]);
+  }, [_hasHydrated, activeSource, t]);
+
+  useEffect(() => {
+    if (!_hasHydrated) return;
+    if (activeSource !== "mcp") return;
+
+    const load = async () => {
+      const requestId = pluginListRequestRef.current + 1;
+      pluginListRequestRef.current = requestId;
+      setAvailablePlugins([]);
+      setIsLoading(true);
+      setMarketError(null);
+      try {
+        const page = await fetchMcpServerPage({
+          cursor: mcpPageCursors[currentPage - 1] || "",
+          search: searchTerm,
+          limit: ITEMS_PER_PAGE,
+        });
+        if (
+          isMountedRef.current &&
+          pluginListRequestRef.current === requestId
+        ) {
+          setAvailablePlugins(page.plugins);
+          setMcpNextCursor(page.nextCursor || "");
+        }
+      } catch {
+        if (
+          isMountedRef.current &&
+          pluginListRequestRef.current === requestId
+        ) {
+          setMarketError(t("loadFailed"));
+        }
+      } finally {
+        if (
+          isMountedRef.current &&
+          pluginListRequestRef.current === requestId
+        ) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    load();
+  }, [_hasHydrated, activeSource, currentPage, mcpPageCursors, searchTerm, t]);
 
   const handleRefresh = async () => {
     const requestId = pluginListRequestRef.current + 1;
@@ -1065,9 +1368,26 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     setIsRefreshing(true);
     setMarketError(null);
     try {
-      const list = await fetchApiGuruList(true); // Force refresh
+      let list: Plugin[];
+      let nextCursor = "";
+      if (activeSource === "mcp") {
+        const page = await fetchMcpServerPage({
+          forceRefresh: true,
+          cursor: mcpPageCursors[currentPage - 1] || "",
+          search: searchTerm,
+          limit: ITEMS_PER_PAGE,
+        });
+        list = page.plugins;
+        nextCursor = page.nextCursor || "";
+      } else {
+        list = await fetchApiGuruList(true);
+      }
+
       if (isMountedRef.current && pluginListRequestRef.current === requestId) {
         setAvailablePlugins(list);
+        if (activeSource === "mcp") {
+          setMcpNextCursor(nextCursor);
+        }
       }
     } catch {
       if (isMountedRef.current && pluginListRequestRef.current === requestId) {
@@ -1083,7 +1403,11 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   // Reset to page 1 when search or category changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedCategories]);
+    if (activeSource === "mcp") {
+      setMcpPageCursors([""]);
+      setMcpNextCursor("");
+    }
+  }, [searchTerm, selectedCategories, activeSource]);
 
   const handleInstall = async (plugin: Plugin) => {
     if (installingIdsRef.current.has(plugin.id)) return;
@@ -1096,15 +1420,43 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       if (isMountedRef.current) {
         addInstalledPlugin(fullPlugin);
       }
-    } catch {
+    } catch (error) {
       if (isMountedRef.current) {
-        setMarketError(t("installFailed"));
+        setMarketError(
+          error instanceof Error ? error.message : t("installFailed"),
+        );
       }
     } finally {
       if (isMountedRef.current) {
         installingIdsRef.current.delete(plugin.id);
         setInstallingIds(Array.from(installingIdsRef.current));
       }
+    }
+  };
+
+  const handleCustomMcpInstalled = async (
+    plugin: Plugin,
+    bearerToken?: string,
+  ) => {
+    const token = bearerToken?.trim();
+    const localValueSecret = token
+      ? await encryptLocalSecret(
+          token,
+          LOCAL_SECRET_CONTEXTS.pluginAuth(plugin.id),
+        )
+      : undefined;
+
+    addInstalledPlugin(plugin);
+    if (localValueSecret) {
+      updatePluginConfig(plugin.id, {
+        auth: {
+          type: "bearer",
+          value: "",
+          localValueSecret,
+          key: "Authorization",
+          addTo: "header",
+        },
+      });
     }
   };
 
@@ -1121,14 +1473,24 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     return Array.from(cats).sort();
   }, [availablePlugins]);
 
+  const activeInstalledPlugins = useMemo(
+    () =>
+      localizedInstalledPlugins.filter((plugin) =>
+        activeSource === "mcp"
+          ? plugin.source === "mcp"
+          : plugin.source !== "mcp",
+      ),
+    [activeSource, localizedInstalledPlugins],
+  );
+
   // Filtered Installed Plugins (Always show if matching search)
   const filteredInstalledPlugins = useMemo(() => {
-    return localizedInstalledPlugins.filter(
+    return activeInstalledPlugins.filter(
       (p) =>
         p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.description.toLowerCase().includes(searchTerm.toLowerCase()),
     );
-  }, [localizedInstalledPlugins, searchTerm]);
+  }, [activeInstalledPlugins, searchTerm]);
   const installedPluginIdSet = useMemo(
     () => new Set(installedPlugins.map((plugin) => plugin.id)),
     [installedPlugins],
@@ -1138,8 +1500,10 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   const filteredPlugins = useMemo(() => {
     const filtered = availablePlugins.filter((p) => {
       const matchesSearch =
-        p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.description.toLowerCase().includes(searchTerm.toLowerCase());
+        activeSource === "mcp"
+          ? true
+          : p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.description.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesCategory =
         selectedCategories.length === 0
@@ -1151,13 +1515,17 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       return matchesSearch && matchesCategory;
     });
 
+    if (activeSource === "mcp") {
+      return filtered;
+    }
+
     // Sort by added date (newest first)
     return filtered.sort((a, b) => {
       const timeA = a.added ? new Date(a.added).getTime() : 0;
       const timeB = b.added ? new Date(b.added).getTime() : 0;
       return timeB - timeA;
     });
-  }, [availablePlugins, searchTerm, selectedCategories]);
+  }, [activeSource, availablePlugins, searchTerm, selectedCategories]);
 
   // Pagination Logic
   const filteredAvailablePlugins = useMemo(
@@ -1165,23 +1533,56 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       filteredPlugins.filter((plugin) => !installedPluginIdSet.has(plugin.id)),
     [filteredPlugins, installedPluginIdSet],
   );
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredAvailablePlugins.length / ITEMS_PER_PAGE),
-  );
+  const totalPages =
+    activeSource === "mcp"
+      ? Math.max(1, currentPage + (mcpNextCursor ? 1 : 0))
+      : Math.max(
+          1,
+          Math.ceil(filteredAvailablePlugins.length / ITEMS_PER_PAGE),
+        );
   useEffect(() => {
+    if (activeSource === "mcp") return;
     setCurrentPage((page) => Math.min(Math.max(page, 1), totalPages));
-  }, [totalPages]);
-  const paginatedPlugins = filteredAvailablePlugins.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
+  }, [activeSource, totalPages]);
+  const paginatedPlugins =
+    activeSource === "mcp"
+      ? filteredAvailablePlugins
+      : filteredAvailablePlugins.slice(
+          (currentPage - 1) * ITEMS_PER_PAGE,
+          currentPage * ITEMS_PER_PAGE,
+        );
 
   const toggleCategory = (cat: string) => {
     setSelectedCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
     );
   };
+
+  const handleNextPage = () => {
+    if (activeSource === "mcp") {
+      if (!mcpNextCursor) return;
+      setMcpPageCursors((prev) => {
+        const next = prev.slice(0, currentPage);
+        next[currentPage] = mcpNextCursor;
+        return next;
+      });
+      setCurrentPage((page) => page + 1);
+      return;
+    }
+
+    setCurrentPage((page) => Math.min(totalPages, page + 1));
+  };
+
+  const handlePreviousPage = () => {
+    setCurrentPage((page) => Math.max(1, page - 1));
+  };
+
+  const showPagination =
+    activeSource === "mcp"
+      ? currentPage > 1 || !!mcpNextCursor
+      : totalPages > 1;
+  const isNextPageDisabled =
+    activeSource === "mcp" ? !mcpNextCursor : currentPage === totalPages;
 
   return (
     <div className="flex flex-col h-full w-full relative overflow-hidden animate-in fade-in duration-300">
@@ -1199,6 +1600,13 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
         <CustomPluginModal
           onClose={() => setShowCustomPluginModal(false)}
           onInstall={(p) => addInstalledPlugin(p)}
+        />
+      )}
+
+      {showCustomMcpServerModal && (
+        <CustomMcpServerModal
+          onClose={() => setShowCustomMcpServerModal(false)}
+          onInstall={handleCustomMcpInstalled}
         />
       )}
 
@@ -1261,8 +1669,36 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
         </div>
       ) : null}
 
+      <div className="mx-auto flex w-full max-w-7xl shrink-0 justify-center px-6 pt-5">
+        <div
+          className="grid w-full max-w-[360px] grid-cols-2 rounded-2xl border border-gray-200/80 bg-white/70 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-border dark:bg-muted/50 dark:shadow-none"
+          role="tablist"
+          aria-label={t("sourceTabsAria")}
+        >
+          {sourceTabs.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={activeSource === tab.value}
+              onClick={() => {
+                setActiveSource(tab.value);
+                setSelectedCategories([]);
+              }}
+              className={`relative rounded-xl px-5 py-2.5 text-sm font-semibold transition-[background-color,color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 active:scale-[0.98] ${
+                activeSource === tab.value
+                  ? "bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.24)] ring-1 ring-inset ring-white/35 dark:bg-blue-500 dark:shadow-[0_8px_20px_rgba(59,130,246,0.18)]"
+                  : "text-gray-500 hover:bg-gray-100/80 hover:text-gray-900 dark:text-muted-foreground dark:hover:bg-accent/80 dark:hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Search Bar & Filter */}
-      <div className="mx-auto flex w-full max-w-7xl shrink-0 gap-3 px-6 pb-6 pt-6">
+      <div className="mx-auto flex w-full max-w-7xl shrink-0 px-6 pb-6 pt-4">
         <div className="group relative min-w-0 flex-1">
           <div className="absolute inset-0 bg-blue-500/20 dark:bg-blue-500/10 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="relative flex items-center rounded-2xl border border-gray-200 bg-white/60 px-4 py-3 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] focus-within:border-blue-500/50 focus-within:ring-2 focus-within:ring-blue-500/30 dark:border-border dark:bg-muted/60">
@@ -1292,22 +1728,33 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       {/* Content Grid */}
       <div className="flex-1 overflow-y-auto px-6 pb-10 custom-scrollbar">
         <div className="max-w-7xl mx-auto flex flex-col min-h-full">
-          {/* Installed Section - Always Visible if matching search */}
-          {filteredInstalledPlugins.length > 0 && (
-            <div className="mb-8 shrink-0">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-                <h2 className="text-sm font-bold text-gray-500 dark:text-muted-foreground uppercase tracking-wider">
-                  {t("installedPlugins")}
-                </h2>
-                <button
-                  type="button"
-                  aria-label={t("installCustomAria")}
-                  onClick={() => setShowCustomPluginModal(true)}
-                  className="flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
-                >
-                  <Plus size={14} aria-hidden="true" /> {t("custom")}
-                </button>
-              </div>
+          {/* Installed Section */}
+          <div className="mb-8 shrink-0">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
+              <h2 className="text-sm font-bold text-gray-500 dark:text-muted-foreground uppercase tracking-wider">
+                {activeSource === "mcp"
+                  ? t("installedMcpServers")
+                  : t("installedPlugins")}
+              </h2>
+              <button
+                type="button"
+                aria-label={
+                  activeSource === "mcp"
+                    ? t("installCustomMcpAria")
+                    : t("installCustomAria")
+                }
+                onClick={() =>
+                  activeSource === "mcp"
+                    ? setShowCustomMcpServerModal(true)
+                    : setShowCustomPluginModal(true)
+                }
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+              >
+                <Plus size={14} aria-hidden="true" />{" "}
+                {activeSource === "mcp" ? t("customMcp") : t("custom")}
+              </button>
+            </div>
+            {filteredInstalledPlugins.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredInstalledPlugins.map((plugin) => {
                   const needsAuth = isPluginAuthRequired(plugin);
@@ -1346,6 +1793,16 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                                 {t("builtIn")}
                               </span>
                             )}
+                            {plugin.source === "mcp" && (
+                              <span className="max-w-full truncate rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                {t("mcp")}
+                              </span>
+                            )}
+                            {plugin.source === "mcp" && plugin.mcp && (
+                              <span className="max-w-full truncate rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[9px] text-gray-500 dark:bg-card dark:text-muted-foreground">
+                                {plugin.mcp.transport}
+                              </span>
+                            )}
                             {plugin.category && (
                               <span className="max-w-25 truncate rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
                                 {formatCategoryName(plugin.category)}
@@ -1381,9 +1838,14 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                       <div className="mt-auto flex items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2 rounded bg-gray-100 px-2 py-1 font-mono text-[10px] text-gray-400 dark:bg-muted/50">
                           <span>
-                            {t("toolsCount", {
-                              count: plugin.functions?.length || 0,
-                            })}
+                            {t(
+                              plugin.source === "mcp"
+                                ? "installedMcpTools"
+                                : "installedPluginTools",
+                              {
+                                count: plugin.functions?.length || 0,
+                              },
+                            )}
                           </span>
                         </div>
                         <button
@@ -1401,15 +1863,21 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-white/30 px-4 py-6 text-center text-sm text-gray-400 dark:border-border dark:bg-muted/20">
+                {t("noPluginsFound")}
+              </div>
+            )}
+          </div>
 
           {/* Available Section */}
           <div className="flex-1 flex flex-col">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-              <h2 className="min-w-0 truncate text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-muted-foreground">
-                {searchTerm ? t("searchResults") : t("explore")}
-              </h2>
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <h2 className="min-w-0 truncate text-sm font-bold uppercase tracking-wider text-gray-500 dark:text-muted-foreground">
+                  {searchTerm ? t("searchResults") : t("explore")}
+                </h2>
+              </div>
 
               {/* Category Filter */}
               <div className="relative shrink-0">
@@ -1515,6 +1983,16 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                               />
                             </div>
                             <div className="flex min-w-0 flex-wrap gap-1">
+                              {plugin.source === "mcp" && (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800 truncate max-w-25">
+                                  {t("mcp")}
+                                </span>
+                              )}
+                              {plugin.source === "mcp" && plugin.mcp && (
+                                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 dark:bg-card dark:text-muted-foreground border border-gray-100 dark:border-border truncate max-w-32">
+                                  {plugin.mcp.transport}
+                                </span>
+                              )}
                               {plugin.category && (
                                 <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300 border border-blue-100 dark:border-blue-800 truncate max-w-25">
                                   {formatCategoryName(plugin.category)}
@@ -1574,27 +2052,27 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                 )}
 
                 {/* Pagination Controls */}
-                {totalPages > 1 && (
+                {showPagination && (
                   <div className="py-6 flex items-center justify-center gap-4 mt-auto">
                     <button
                       type="button"
                       aria-label={t("prevPageAria")}
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      onClick={handlePreviousPage}
                       disabled={currentPage === 1}
                       className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-foreground/85 dark:hover:bg-accent"
                     >
                       <ChevronLeft size={16} aria-hidden="true" />
                     </button>
                     <span className="text-sm font-medium tabular-nums text-gray-600 dark:text-foreground/85">
-                      {t("pageOf", { currentPage, totalPages })}
+                      {activeSource === "mcp"
+                        ? t("pageCurrent", { currentPage })
+                        : t("pageOf", { currentPage, totalPages })}
                     </span>
                     <button
                       type="button"
                       aria-label={t("nextPageAria")}
-                      onClick={() =>
-                        setCurrentPage((p) => Math.min(totalPages, p + 1))
-                      }
-                      disabled={currentPage === totalPages}
+                      onClick={handleNextPage}
+                      disabled={isNextPageDisabled}
                       className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border dark:bg-muted dark:text-foreground/85 dark:hover:bg-accent"
                     >
                       <ChevronRight size={16} aria-hidden="true" />

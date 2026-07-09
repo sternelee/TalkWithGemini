@@ -94,6 +94,8 @@ interface SettingsState {
   // Market Cache
   marketPlugins: Plugin[];
   marketPluginsTimestamp: number;
+  marketMcpServers: Plugin[];
+  marketMcpServersTimestamp: number;
   marketAgents: LobeAgent[];
   marketAgentsTimestamp: number;
   marketAgentsLocale: AgentMarketLocale | "";
@@ -102,6 +104,7 @@ interface SettingsState {
   skillDefinitions: Record<string, TextSkill>;
   skillDefinitionTimestamps: Record<string, number>;
   setMarketPlugins: (plugins: Plugin[]) => void;
+  setMarketMcpServers: (plugins: Plugin[]) => void;
   setMarketAgents: (
     agents: LobeAgent[],
     locale?: AgentMarketLocale | "",
@@ -487,6 +490,8 @@ export const useSettingsStore = create<SettingsState>()(
       // Market Cache
       marketPlugins: [],
       marketPluginsTimestamp: 0,
+      marketMcpServers: [],
+      marketMcpServersTimestamp: 0,
       marketAgents: [],
       marketAgentsTimestamp: 0,
       marketAgentsLocale: "",
@@ -498,6 +503,11 @@ export const useSettingsStore = create<SettingsState>()(
         set({
           marketPlugins: plugins,
           marketPluginsTimestamp: Date.now(),
+        }),
+      setMarketMcpServers: (plugins) =>
+        set({
+          marketMcpServers: plugins,
+          marketMcpServersTimestamp: Date.now(),
         }),
       setMarketAgents: (agents, locale = "") =>
         set({
@@ -1224,6 +1234,8 @@ export const useSettingsStore = create<SettingsState>()(
           ...state,
           marketPlugins: state.marketPlugins || [],
           marketPluginsTimestamp: state.marketPluginsTimestamp || 0,
+          marketMcpServers: state.marketMcpServers || [],
+          marketMcpServersTimestamp: state.marketMcpServersTimestamp || 0,
           marketAgents: normalizeMarketAgents(state.marketAgents),
           marketAgentsTimestamp: state.marketAgentsTimestamp || 0,
           marketAgentsLocale: state.marketAgentsLocale || "",
@@ -1285,6 +1297,8 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (state) => ({
         marketPlugins: state.marketPlugins,
         marketPluginsTimestamp: state.marketPluginsTimestamp,
+        marketMcpServers: state.marketMcpServers,
+        marketMcpServersTimestamp: state.marketMcpServersTimestamp,
         marketAgents: state.marketAgents,
         marketAgentsTimestamp: state.marketAgentsTimestamp,
         marketAgentsLocale: state.marketAgentsLocale,

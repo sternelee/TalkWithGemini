@@ -421,6 +421,13 @@ export async function executePluginFunctionRequest({
     return NextResponse.json({ error: functionPathError }, { status: 400 });
   }
 
+  if (!functionDef.method || !functionDef.path) {
+    return NextResponse.json(
+      { error: "Plugin function path or method is missing" },
+      { status: 400 },
+    );
+  }
+
   const method = functionDef.method.toUpperCase();
   if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) {
     return NextResponse.json(

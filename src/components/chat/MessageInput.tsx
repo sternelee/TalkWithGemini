@@ -586,6 +586,23 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         })
         .map((p) => localizePluginMeta(p, tConfig));
     }, [installedPlugins, pluginConfigs, tConfig]);
+    const pluginSourceGroups = useMemo(() => {
+      const groups: { plugins: typeof validPlugins; mcp: typeof validPlugins } =
+        {
+          plugins: [],
+          mcp: [],
+        };
+
+      validPlugins.forEach((plugin) => {
+        if (plugin.source === "mcp") {
+          groups.mcp.push(plugin);
+        } else {
+          groups.plugins.push(plugin);
+        }
+      });
+
+      return groups;
+    }, [validPlugins]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
       if (
@@ -1565,45 +1582,107 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                 >
                   {validPlugins.length > 0 ? (
                     <>
-                      <DropdownMenuLabel>
-                        {t("installedPlugins")}
-                      </DropdownMenuLabel>
-                      {validPlugins.map((plugin) => {
-                        const isActive = activePlugins.includes(plugin.id);
-                        return (
-                          <DropdownMenuCheckboxItem
-                            checked={isActive}
-                            aria-label={
-                              isActive
-                                ? t("disablePlugin", { title: plugin.title })
-                                : t("enablePlugin", { title: plugin.title })
-                            }
-                            indicatorPosition="right"
-                            indicator={
-                              <span className="flex h-3 w-3 items-center justify-center rounded-full border border-cyan-500 bg-cyan-500">
-                                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                              </span>
-                            }
-                            key={plugin.id}
-                            onSelect={(event) => event.preventDefault()}
-                            onCheckedChange={() =>
-                              togglePluginActive(plugin.id)
-                            }
-                          >
-                            <span className="flex min-w-0 items-center gap-2 truncate">
-                              <SafeImage
-                                src={plugin.logoUrl}
-                                className="w-4 h-4 object-contain"
-                                alt=""
-                                fallback={
-                                  <Blocks size={14} aria-hidden="true" />
+                      {pluginSourceGroups.plugins.length > 0 && (
+                        <>
+                          <DropdownMenuLabel>
+                            {t("installedPlugins")}
+                          </DropdownMenuLabel>
+                          {pluginSourceGroups.plugins.map((plugin) => {
+                            const isActive = activePlugins.includes(plugin.id);
+                            return (
+                              <DropdownMenuCheckboxItem
+                                checked={isActive}
+                                aria-label={
+                                  isActive
+                                    ? t("disablePlugin", {
+                                        title: plugin.title,
+                                      })
+                                    : t("enablePlugin", {
+                                        title: plugin.title,
+                                      })
                                 }
-                              />
-                              <span className="truncate">{plugin.title}</span>
-                            </span>
-                          </DropdownMenuCheckboxItem>
-                        );
-                      })}
+                                indicatorPosition="right"
+                                indicator={
+                                  <span className="flex h-3 w-3 items-center justify-center rounded-full border border-cyan-500 bg-cyan-500">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                                  </span>
+                                }
+                                key={plugin.id}
+                                onSelect={(event) => event.preventDefault()}
+                                onCheckedChange={() =>
+                                  togglePluginActive(plugin.id)
+                                }
+                              >
+                                <span className="flex min-w-0 items-center gap-2 truncate">
+                                  <SafeImage
+                                    src={plugin.logoUrl}
+                                    className="w-4 h-4 object-contain"
+                                    alt=""
+                                    fallback={
+                                      <Blocks size={14} aria-hidden="true" />
+                                    }
+                                  />
+                                  <span className="truncate">
+                                    {plugin.title}
+                                  </span>
+                                </span>
+                              </DropdownMenuCheckboxItem>
+                            );
+                          })}
+                        </>
+                      )}
+                      {pluginSourceGroups.mcp.length > 0 && (
+                        <>
+                          {pluginSourceGroups.plugins.length > 0 && (
+                            <DropdownMenuSeparator />
+                          )}
+                          <DropdownMenuLabel>
+                            {t("mcpServers")}
+                          </DropdownMenuLabel>
+                          {pluginSourceGroups.mcp.map((plugin) => {
+                            const isActive = activePlugins.includes(plugin.id);
+                            return (
+                              <DropdownMenuCheckboxItem
+                                checked={isActive}
+                                aria-label={
+                                  isActive
+                                    ? t("disablePlugin", {
+                                        title: plugin.title,
+                                      })
+                                    : t("enablePlugin", {
+                                        title: plugin.title,
+                                      })
+                                }
+                                indicatorPosition="right"
+                                indicator={
+                                  <span className="flex h-3 w-3 items-center justify-center rounded-full border border-cyan-500 bg-cyan-500">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                                  </span>
+                                }
+                                key={plugin.id}
+                                onSelect={(event) => event.preventDefault()}
+                                onCheckedChange={() =>
+                                  togglePluginActive(plugin.id)
+                                }
+                              >
+                                <span className="flex min-w-0 items-center gap-2 truncate">
+                                  <SafeImage
+                                    src={plugin.logoUrl}
+                                    className="w-4 h-4 object-contain"
+                                    alt=""
+                                    fallback={
+                                      <Blocks size={14} aria-hidden="true" />
+                                    }
+                                  />
+                                  <span className="truncate">
+                                    {plugin.title}
+                                  </span>
+                                </span>
+                              </DropdownMenuCheckboxItem>
+                            );
+                          })}
+                        </>
+                      )}
                     </>
                   ) : (
                     <div

@@ -19,6 +19,7 @@
   "activePluginsCount": "{count} Active Plugins",
   "activePluginsAria": "{count} active plugins",
   "installedPlugins": "Installed Plugins",
+  "mcpServers": "MCP Servers",
   "enablePlugin": "Enable {title}",
   "disablePlugin": "Disable {title}",
   "pluginsMissingAuth": "Configured plugins missing auth.",

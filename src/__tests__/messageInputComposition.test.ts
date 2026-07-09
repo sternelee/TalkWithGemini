@@ -48,6 +48,9 @@ describe("MessageInput composition", () => {
     expect(messageInput).toContain("installedSkills");
     expect(messageInput).toContain("updateSessionConfig");
     expect(messageInput).toContain("normalizeSkillIdRefs");
+    expect(messageInput).toContain("pluginSourceGroups");
+    expect(messageInput).toContain('plugin.source === "mcp"');
+    expect(messageInput).toContain('t("mcpServers")');
     expect(messageInput).not.toContain("toggleSkillActive");
     expect(messageInput).not.toContain("formatSkillCategory");
     expect(messageInput).not.toContain("autoSelectSkills");

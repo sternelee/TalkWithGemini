@@ -19,6 +19,7 @@
   "activePluginsCount": "{count} 個の有効なプラグイン",
   "activePluginsAria": "{count} 個の有効なプラグイン",
   "installedPlugins": "インストール済みプラグイン",
+  "mcpServers": "MCP サーバー",
   "enablePlugin": "{title} を有効化",
   "disablePlugin": "{title} を無効化",
   "pluginsMissingAuth": "構成されたプラグインの認証情報が不足しています。",

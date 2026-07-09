@@ -2,6 +2,16 @@ import type { Plugin } from "../../types";
 import { MARKET_LIMITS } from "../../config/limits";
 
 const PLUGIN_ID_RE = /^[A-Za-z0-9._:-]+$/;
+const MCP_PLUGIN_ID_RE = /^[A-Za-z0-9._:/-]+$/;
+const PLUGIN_SOURCES = new Set(["builtin", "openapi", "mcp"]);
+const PLUGIN_AUTH_TYPES = new Set([
+  "bearer",
+  "apiKey",
+  "basic",
+  "oauth2",
+  "none",
+]);
+const PLUGIN_AUTH_LOCATIONS = new Set(["header", "query"]);
 
 function trimString(value: unknown, maxChars: number): string {
   return typeof value === "string" ? value.trim().slice(0, maxChars) : "";
@@ -19,6 +29,39 @@ function trimWebUrl(value: unknown, maxChars: number): string {
   } catch {
     return "";
   }
+}
+
+function trimHttpsUrl(value: unknown, maxChars: number): string {
+  const candidate = trimString(value, maxChars);
+  if (!candidate) return "";
+
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function normalizeHeaderMap(
+  value: unknown,
+): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const headers: Record<string, string> = {};
+  for (const [rawName, rawValue] of Object.entries(
+    value as Record<string, unknown>,
+  )) {
+    const name = trimString(rawName, 120);
+    const headerValue = trimString(rawValue, 4_096);
+    if (!name || !headerValue) continue;
+
+    headers[name] = headerValue;
+  }
+
+  return Object.keys(headers).length > 0 ? headers : undefined;
 }
 
 function normalizePluginCategories(value: unknown): string[] {
@@ -40,18 +83,78 @@ function normalizePluginCategories(value: unknown): string[] {
   return categories;
 }
 
+function normalizePluginAuth(value: unknown): Plugin["auth"] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const raw = value as Record<string, unknown>;
+  const type = trimString(raw.type, 40);
+  if (!PLUGIN_AUTH_TYPES.has(type)) return undefined;
+
+  const name = trimString(raw.name, 120);
+  const location = trimString(raw.in, 20);
+
+  return {
+    type: type as NonNullable<Plugin["auth"]>["type"],
+    ...(name ? { name } : {}),
+    ...(PLUGIN_AUTH_LOCATIONS.has(location)
+      ? { in: location as NonNullable<Plugin["auth"]>["in"] }
+      : {}),
+    ...(typeof raw.required === "boolean" ? { required: raw.required } : {}),
+  };
+}
+
+function normalizeMcpMetadata(value: unknown): Plugin["mcp"] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+
+  const raw = value as Record<string, unknown>;
+  const serverUrl = trimHttpsUrl(raw.serverUrl, 2_048);
+  const serverName = trimString(
+    raw.serverName,
+    MARKET_LIMITS.maxPluginTitleChars,
+  );
+  if (!serverUrl || !serverName) return undefined;
+
+  const toolNameMap =
+    raw.toolNameMap && typeof raw.toolNameMap === "object"
+      ? Object.fromEntries(
+          Object.entries(raw.toolNameMap as Record<string, unknown>)
+            .filter(([, value]) => typeof value === "string")
+            .map(([key, value]) => [key, value as string]),
+        )
+      : {};
+
+  return {
+    transport: "streamable-http",
+    serverUrl,
+    serverName,
+    serverVersion:
+      trimString(raw.serverVersion, MARKET_LIMITS.maxAgentCreatedAtChars) ||
+      undefined,
+    headers: normalizeHeaderMap(raw.headers),
+    toolNameMap,
+  };
+}
+
 export function normalizeMarketPlugin(value: unknown): Plugin | null {
   if (!value || typeof value !== "object") return null;
 
   const raw = value as Record<string, unknown>;
   const id = trimString(raw.id, MARKET_LIMITS.maxPluginIdChars);
-  if (!id || !PLUGIN_ID_RE.test(id)) return null;
+  const source = trimString(raw.source, 40);
+  const pluginSource = PLUGIN_SOURCES.has(source)
+    ? (source as NonNullable<Plugin["source"]>)
+    : undefined;
+  const idPattern = pluginSource === "mcp" ? MCP_PLUGIN_ID_RE : PLUGIN_ID_RE;
+  if (!id || !idPattern.test(id)) return null;
+
+  const mcp =
+    pluginSource === "mcp" ? normalizeMcpMetadata(raw.mcp) : undefined;
 
   const manifestUrl = trimWebUrl(
     raw.manifestUrl,
     MARKET_LIMITS.maxPluginManifestUrlChars,
   );
-  if (!manifestUrl) return null;
+  if (!manifestUrl && !mcp) return null;
 
   const categories = normalizePluginCategories(raw.categories);
   const category =
@@ -72,9 +175,12 @@ export function normalizeMarketPlugin(value: unknown): Plugin | null {
       trimWebUrl(raw.externalDocsUrl, MARKET_LIMITS.maxPluginDocsUrlChars) ||
       undefined,
     functions: [],
+    ...(pluginSource ? { source: pluginSource } : {}),
+    ...(mcp ? { mcp } : {}),
     category,
     categories,
     added: trimString(raw.added, MARKET_LIMITS.maxAgentCreatedAtChars),
+    auth: normalizePluginAuth(raw.auth),
   };
 }
 

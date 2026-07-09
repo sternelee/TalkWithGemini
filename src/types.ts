@@ -33,6 +33,8 @@ export type {
   PluginConfig,
   PluginFunction,
   PluginFunctionRisk,
+  PluginMcpMetadata,
+  PluginSource,
 } from "./lib/plugin/types";
 export type {
   AppliedSkill,

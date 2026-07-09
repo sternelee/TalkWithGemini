@@ -78,6 +78,40 @@ describe("url policy and provider runtime helpers", () => {
     ).toThrow(/Private network|Localhost/i);
   });
 
+  it("allows HTTPS MCP servers on local networks without allowing plain HTTP", () => {
+    expect(
+      validateOutboundUrl("https://192.168.1.10/mcp", getSafeUrlPolicy("mcp"))
+        .hostname,
+    ).toBe("192.168.1.10");
+
+    expect(() =>
+      validateOutboundUrl("http://192.168.1.10/mcp", getSafeUrlPolicy("mcp")),
+    ).toThrow(/Protocol|HTTP/i);
+  });
+
+  it("blocks local MCP proxying in hosted mode unless explicitly enabled", () => {
+    process.env.DEPLOYMENT_MODE = "hosted";
+    delete process.env.ALLOW_LOCAL_NETWORK_PROXY;
+
+    let thrown: unknown;
+    try {
+      validateOutboundUrl("https://192.168.1.10/mcp", getSafeUrlPolicy("mcp"));
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(toPublicErrorPayload(thrown)).toMatchObject({
+      code: "HOSTED_PROXY_BLOCKED",
+      statusCode: 403,
+    });
+
+    process.env.ALLOW_LOCAL_NETWORK_PROXY = "true";
+    expect(
+      validateOutboundUrl("https://192.168.1.10/mcp", getSafeUrlPolicy("mcp"))
+        .hostname,
+    ).toBe("192.168.1.10");
+  });
+
   it("allows configured voice provider hosts only", () => {
     expect(
       validateOutboundUrl(
