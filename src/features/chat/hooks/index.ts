@@ -1,5 +1,10 @@
 export { useChatGenerationController } from "./useChatGenerationController";
+export { useChatPanelNavigation } from "./useChatPanelNavigation";
 export { useChatShellState } from "./useChatShellState";
 export { useChatThemeEffects } from "./useChatThemeEffects";
+export { useComposerCapabilityState } from "./useComposerCapabilityState";
+export { useComposerMenuState } from "./useComposerMenuState";
 export { useMessageComposer } from "./useMessageComposer";
 export { useSidebarSessions } from "./useSidebarSessions";
+export { useWelcomeChatState } from "./useWelcomeChatState";
+export { useWorkspaceAttachmentHydration } from "./useWorkspaceAttachmentHydration";

@@ -63,7 +63,7 @@ import {
   getAttachmentPayloadChars,
   getAttachmentsPayloadChars,
 } from "@/config/limits";
-import { parseModelString, supportsModality } from "@/lib/utils/model";
+import { parseModelString } from "@/lib/utils/model";
 import { stopMediaStreamTracks } from "@/lib/utils/mediaRecording";
 import { logDevError } from "@/lib/utils/devLogger";
 import { saveToOPFS } from "@/utils/opfs";
@@ -92,11 +92,13 @@ import {
   truncateMiddle,
 } from "@/lib/utils/messageInputHelpers";
 import {
-  getAvailableReasoningModes,
   isReasoningEnabled,
   normalizeReasoningMode,
-  resolveReasoningModeForModel,
 } from "@/lib/chat/reasoning";
+import {
+  useComposerCapabilityState,
+  useComposerMenuState,
+} from "@/features/chat";
 
 type MessageInputVariant = "default" | "hero";
 
@@ -148,11 +150,18 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const [isRecording, setIsRecording] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [recordingSeconds, setRecordingSeconds] = useState(0);
-    const [showModelSelect, setShowModelSelect] = useState(false);
-    const [showSkillSelect, setShowSkillSelect] = useState(false);
-    const [showPluginSelect, setShowPluginSelect] = useState(false);
-    const [showReasoningSelect, setShowReasoningSelect] = useState(false);
-    const [showAttachMenu, setShowAttachMenu] = useState(false);
+    const {
+      showAttachMenu,
+      showSkillSelect,
+      showPluginSelect,
+      showReasoningSelect,
+      showModelSelect,
+      setShowAttachMenu,
+      setShowSkillSelect,
+      setShowPluginSelect,
+      setShowReasoningSelect,
+      setShowModelSelect,
+    } = useComposerMenuState();
     const [showRemoteModal, setShowRemoteModal] = useState(false);
     const [showKBModal, setShowKBModal] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -341,20 +350,6 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     }, [errorMsg]);
 
-    useEffect(() => {
-      const handleEscape = (e: KeyboardEvent) => {
-        if (e.key !== "Escape") return;
-        setShowAttachMenu(false);
-        setShowSkillSelect(false);
-        setShowPluginSelect(false);
-        setShowReasoningSelect(false);
-        setShowModelSelect(false);
-      };
-
-      document.addEventListener("keydown", handleEscape);
-      return () => document.removeEventListener("keydown", handleEscape);
-    }, []);
-
     const selectedModelProvider = useMemo(() => {
       if (!selectedModel) return providers.find((provider) => provider.enabled);
       const { providerId } = parseModelString(selectedModel);
@@ -475,61 +470,9 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       return groups;
     }, [availableModels]);
 
-    const selectedModelMetadata = useMemo(() => {
-      if (!selectedModel) return undefined;
-
-      const { modelName: modelId } = parseModelString(selectedModel);
-      return customModelMetadata[modelId] || modelMetadata[modelId];
-    }, [selectedModel, modelMetadata, customModelMetadata]);
-
-    // --- Capabilities Resolution ---
-    const modelCapabilities = useMemo(() => {
-      if (!selectedModel)
-        return {
-          vision: false,
-          attachment: false,
-          audio: false,
-          video: false,
-          reasoning: false,
-        };
-
-      return {
-        vision: supportsModality(selectedModelMetadata, "image", "input"),
-        attachment: selectedModelMetadata?.attachment ?? false,
-        audio: supportsModality(selectedModelMetadata, "audio", "input"),
-        video: supportsModality(selectedModelMetadata, "video", "input"),
-        reasoning: selectedModelMetadata?.reasoning ?? false,
-      };
-    }, [selectedModel, selectedModelMetadata]);
-
     const maxAttachmentFileBytes =
       serverConfig?.limits?.attachments?.maxFileBytes ??
       ATTACHMENT_LIMITS.maxFileBytes;
-
-    const isReasoningSupported = useMemo(() => {
-      if (!selectedModel) return false;
-      const { modelName: modelId } = parseModelString(selectedModel);
-
-      if (selectedModelMetadata?.reasoning !== undefined) {
-        return selectedModelMetadata.reasoning;
-      }
-
-      // Fallback to name heuristic
-      const lower = modelId.toLowerCase();
-      return (
-        lower.includes("thinking") ||
-        lower.includes("reasoner") ||
-        lower.includes("o1") ||
-        lower.includes("r1")
-      );
-    }, [selectedModel, selectedModelMetadata]);
-
-    const currentReasoningMode = resolveReasoningModeForModel(
-      chatConfig.reasoningMode,
-      selectedModelMetadata,
-      chatConfig.useReasoning,
-    );
-    const isReasoningEnabledForMode = isReasoningEnabled(currentReasoningMode);
     const reasoningOptionLabels = useMemo<
       Record<ReasoningMode, { label: string; description: string }>
     >(
@@ -557,20 +500,21 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }),
       [t],
     );
-    const reasoningOptions = useMemo<
-      Array<{ value: ReasoningMode; label: string; description: string }>
-    >(
-      () =>
-        getAvailableReasoningModes(selectedModelMetadata).map((value) => ({
-          value,
-          ...reasoningOptionLabels[value],
-        })),
-      [selectedModelMetadata, reasoningOptionLabels],
-    );
-    const currentReasoningOption =
-      reasoningOptions.find(
-        (option) => option.value === currentReasoningMode,
-      ) || reasoningOptions[0];
+    const {
+      modelCapabilities,
+      isReasoningSupported,
+      currentReasoningMode,
+      isReasoningEnabledForMode,
+      reasoningOptions,
+      currentReasoningOption,
+    } = useComposerCapabilityState({
+      selectedModel,
+      modelMetadata,
+      customModelMetadata,
+      reasoningMode: chatConfig.reasoningMode,
+      useReasoning: chatConfig.useReasoning,
+      reasoningOptionLabels,
+    });
 
     // Filter plugins to show only those ready for use
     const validPlugins = useMemo(() => {

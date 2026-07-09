@@ -10,32 +10,37 @@ describe("MessageItem composition", () => {
       resolve(process.cwd(), "src/components/chat/MessageItem.tsx"),
       "utf8",
     );
+    const userMessageEditor = readFileSync(
+      resolve(process.cwd(), "src/components/chat/UserMessageEditor.tsx"),
+      "utf8",
+    );
+    const messageItemSurface = `${messageItem}\n${userMessageEditor}`;
     const attachmentView = readFileSync(
       resolve(process.cwd(), "src/components/chat/MessageAttachmentView.tsx"),
       "utf8",
     );
 
-    expect(messageItem).toContain("MessageAttachmentView");
-    expect(messageItem).toContain(
+    expect(messageItemSurface).toContain("MessageAttachmentView");
+    expect(messageItemSurface).toContain(
       "const skillInvocations = message.skillInvocations || []",
     );
-    expect(messageItem).toContain("portal");
-    expect(messageItem).toContain("AddToKnowledgeModal");
-    expect(messageItem).toContain("handleAddToKnowledge");
-    expect(messageItem).toContain("canEditUserMessage");
-    expect(messageItem).toContain("UserMessageEditor");
-    expect(messageItem).toContain("focus-within:ring-2");
-    expect(messageItem).toContain("focus-visible:ring-ring");
-    expect(messageItem).toContain("PencilSparkles");
-    expect(messageItem).toContain('t("polishUserMessageShort")');
-    expect(messageItem).not.toContain("text-amber-500");
-    expect(messageItem).not.toContain("hover:bg-amber-50");
-    expect(messageItem).not.toContain("dark:text-amber-300");
-    expect(messageItem).not.toContain("PencilSparklesIcon");
-    expect(messageItem).not.toContain("const AttachmentView");
-    expect(messageItem).not.toContain("activeSkillIds");
-    expect(messageItem).not.toContain("onBranch");
-    expect(messageItem).not.toContain("<Split");
+    expect(messageItemSurface).toContain("portal");
+    expect(messageItemSurface).toContain("AddToKnowledgeModal");
+    expect(messageItemSurface).toContain("handleAddToKnowledge");
+    expect(messageItemSurface).toContain("canEditUserMessage");
+    expect(messageItemSurface).toContain("UserMessageEditor");
+    expect(messageItemSurface).toContain("focus-within:ring-2");
+    expect(messageItemSurface).toContain("focus-visible:ring-ring");
+    expect(messageItemSurface).toContain("PencilSparkles");
+    expect(messageItemSurface).toContain('t("polishUserMessageShort")');
+    expect(messageItemSurface).not.toContain("text-amber-500");
+    expect(messageItemSurface).not.toContain("hover:bg-amber-50");
+    expect(messageItemSurface).not.toContain("dark:text-amber-300");
+    expect(messageItemSurface).not.toContain("PencilSparklesIcon");
+    expect(messageItemSurface).not.toContain("const AttachmentView");
+    expect(messageItemSurface).not.toContain("activeSkillIds");
+    expect(messageItemSurface).not.toContain("onBranch");
+    expect(messageItemSurface).not.toContain("<Split");
     expect(attachmentView).toContain("AudioPlayer");
     expect(attachmentView).toContain("resolveObjectUrlWithLifecycle");
   });
@@ -141,13 +146,21 @@ describe("MessageItem composition", () => {
       ),
       "utf8",
     );
-    expect(markdownRenderer).toContain("forcedTheme?: DiagramTheme");
-    expect(markdownRenderer).toContain("forcedTheme || resolvedTheme");
-    expect(markdownRenderer).toContain("forceExpandCodeBlocks?: boolean");
-    expect(markdownRenderer).toContain(
+    const diagramBlock = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/content/markdown/DiagramBlock.tsx",
+      ),
+      "utf8",
+    );
+    const markdownSurface = `${markdownRenderer}\n${diagramBlock}`;
+    expect(markdownSurface).toContain("forcedTheme?: DiagramTheme");
+    expect(markdownSurface).toContain("forcedTheme || resolvedTheme");
+    expect(markdownSurface).toContain("forceExpandCodeBlocks?: boolean");
+    expect(markdownSurface).toContain(
       "!forceExpandCodeBlocks && (system.enableCodeCollapse ?? true)",
     );
-    expect(markdownRenderer).toContain(
+    expect(markdownSurface).toContain(
       "forceExpandCodeBlocks={forceExpandCodeBlocks}",
     );
 

@@ -8,33 +8,40 @@ describe("ChatApp first screen composition", () => {
       resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
       "utf8",
     );
+    const chatAppShell = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
+      "utf8",
+    );
+    const chatSurface = `${chatApp}\n${chatAppShell}`;
 
-    expect(chatApp).not.toContain("AssistantList");
-    expect(chatApp).not.toContain("getRandomAgents");
-    expect(chatApp).not.toContain("getAgents(false, locale)");
-    expect(chatApp).not.toContain("recommendedAgents");
-    expect(chatApp).toContain("emptyChatSurface");
-    expect(chatApp).not.toContain('src="/logo.png"');
-    expect(chatApp).toContain('import { Logo } from "@/components/ui/Icons";');
-    expect(chatApp).toContain('t("productName")');
-    expect(chatApp).not.toContain('t("productSlogan")');
-    expect(chatApp).toContain("neoChatWordmark");
-    expect(chatApp).toContain(
+    expect(chatSurface).not.toContain("AssistantList");
+    expect(chatSurface).not.toContain("getRandomAgents");
+    expect(chatSurface).not.toContain("getAgents(false, locale)");
+    expect(chatSurface).not.toContain("recommendedAgents");
+    expect(chatSurface).toContain("emptyChatSurface");
+    expect(chatSurface).not.toContain('src="/logo.png"');
+    expect(chatSurface).toContain(
+      'import { Logo } from "@/components/ui/Icons";',
+    );
+    expect(chatSurface).toContain('t("productName")');
+    expect(chatSurface).not.toContain('t("productSlogan")');
+    expect(chatSurface).toContain("neoChatWordmark");
+    expect(chatSurface).toContain(
       "bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)]",
     );
-    expect(chatApp).not.toContain("emptyChatSurface flex-1 flex flex-col");
-    expect(chatApp).toContain("bottom-[40vh]");
-    expect(chatApp).toContain("messageInputVariant");
-    expect(chatApp).toContain("variant={messageInputVariant}");
-    expect(chatApp).toContain(
+    expect(chatSurface).not.toContain("emptyChatSurface flex-1 flex flex-col");
+    expect(chatSurface).toContain("bottom-[40vh]");
+    expect(chatSurface).toContain("messageInputVariant");
+    expect(chatSurface).toContain("variant={messageInputVariant}");
+    expect(chatSurface).toContain(
       'welcomeState === "visible" ? "max-w-2xl" : "max-w-3xl"',
     );
-    expect(chatApp).not.toContain("max-w-xl");
-    expect(chatApp).toContain("shouldShowChatTitleBar");
-    expect(chatApp).toContain("shouldShowChatTitleBar &&");
-    expect(chatApp).toContain("text-[1.75rem]");
-    expect(chatApp).toContain("font-bold");
-    expect(chatApp).not.toContain("text-[2rem] font-black");
-    expect(chatApp).not.toContain("md:text-[2.5rem]");
+    expect(chatSurface).not.toContain("max-w-xl");
+    expect(chatSurface).toContain("shouldShowChatTitleBar");
+    expect(chatSurface).toContain("shouldShowChatTitleBar &&");
+    expect(chatSurface).toContain("text-[1.75rem]");
+    expect(chatSurface).toContain("font-bold");
+    expect(chatSurface).not.toContain("text-[2rem] font-black");
+    expect(chatSurface).not.toContain("md:text-[2.5rem]");
   });
 });

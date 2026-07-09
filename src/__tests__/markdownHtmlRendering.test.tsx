@@ -414,19 +414,29 @@ describe("MarkdownRenderer HTML support", () => {
       ),
       "utf8",
     );
+    const diagramBlock = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/content/markdown/DiagramBlock.tsx",
+      ),
+      "utf8",
+    );
+    const rendererSource = `${source}\n${diagramBlock}`;
 
-    expect(source).toContain("suppressErrorRendering: true");
-    expect(source).toContain(
+    expect(rendererSource).toContain("suppressErrorRendering: true");
+    expect(rendererSource).toContain(
       "const mermaidRenderHostRef = useRef<HTMLDivElement | null>(null)",
     );
-    expect(source).toContain(
+    expect(rendererSource).toContain(
       "const mermaidRenderHost = mermaidRenderHostRef.current",
     );
-    expect(source).toContain('role={tone === "error" ? "alert" : "status"}');
-    expect(source).toContain(
+    expect(rendererSource).toContain(
+      'role={tone === "error" ? "alert" : "status"}',
+    );
+    expect(rendererSource).toContain(
       'aria-live={tone === "error" ? "assertive" : "polite"}',
     );
-    expect(source).toMatch(
+    expect(rendererSource).toMatch(
       /mermaid\.render\(\s*`\$\{renderId\}-\$\{hashDiagramKey\(cacheKey\)\}`,\s*trimmedSource,\s*mermaidRenderHost/u,
     );
   });

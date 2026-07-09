@@ -47,6 +47,12 @@ import {
   switchMessageBranch,
   updateMessageInTree,
 } from "../../lib/chat/messageTree";
+import {
+  getAttachmentUrls,
+  getMessageAttachmentUrls,
+  getReferencedWorkspaceFileUrls,
+  getRemovedWorkspaceFileUrls,
+} from "../../lib/chat/attachmentReferences";
 
 let selectSessionRequestId = 0;
 const sessionMessageWriteQueues = new Map<string, Promise<void>>();
@@ -61,63 +67,6 @@ const normalizeStoredMessageTree = (
   }
 
   return normalizeSessionMessageTree(normalizeMessages(stored));
-};
-
-const getAttachmentUrls = (files: Attachment[] = []): string[] => {
-  const urls = new Set<string>();
-
-  for (const file of files) {
-    if (file.url) {
-      urls.add(file.url);
-    }
-    if (file.displayCache?.opfsUrl) {
-      urls.add(file.displayCache.opfsUrl);
-    }
-  }
-
-  return Array.from(urls);
-};
-
-const getOutputBlockAttachmentUrls = (
-  outputBlocks: MessageOutputBlock[] = [],
-): string[] => {
-  const urls = new Set<string>();
-
-  for (const block of outputBlocks) {
-    if (block.type !== "image") continue;
-    for (const url of getAttachmentUrls([block.image])) {
-      urls.add(url);
-    }
-  }
-
-  return Array.from(urls);
-};
-
-const getReferencedWorkspaceFileUrls = (workspaces: Workspace[]) => {
-  const urls = new Set<string>();
-
-  for (const workspace of workspaces) {
-    for (const url of getAttachmentUrls(workspace.files)) {
-      urls.add(url);
-    }
-  }
-
-  return urls;
-};
-
-const getMessageAttachmentUrls = (messages: Message[] = []) => {
-  const urls = new Set<string>();
-
-  for (const message of messages) {
-    for (const url of getAttachmentUrls(message.attachments)) {
-      urls.add(url);
-    }
-    for (const url of getOutputBlockAttachmentUrls(message.outputBlocks)) {
-      urls.add(url);
-    }
-  }
-
-  return urls;
 };
 
 const getReferencedChatMessageFileUrls = async ({
@@ -195,15 +144,6 @@ const getReferencedWorkspaceAndMessageFileUrls = async ({
 };
 
 const DEPRECATED_DEFAULT_SELECTED_MODEL = "GEMINI:gemini-flash-latest";
-
-const getRemovedWorkspaceFileUrls = (
-  previousFiles: Attachment[] = [],
-  nextFiles: Attachment[] = [],
-) => {
-  const nextUrls = new Set(getAttachmentUrls(nextFiles));
-
-  return getAttachmentUrls(previousFiles).filter((url) => !nextUrls.has(url));
-};
 
 const cleanupUnreferencedAttachmentUrls = async (
   urls: string[],

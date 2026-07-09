@@ -86,9 +86,9 @@ describe("dark theme token contract", () => {
   });
 
   it("uses direct mindmap SVG export and the shared SVG diagram viewer", () => {
-    const renderer = readProjectFile(
+    const renderer = `${readProjectFile(
       "src/components/content/MarkdownRendererClient.tsx",
-    );
+    )}\n${readProjectFile("src/components/content/markdown/DiagramBlock.tsx")}`;
     const diagramSvg = readProjectFile("src/lib/utils/diagramSvg.ts");
 
     expect(renderer).toContain("react-zoom-pan-pinch");
@@ -128,9 +128,9 @@ describe("dark theme token contract", () => {
 
   it("anchors Markdown, diagram, and HTML visual colors to the neon diagram palette", () => {
     const globals = readProjectFile("src/app/globals.css");
-    const renderer = readProjectFile(
+    const renderer = `${readProjectFile(
       "src/components/content/MarkdownRendererClient.tsx",
-    );
+    )}\n${readProjectFile("src/components/content/markdown/DiagramBlock.tsx")}`;
 
     for (const token of [
       "--html-visual-surface: #f6fbff;",

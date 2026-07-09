@@ -7,17 +7,10 @@ import React, {
   useCallback,
 } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import dynamic from "next/dynamic";
-import { MessageSquarePlus, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { v7 as uuidv7 } from "uuid";
 
-import Sidebar from "@/components/layout/Sidebar";
-import MessageItem from "@/components/chat/MessageItem";
-import MessageInput, { MessageInputRef } from "@/components/chat/MessageInput";
-import AssistantHeader from "@/components/assistant/AssistantHeader";
-import Tooltip from "@/components/ui/Tooltip";
-import FollowUpQuestions from "@/components/chat/FollowUpQuestions";
-import { Logo } from "@/components/ui/Icons";
+import ChatAppShell from "@/components/app/ChatAppShell";
+import type { MessageInputRef } from "@/components/chat/MessageInput";
 import type { ModelInfo } from "@/services/api/chatService";
 import { resolveSkillsForMessage } from "@/services/api/skillService";
 import {
@@ -47,8 +40,11 @@ import {
 } from "@/lib/chat/postGenerationGuards";
 import {
   useChatGenerationController,
+  useChatPanelNavigation,
   useChatShellState,
   useChatThemeEffects,
+  useWelcomeChatState,
+  useWorkspaceAttachmentHydration,
 } from "@/features/chat";
 import { resolveEffectiveChatContext } from "@/lib/chat/effectiveChatContext";
 import { resolveEffectiveChatRequestConfig } from "@/lib/chat/effectiveChatConfig";
@@ -56,7 +52,6 @@ import { buildDirectMemoryPromptContext } from "@/lib/memory/entities";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import {
   getActiveMessagePath,
-  getMessageBranchInfo,
   normalizeSessionMessageTree,
 } from "@/lib/chat/messageTree";
 import { normalizeActivePluginIds } from "@/lib/plugin/config";
@@ -77,41 +72,7 @@ import {
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
 } from "@/lib/app/startupEffects";
-import {
-  ChatPanel,
-  SettingsTabId,
-  parseChatPanelUrlState,
-  setChatPanelUrlState,
-} from "@/lib/chat/panelUrlState";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
-
-const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
-  ssr: false,
-});
-const PluginMarket = dynamic(() => import("@/components/plugin/PluginMarket"), {
-  ssr: false,
-});
-const SkillMarket = dynamic(() => import("@/components/skill/SkillMarket"), {
-  ssr: false,
-});
-const AssistantHub = dynamic(
-  () => import("@/components/assistant/AssistantHub"),
-  {
-    ssr: false,
-  },
-);
-const KnowledgeBase = dynamic(
-  () => import("@/components/knowledge/KnowledgeBase"),
-  {
-    ssr: false,
-  },
-);
-const SettingsPage = dynamic(
-  () => import("@/components/settings/SettingsPage"),
-  {
-    ssr: false,
-  },
-);
 
 const logChatAppError = logDevError;
 const EMPTY_MESSAGES: Message[] = [];
@@ -183,8 +144,6 @@ const ChatApp = () => {
   const locale = useLocale();
 
   // --- Local UI State ---
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isNonDesktopViewport, setIsNonDesktopViewport] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const {
     isGenerating,
@@ -193,6 +152,16 @@ const ChatApp = () => {
     finishActiveGeneration,
     stopActiveGeneration,
   } = useChatGenerationController();
+  const {
+    viewMode,
+    settingsTab,
+    isSidebarOpen,
+    isSidebarDrawerOpen,
+    mainInertProps,
+    setIsSidebarOpen,
+    navigateToPanel,
+    handleSettingsTabChange,
+  } = useChatPanelNavigation();
 
   const queueMemoryExtraction = useCallback(
     (
@@ -214,9 +183,6 @@ const ChatApp = () => {
     },
     [],
   );
-
-  const [viewMode, setViewMode] = useState<ChatPanel>("chat");
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId>("providers");
 
   const [serverConfigResolved, setServerConfigResolved] = useState(false);
   const [serverModelBootstrapReady, setServerModelBootstrapReady] =
@@ -255,166 +221,15 @@ const ChatApp = () => {
   const currentSessionWorkspaceId = currentSession?.workspaceId;
   useChatThemeEffects(theme, system.fontSize);
 
-  const updateBrowserSearch = useCallback(
-    (params: URLSearchParams, historyMode: "push" | "replace") => {
-      if (typeof window === "undefined") return;
-
-      const search = params.toString();
-      const nextUrl = `${window.location.pathname}${
-        search ? `?${search}` : ""
-      }${window.location.hash}`;
-      const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      if (nextUrl === currentUrl) return;
-
-      if (historyMode === "replace") {
-        window.history.replaceState(null, "", nextUrl);
-      } else {
-        window.history.pushState(null, "", nextUrl);
-      }
-    },
-    [],
-  );
-
-  const updatePanelUrl = useCallback(
-    (
-      panel: ChatPanel,
-      nextSettingsTab?: SettingsTabId | null,
-      historyMode: "push" | "replace" = "push",
-    ) => {
-      if (typeof window === "undefined") return;
-
-      const nextParams = setChatPanelUrlState(
-        new URLSearchParams(window.location.search),
-        { panel, settingsTab: nextSettingsTab },
-      );
-      updateBrowserSearch(nextParams, historyMode);
-    },
-    [updateBrowserSearch],
-  );
-
-  const navigateToPanel = useCallback(
-    (
-      panel: ChatPanel,
-      nextSettingsTab?: SettingsTabId | null,
-      historyMode: "push" | "replace" = "push",
-    ) => {
-      const resolvedSettingsTab =
-        panel === "settings" ? (nextSettingsTab ?? settingsTab) : null;
-
-      setViewMode(panel);
-      if (resolvedSettingsTab) {
-        setSettingsTab(resolvedSettingsTab);
-      }
-      updatePanelUrl(panel, resolvedSettingsTab, historyMode);
-      if (isNonDesktopViewport) {
-        setIsSidebarOpen(false);
-      }
-    },
-    [isNonDesktopViewport, settingsTab, updatePanelUrl],
-  );
-
-  const handleSettingsTabChange = useCallback(
-    (tab: SettingsTabId) => {
-      setSettingsTab(tab);
-      if (viewMode === "settings") {
-        updatePanelUrl("settings", tab);
-      }
-    },
-    [updatePanelUrl, viewMode],
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const syncPanelFromUrl = () => {
-      const parsed = parseChatPanelUrlState(
-        new URLSearchParams(window.location.search),
-      );
-      setViewMode(parsed.panel);
-      setSettingsTab(parsed.settingsTab ?? "providers");
-      if (parsed.needsReplace) {
-        updateBrowserSearch(parsed.normalizedSearchParams, "replace");
-      }
-    };
-
-    syncPanelFromUrl();
-    window.addEventListener("popstate", syncPanelFromUrl);
-    return () => window.removeEventListener("popstate", syncPanelFromUrl);
-  }, [updateBrowserSearch]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const updateViewport = () => {
-      setIsNonDesktopViewport(window.innerWidth < 1024);
-    };
-
-    updateViewport();
-    window.addEventListener("resize", updateViewport);
-    return () => window.removeEventListener("resize", updateViewport);
-  }, []);
-
-  const isSidebarDrawerOpen = isSidebarOpen && isNonDesktopViewport;
-
-  useEffect(() => {
-    if (!isSidebarDrawerOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isSidebarDrawerOpen]);
-
-  const mainInertProps = useMemo<
-    React.HTMLAttributes<HTMLElement> & { inert?: boolean }
-  >(
-    () => (isSidebarDrawerOpen ? { inert: true, "aria-hidden": true } : {}),
-    [isSidebarDrawerOpen],
-  );
-
   // Logic for Assistant List Animation
   const isChatEmpty =
     messages.length === 0 && !currentSession?.systemInstruction;
-  const [welcomeState, setWelcomeState] = useState<
-    "visible" | "exiting" | "hidden"
-  >("hidden");
-  const messageInputVariant = welcomeState === "visible" ? "hero" : "default";
-  const shouldShowChatTitleBar = welcomeState === "hidden";
-  const prevSessionIdRef = useRef(currentSessionId);
-  const inputSessionRef = useRef(currentSessionId);
-  const workspaceAttachmentHydratedSessionRef = useRef<string | null>(null);
+  const { welcomeState, messageInputVariant, shouldShowChatTitleBar } =
+    useWelcomeChatState({
+      currentSessionId,
+      isChatEmpty,
+    });
   const syncedSessionPluginPresetRef = useRef<string | null>(null);
-
-  // Sync welcomeState with chat emptiness, handling animations only within the same session
-  useEffect(() => {
-    // If session ID changed, snap to correct state immediately (no animation)
-    if (prevSessionIdRef.current !== currentSessionId) {
-      setWelcomeState(isChatEmpty ? "visible" : "hidden");
-      prevSessionIdRef.current = currentSessionId;
-      return;
-    }
-
-    // Same session transitions
-    if (!isChatEmpty && welcomeState === "visible") {
-      // Messages appeared -> animate out
-      setWelcomeState("exiting");
-    } else if (isChatEmpty && welcomeState !== "visible") {
-      // Chat cleared -> snap back (or animate in? standard is snap for clear)
-      setWelcomeState("visible");
-    }
-  }, [currentSessionId, isChatEmpty, welcomeState]);
-
-  // Handle Exiting Timer
-  useEffect(() => {
-    if (welcomeState === "exiting") {
-      const timer = setTimeout(() => {
-        setWelcomeState("hidden");
-      }, 300); // Duration matches CSS transition
-      return () => clearTimeout(timer);
-    }
-  }, [welcomeState]);
 
   // --- Effects ---
 
@@ -462,42 +277,13 @@ const ChatApp = () => {
     setActivePlugins,
   ]);
 
-  // Hydrate workspace preset files once when entering an empty workspace chat.
-  useEffect(() => {
-    const inputSessionChanged = inputSessionRef.current !== currentSessionId;
-    if (inputSessionChanged) {
-      inputSessionRef.current = currentSessionId;
-      workspaceAttachmentHydratedSessionRef.current = null;
-    }
-
-    const input = messageInputRef.current;
-    if (!input) return;
-
-    if (!currentSessionId || activeMessages.length > 0) {
-      workspaceAttachmentHydratedSessionRef.current = null;
-      if (inputSessionChanged) {
-        input.setAttachments([]);
-      }
-      return;
-    }
-
-    if (workspaceAttachmentHydratedSessionRef.current === currentSessionId) {
-      return;
-    }
-
-    const workspaceFiles = currentSessionWorkspaceId
-      ? workspaces.find(
-          (workspace) => workspace.id === currentSessionWorkspaceId,
-        )?.files || []
-      : [];
-    input.setAttachments(workspaceFiles);
-    workspaceAttachmentHydratedSessionRef.current = currentSessionId;
-  }, [
-    activeMessages.length,
+  useWorkspaceAttachmentHydration({
+    activeMessagesLength: activeMessages.length,
     currentSessionId,
     currentSessionWorkspaceId,
+    inputRef: messageInputRef,
     workspaces,
-  ]);
+  });
 
   // Fetch Metadata & Ensure Plugins on mount
   useEffect(() => {
@@ -673,13 +459,6 @@ const ChatApp = () => {
     selectedModel,
     setModel,
   ]);
-
-  // Check screen size on mount
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth > 768) {
-      setIsSidebarOpen(true);
-    }
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -1946,282 +1725,54 @@ const ChatApp = () => {
   // --- Render ---
 
   return (
-    <div className="relative flex h-dvh w-full overflow-hidden bg-background font-sans text-foreground transition-colors duration-300">
-      <a className="skip-link" href="#main-chat">
-        {t("skipToChat")}
-      </a>
-      <ImagePreview />
-
-      {/* Sidebar Drawer Overlay Mask */}
-      {isSidebarDrawerOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/10 transition-opacity duration-200 dark:bg-black/50 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar */}
-      <Sidebar
-        sessions={sessions}
-        currentSessionId={currentSessionId}
-        onSelectSession={(id) => {
-          if (isGenerating) {
-            void stopActiveGenerationWithFeedback();
-          }
-          selectSession(id);
-          navigateToPanel("chat");
-        }}
-        onNewChat={handleNewChat}
-        onDeleteSession={handleDeleteSession}
-        onRenameSession={updateSessionTitle}
-        onTogglePin={toggleSessionPin}
-        onDuplicate={handleDuplicateSession}
-        onSmartRename={handleSmartRename}
-        isOpen={isSidebarOpen}
-        toggleSidebar={() => setIsSidebarOpen((open) => !open)}
-        isModal={isSidebarDrawerOpen}
-        onRequestClose={() => setIsSidebarOpen(false)}
-        onOpenPluginMarket={() => navigateToPanel("plugins")}
-        isPluginMarketOpen={viewMode === "plugins"}
-        onOpenSkillMarket={() => navigateToPanel("skills")}
-        isSkillMarketOpen={viewMode === "skills"}
-        onOpenAssistantHub={() => navigateToPanel("assistants")}
-        isAssistantHubOpen={viewMode === "assistants"}
-        onOpenKnowledgeBase={() => navigateToPanel("knowledge")}
-        isKnowledgeBaseOpen={viewMode === "knowledge"}
-        onOpenSettings={() => navigateToPanel("settings", "system")}
-        isSettingsOpen={viewMode === "settings"}
-        onLogoClick={() => navigateToPanel("chat")}
-      />
-
-      {/* Main Chat Area */}
-      <main
-        {...mainInertProps}
-        id="main-chat"
-        tabIndex={-1}
-        className="flex-1 flex flex-col h-full relative z-0 min-w-0 overflow-hidden md:pl-16 lg:pl-0"
-      >
-        {actionError && (
-          <div
-            role="alert"
-            className="absolute top-16 left-4 right-4 z-30 pointer-events-none"
-          >
-            <div className="mx-auto max-w-3xl rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 shadow-sm dark:border-red-900/60 dark:bg-red-950/90 dark:text-red-100">
-              {actionError}
-            </div>
-          </div>
-        )}
-        {viewMode === "plugins" ? (
-          <PluginMarket onClose={() => navigateToPanel("chat")} />
-        ) : viewMode === "skills" ? (
-          <SkillMarket onClose={() => navigateToPanel("chat")} />
-        ) : viewMode === "assistants" ? (
-          <AssistantHub
-            onClose={() => navigateToPanel("chat")}
-            onSelect={handleAssistantSelect}
-          />
-        ) : viewMode === "knowledge" ? (
-          <KnowledgeBase onClose={() => navigateToPanel("chat")} />
-        ) : viewMode === "settings" ? (
-          <SettingsPage
-            activeTab={settingsTab}
-            onTabChange={handleSettingsTabChange}
-            onClose={() => navigateToPanel("chat")}
-          />
-        ) : (
-          <>
-            {/* Header */}
-            <header className="relative z-10 flex h-14 items-center justify-between px-4 md:px-6">
-              <div className="flex min-w-10 items-center">
-                <Tooltip
-                  content={isSidebarOpen ? t("closeSidebar") : t("openSidebar")}
-                  position="right"
-                  className="md:hidden"
-                >
-                  <button
-                    type="button"
-                    aria-label={
-                      isSidebarOpen
-                        ? t("closeSidebarAria")
-                        : t("openSidebarAria")
-                    }
-                    onClick={() => setIsSidebarOpen((open) => !open)}
-                    className="p-2 -ml-2 rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  >
-                    {isSidebarOpen ? (
-                      <PanelLeftClose size={16} aria-hidden="true" />
-                    ) : (
-                      <PanelLeftOpen size={16} aria-hidden="true" />
-                    )}
-                  </button>
-                </Tooltip>
-              </div>
-
-              {shouldShowChatTitleBar && (
-                <div className="absolute left-1/2 top-1/2 max-w-[50%] -translate-x-1/2 -translate-y-1/2 truncate text-center font-bold text-foreground">
-                  {currentSession?.title || t("newChat")}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end min-w-10">
-                {!isSidebarOpen && (
-                  <Tooltip content={t("newChat")} position="left">
-                    <button
-                      type="button"
-                      aria-label={t("newChatAria")}
-                      onClick={handleNewChat}
-                      className="p-2 -mr-2 rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    >
-                      <MessageSquarePlus size={16} aria-hidden="true" />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            </header>
-
-            {/* Content */}
-            <div
-              ref={messagesScrollRef}
-              onScroll={updateIsNearMessageBottom}
-              className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative motion-safe:scroll-smooth scrollbar-overlay"
-            >
-              <div className="w-full max-w-3xl mx-auto min-h-full flex flex-col">
-                {/* Assistant / System Instruction Header */}
-                {currentSession &&
-                  (messages.length > 0 ||
-                    !!currentSession.systemInstruction) && (
-                    <AssistantHeader
-                      instruction={currentSession.systemInstruction || ""}
-                      onUpdate={(newInst) =>
-                        updateSessionInstruction(currentSession.id, newInst)
-                      }
-                      onDelete={
-                        currentSession.systemInstruction
-                          ? () =>
-                              updateSessionInstruction(currentSession.id, "")
-                          : undefined
-                      }
-                    />
-                  )}
-
-                {/* Empty State */}
-                {(welcomeState === "visible" || welcomeState === "exiting") && (
-                  <div
-                    className={`emptyChatSurface flex-1 motion-safe:transition-[opacity,transform] motion-safe:duration-300 motion-safe:transform origin-center ${
-                      welcomeState === "exiting"
-                        ? "opacity-0 scale-95 pointer-events-none"
-                        : "opacity-100 scale-100"
-                    }`}
-                  />
-                )}
-
-                {/* Message Stream */}
-                {welcomeState === "hidden" && (
-                  <div className="space-y-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 fill-mode-forwards">
-                    {messages.map((msg, idx) => {
-                      const isLastUserMessage =
-                        msg.role === "user" &&
-                        !messages.slice(idx + 1).some((m) => m.role === "user");
-                      const isLastMessage = idx === messages.length - 1;
-
-                      return (
-                        <React.Fragment key={msg.id}>
-                          <div className="[content-visibility:auto] [contain-intrinsic-size:0_240px]">
-                            <MessageItem
-                              message={msg}
-                              branchInfo={getMessageBranchInfo(
-                                activeMessageTree,
-                                msg.id,
-                              )}
-                              onEdit={handleEditMessage}
-                              onDelete={handleDeleteMessage}
-                              canEditUserMessage={
-                                msg.role === "user" && !isLastUserMessage
-                              }
-                              onSubmitUserEdit={handleSubmitUserMessageEdit}
-                              onRetract={
-                                isLastUserMessage
-                                  ? () => handleRetractMessage(msg)
-                                  : undefined
-                              }
-                              isLast={isLastMessage}
-                              isTyping={isGenerating && isLastMessage}
-                              onRegenerate={() => handleRegenerate(msg.id)}
-                              onVersionChange={handleVersionChange}
-                            />
-                          </div>
-                          {msg.role === "model" &&
-                            isLastMessage &&
-                            !isGenerating &&
-                            msg.suggestedQuestions &&
-                            msg.suggestedQuestions.length > 0 && (
-                              <FollowUpQuestions
-                                questions={msg.suggestedQuestions}
-                                onClick={handleSuggestionClick}
-                              />
-                            )}
-                        </React.Fragment>
-                      );
-                    })}
-
-                    <div ref={messagesEndRef} />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="w-full h-4 md:h-6"></div>
-
-            {/* Input Area */}
-            <div
-              className={`absolute left-0 right-0 z-20 px-4 pointer-events-none md:px-8 motion-safe:transition-[bottom,padding-bottom] motion-safe:duration-300 ${
-                welcomeState === "visible"
-                  ? "bottom-[40vh] pb-0 md:bottom-[32vh] md:pb-0"
-                  : "bottom-0 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-6"
-              }`}
-            >
-              <div
-                className={`flex w-full mx-auto pointer-events-auto flex-col items-center motion-safe:transition-[max-width] motion-safe:duration-300 ${
-                  welcomeState === "visible" ? "max-w-2xl" : "max-w-3xl"
-                }`}
-              >
-                {(welcomeState === "visible" || welcomeState === "exiting") && (
-                  <div
-                    className={`mb-3 md:mb-5 flex items-center gap-3 text-center motion-safe:transition-[opacity,transform] motion-safe:duration-300 ${
-                      welcomeState === "exiting"
-                        ? "pointer-events-none opacity-0 scale-95"
-                        : "opacity-100 scale-100"
-                    }`}
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center md:h-11 md:w-11">
-                      <Logo className="h-10 w-10 md:h-11 md:w-11" />
-                    </div>
-                    <h1 className="neoChatWordmark bg-clip-text text-[1.75rem] font-bold leading-none tracking-[0.01em] text-transparent bg-[linear-gradient(to_right,#00DEB9,#03B2DE,#1D88E1)]">
-                      {t("productName")}
-                    </h1>
-                  </div>
-                )}
-                <MessageInput
-                  ref={messageInputRef}
-                  variant={messageInputVariant}
-                  onSend={handleSendMessage}
-                  onStop={isGenerating ? handleStopGeneration : undefined}
-                  disabled={isGenerating || availableModels.length === 0}
-                  availableModels={availableModels}
-                  selectedModel={selectedModel}
-                  onSelectModel={setModel}
-                  isSearchEnabled={chatConfig.useSearch}
-                  onToggleSearch={() =>
-                    setChatConfig({ useSearch: !chatConfig.useSearch })
-                  }
-                />
-              </div>
-            </div>
-          </>
-        )}
-      </main>
-    </div>
+    <ChatAppShell
+      actionError={actionError}
+      sessions={sessions}
+      currentSessionId={currentSessionId}
+      currentSession={currentSession}
+      messages={messages}
+      activeMessageTree={activeMessageTree}
+      isGenerating={isGenerating}
+      availableModels={availableModels}
+      selectedModel={selectedModel}
+      isSearchEnabled={chatConfig.useSearch}
+      viewMode={viewMode}
+      settingsTab={settingsTab}
+      isSidebarOpen={isSidebarOpen}
+      isSidebarDrawerOpen={isSidebarDrawerOpen}
+      mainInertProps={mainInertProps}
+      shouldShowChatTitleBar={shouldShowChatTitleBar}
+      welcomeState={welcomeState}
+      messageInputVariant={messageInputVariant}
+      messagesScrollRef={messagesScrollRef}
+      messagesEndRef={messagesEndRef}
+      messageInputRef={messageInputRef}
+      setIsSidebarOpen={setIsSidebarOpen}
+      navigateToPanel={navigateToPanel}
+      handleSettingsTabChange={handleSettingsTabChange}
+      updateIsNearMessageBottom={updateIsNearMessageBottom}
+      stopActiveGenerationWithFeedback={stopActiveGenerationWithFeedback}
+      selectSession={selectSession}
+      handleNewChat={handleNewChat}
+      handleDeleteSession={handleDeleteSession}
+      updateSessionTitle={updateSessionTitle}
+      toggleSessionPin={toggleSessionPin}
+      handleDuplicateSession={handleDuplicateSession}
+      handleSmartRename={handleSmartRename}
+      handleAssistantSelect={handleAssistantSelect}
+      updateSessionInstruction={updateSessionInstruction}
+      handleEditMessage={handleEditMessage}
+      handleDeleteMessage={handleDeleteMessage}
+      handleSubmitUserMessageEdit={handleSubmitUserMessageEdit}
+      handleRetractMessage={handleRetractMessage}
+      handleRegenerate={handleRegenerate}
+      handleVersionChange={handleVersionChange}
+      handleSendMessage={handleSendMessage}
+      handleSuggestionClick={handleSuggestionClick}
+      handleStopGeneration={handleStopGeneration}
+      setModel={setModel}
+      onToggleSearch={() => setChatConfig({ useSearch: !chatConfig.useSearch })}
+    />
   );
 };
 

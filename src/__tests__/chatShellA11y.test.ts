@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 
 describe("chat shell accessibility", () => {
   it("provides a skip link to the main chat region", () => {
-    const chatApp = readFileSync(
-      resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
+    const chatShell = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
       "utf8",
     );
     const globals = readFileSync(
@@ -13,14 +13,14 @@ describe("chat shell accessibility", () => {
       "utf8",
     );
 
-    expect(chatApp).toContain('href="#main-chat"');
-    expect(chatApp).toContain('id="main-chat"');
+    expect(chatShell).toContain('href="#main-chat"');
+    expect(chatShell).toContain('id="main-chat"');
     expect(globals).toContain(".skip-link");
   });
 
   it("accounts for mobile safe areas in fixed app chrome", () => {
-    const chatApp = readFileSync(
-      resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
+    const chatShell = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
       "utf8",
     );
     const sidebar = readFileSync(
@@ -28,14 +28,21 @@ describe("chat shell accessibility", () => {
       "utf8",
     );
 
-    expect(chatApp).toContain("env(safe-area-inset-bottom)");
+    expect(chatShell).toContain("env(safe-area-inset-bottom)");
     expect(sidebar).toContain("env(safe-area-inset-top)");
     expect(sidebar).toContain("env(safe-area-inset-bottom)");
   });
 
   it("isolates the main chat region while the non-desktop sidebar drawer is open", () => {
-    const chatApp = readFileSync(
-      resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
+    const chatShell = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
+      "utf8",
+    );
+    const panelNavigation = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/features/chat/hooks/useChatPanelNavigation.ts",
+      ),
       "utf8",
     );
     const sidebar = readFileSync(
@@ -43,16 +50,16 @@ describe("chat shell accessibility", () => {
       "utf8",
     );
 
-    expect(chatApp).toContain("isNonDesktopViewport");
-    expect(chatApp).toContain("window.innerWidth < 1024");
-    expect(chatApp).toContain(
+    expect(panelNavigation).toContain("isNonDesktopViewport");
+    expect(panelNavigation).toContain("window.innerWidth < 1024");
+    expect(panelNavigation).toContain(
       "const isSidebarDrawerOpen = isSidebarOpen && isNonDesktopViewport",
     );
-    expect(chatApp).toContain("md:pl-16 lg:pl-0");
-    expect(chatApp).not.toContain("backdrop-blur-[1px]");
-    expect(chatApp).toContain("mainInertProps");
-    expect(chatApp).toContain("inert");
-    expect(chatApp).toContain("aria-hidden");
+    expect(chatShell).toContain("md:pl-16 lg:pl-0");
+    expect(chatShell).not.toContain("backdrop-blur-[1px]");
+    expect(panelNavigation).toContain("mainInertProps");
+    expect(panelNavigation).toContain("inert");
+    expect(panelNavigation).toContain("aria-hidden");
     expect(sidebar).toContain('role={isModal ? "dialog" : undefined}');
     expect(sidebar).toContain("aria-modal={isModal || undefined}");
     expect(sidebar).toContain("handleSidebarKeyDown");
@@ -60,15 +67,15 @@ describe("chat shell accessibility", () => {
   });
 
   it("keeps mobile header icon buttons keyboard-focus visible", () => {
-    const chatApp = readFileSync(
-      resolve(process.cwd(), "src/components/app/ChatApp.tsx"),
+    const chatShell = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
       "utf8",
     );
 
-    expect(chatApp).toContain(
+    expect(chatShell).toContain(
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     );
-    expect(chatApp).toContain(
+    expect(chatShell).toContain(
       '<MessageSquarePlus size={16} aria-hidden="true" />',
     );
   });
@@ -139,16 +146,12 @@ describe("chat shell accessibility", () => {
   });
 
   it("does not force mobile keyboards open when editing an old message", () => {
-    const messageItem = readFileSync(
-      resolve(process.cwd(), "src/components/chat/MessageItem.tsx"),
+    const userMessageEditor = readFileSync(
+      resolve(process.cwd(), "src/components/chat/UserMessageEditor.tsx"),
       "utf8",
     );
-    const editorSection = messageItem.slice(
-      messageItem.indexOf("const UserMessageEditor"),
-      messageItem.indexOf("const MessageItem"),
-    );
 
-    expect(editorSection).not.toContain("autoFocus");
-    expect(editorSection).toContain("preventScroll");
+    expect(userMessageEditor).not.toContain("autoFocus");
+    expect(userMessageEditor).toContain("preventScroll");
   });
 });
