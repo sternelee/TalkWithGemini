@@ -73,6 +73,12 @@ plugin requests, and BYOK envelopes. Local memory tool results may also be
 present in model request context. Deployments should treat server logs,
 observability tools, and hosting provider logs as sensitive.
 
+Remote MCP calls send model-generated tool arguments, including any context the
+tool arguments contain, to the configured MCP server. MCP tool results return
+through the plugin execution route and may be included in a subsequent model
+request. Treat every MCP server as a third-party service with its own logging,
+retention, and external side-effect behavior.
+
 Neo Chat validates request payloads, applies URL safety gates, limits response
 sizes, and uses hosted-mode restrictions, but upstream providers still receive
 the content required to complete user-requested actions.
@@ -86,6 +92,8 @@ Depending on configuration, user content may be sent to:
 - RAG/vector services and document parsers such as Mineru or LlamaParse.
 - Voice providers such as ElevenLabs or Mimo.
 - Plugin APIs enabled by the user.
+- Remote MCP servers installed from the Registry or configured through a custom
+  HTTPS endpoint.
 
 Text-only skills themselves are local prompt instructions, but applied skill
 content can be sent to the selected model provider as part of the prompt.

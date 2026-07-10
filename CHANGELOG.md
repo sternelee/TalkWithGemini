@@ -7,6 +7,31 @@ group changes under a level-2 heading that matches the release tag, such as
 `## v2.0.0`; the release workflow uses that section as the GitHub release notes
 when the matching tag is pushed.
 
+## v2.2.0
+
+- **New capabilities:** Added native Anthropic Messages API support through the
+  official SDK, including provider-specific streaming and tool-call handling.
+- **MCP integration:** Added remote `streamable-http` MCP server discovery from
+  the official MCP Registry, custom server installation, header authentication,
+  tool registration, server-side execution, caching, pagination, and hosted URL
+  safety controls. Local stdio, npm, Docker, and OAuth transports remain out of
+  scope for this version.
+- **Reliability and security:** Strengthened API route access policy, request
+  body and response limits, terminal stream validation, context budgeting and
+  compression, outbound URL/DNS checks, shared plugin registration, and Worker
+  gzip-size and deployment dry-run validation.
+- **Architecture and maintainability:** Split the chat shell, composer,
+  message editor, Markdown diagram rendering, and chat-service orchestration
+  into smaller components, hooks, and domain modules while preserving the
+  existing user-facing workflows.
+- **Fixes and experience:** Fixed known issues across branch-preserving chat
+  history, tool-call completion, provider response handling, image/export
+  fallback, memory/RAG/search/voice workflows, settings, loading/error states,
+  and accessibility behavior.
+- **Engineering and documentation:** Aligned local, CI, Docker, and Worker
+  guidance around Node 22 and pnpm 10.30.3, added artifact-hygiene checks, and
+  synchronized Anthropic, MCP, privacy, security, and deployment documentation.
+
 ## v2.1.0
 
 - Rebuilt System Settings with clearer grouped controls, an About panel,

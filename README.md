@@ -20,9 +20,23 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6" />
 </p>
 
-Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, text-only Skills, OpenAPI-style plugin tools, web search, knowledge-base RAG, local memory, voice, generated media, rich message rendering, citations, and editable artifacts into one clean workspace.
+Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, text-only Skills, OpenAPI-style plugin tools, remote streamable HTTP MCP servers, web search, knowledge-base RAG, local memory, voice, generated media, rich message rendering, citations, and editable artifacts into one clean workspace.
 
-It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, skills, plugin configuration, memories, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, plugin execution, and deployment health.
+It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, skills, plugin configuration, memories, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, plugin and MCP execution, and deployment health.
+
+## v2.2.0 Highlights
+
+- Added native Anthropic Messages API support through the official SDK.
+- Added remote streamable HTTP MCP server discovery and installation from the
+  official MCP Registry, with plugin-market management, authentication, and
+  server-side tool execution. This release intentionally supports remote MCP
+  servers only.
+- Strengthened provider requests, API route policy, context budgeting,
+  outbound URL safety, plugin registration, and Worker deployment validation.
+- Reconstructed the chat shell, composer, message rendering, and chat service
+  internals into smaller modules while preserving existing workflows.
+- Fixed known issues across chat history, tool calls, provider streams, media
+  and exports, memory/RAG/search/voice flows, settings, and accessibility.
 
 ## v2.1.0 Highlights
 

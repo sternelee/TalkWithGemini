@@ -188,6 +188,13 @@ a plugin is enabled for a chat, runtime tool calls execute automatically without
 a per-call confirmation modal. See [Reliability and Safety Model](reliability-and-safety.md)
 for tool execution boundaries, context budgeting, and recovery behavior.
 
+Remote MCP servers use the same server-registered plugin path and outbound URL
+policy. Neo Chat v1 supports only remote `streamable-http` MCP over HTTPS;
+hosted deployments block localhost and private-network MCP targets unless
+`ALLOW_LOCAL_NETWORK_PROXY=true` is explicitly enabled. Hosted or multi-instance
+deployments should configure `PLUGIN_REGISTRY_STORE=upstash` so installed MCP
+tools resolve consistently across instances.
+
 ## Deployment Health
 
 Settings includes a deployment health panel backed by `/api/health`. The route

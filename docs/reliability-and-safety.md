@@ -54,6 +54,14 @@ policy, response limits, and the configured tool-call round ceiling. Hosted
 deployments still require server-registered plugins; client-submitted legacy
 plugin definitions remain blocked.
 
+MCP-backed functions add a remote side-effect boundary: the MCP server owns the
+tool implementation and may perform external actions. The supported MCP
+transport is remote `streamable-http` over HTTPS. Installation and execution
+use the same server-side plugin registration, outbound URL policy, response
+limits, and hosted local-network restrictions as other network-capable
+plugins. MCP results are also bounded before they enter tool details or later
+model context.
+
 Built-in plugin IDs are reserved. Custom or manifest-installed plugins cannot
 override them, and built-ins take precedence if a stale mutable registry entry
 uses the same ID. If multiple active plugins expose the same function name, tool
