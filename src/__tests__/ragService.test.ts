@@ -69,6 +69,28 @@ describe("rag service batching", () => {
     expect(JSON.stringify(firstBody)).not.toContain("secret");
   });
 
+  it("passes AbortSignal to RAG query requests", async () => {
+    const controller = new AbortController();
+    const { queryRAG } = await import("../services/api/ragService");
+    mocks.getState.mockReturnValue({
+      rag: {
+        enabled: true,
+        useDefaultVectorStore: true,
+        serverVectorStoreAvailable: true,
+      },
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ sources: [] }));
+
+    await queryRAG("hello", "collection", controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/rag/query",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("does not call RAG APIs when local credentials have no URL", async () => {
     const { upsertToRAG } = await import("../services/api/ragService");
     mocks.getState.mockReturnValue({

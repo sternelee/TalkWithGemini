@@ -15,6 +15,7 @@ export const POST = withStreamApiHandler(
       newMessage: parsed.prompt,
       attachments: [],
       config: { temperature: 0.7 },
+      signal: request.signal,
     });
   },
 );

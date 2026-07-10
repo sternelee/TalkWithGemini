@@ -57,6 +57,7 @@ export interface ChatHandlerOptions {
   enableImageGeneration?: boolean;
   enableGoogleSearch?: boolean;
   enableOpenAIWebSearch?: boolean;
+  signal?: AbortSignal;
 }
 
 function getProviderBaseUrlHost(provider: ProviderConfig): string | undefined {
@@ -107,6 +108,13 @@ function getChatStreamErrorDetails(error: unknown) {
     code: getErrorStringField(record, "code"),
     type: getErrorStringField(record, "type"),
   };
+}
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }
 
 function logChatStreamError(error: unknown, options: ChatHandlerOptions): void {
@@ -174,6 +182,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
     enableImageGeneration,
     enableGoogleSearch,
     enableOpenAIWebSearch,
+    signal,
   } = options;
 
   const stream = createStreamHandler(async (controller) => {
@@ -181,7 +190,7 @@ export async function handleChatStream(options: ChatHandlerOptions) {
       const send = createSSESender(controller);
 
       if (provider.type === "OpenAI") {
-        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        await ProviderFactory.assertProviderOutboundAllowed(provider, signal);
         const client = ProviderFactory.createOpenAIClient(provider);
         const input = prepareOpenAIResponsesInput(history);
 
@@ -205,10 +214,11 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           reasoningMode: config?.reasoningMode,
           enableImageGeneration,
           enableWebSearch: enableOpenAIWebSearch,
+          signal,
           onChunk: send,
         });
       } else if (provider.type === OPENAI_COMPATIBLE_PROVIDER_TYPE) {
-        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        await ProviderFactory.assertProviderOutboundAllowed(provider, signal);
         const messages = prepareOpenAIHistory(history);
 
         // 添加新消息
@@ -233,10 +243,11 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           tools,
           useReasoning: config?.useReasoning,
           reasoningMode: config?.reasoningMode,
+          signal,
           onChunk: send,
         });
       } else if (isAnthropicProviderType(provider.type)) {
-        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        await ProviderFactory.assertProviderOutboundAllowed(provider, signal);
         const client = ProviderFactory.createAnthropicClient(provider);
         const messages = prepareAnthropicMessages(history);
         const content: any[] = [];
@@ -258,11 +269,12 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           tools: convertToolsToAnthropic(tools),
           useReasoning: config?.useReasoning,
           reasoningMode: config?.reasoningMode,
+          signal,
           onChunk: send,
         });
       } else if (isGoogleProviderType(provider.type)) {
         // Google
-        await ProviderFactory.assertProviderOutboundAllowed(provider);
+        await ProviderFactory.assertProviderOutboundAllowed(provider, signal);
         const client = ProviderFactory.createGoogleClient(provider);
         const contents = prepareGeminiHistory(history);
 
@@ -333,14 +345,19 @@ export async function handleChatStream(options: ChatHandlerOptions) {
           imageCount: config?.imageCount,
           useReasoning: config?.useReasoning,
           reasoningMode: config?.reasoningMode,
+          signal,
           onChunk: send,
         });
       } else {
         throw new Error(`Unsupported provider type: ${provider.type}`);
       }
 
+      signal?.throwIfAborted();
       send({ type: "done" });
     } catch (error) {
+      if (isAbortError(error, signal)) {
+        return;
+      }
       logChatStreamError(error, options);
       throw error;
     }
@@ -356,26 +373,33 @@ export async function handleSimpleGeneration(
   provider: ProviderConfig,
   modelName: string,
   prompt: string,
+  signal?: AbortSignal,
 ): Promise<string> {
-  await ProviderFactory.assertProviderOutboundAllowed(provider);
+  await ProviderFactory.assertProviderOutboundAllowed(provider, signal);
 
   if (provider.type === "OpenAI") {
     const client = ProviderFactory.createOpenAIClient(provider);
-    const response = await client.responses.create({
+    const request: any = {
       model: modelName,
       input: prompt,
       temperature: 0.7,
-    });
+    };
+    const response = signal
+      ? await client.responses.create(request, { signal })
+      : await client.responses.create(request);
     return getResponsesOutputText(response);
   }
 
   if (isOpenAIProviderType(provider.type)) {
     const client = ProviderFactory.createOpenAIClient(provider);
-    const response = await client.chat.completions.create({
+    const request: any = {
       model: modelName,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-    });
+    };
+    const response = signal
+      ? await client.chat.completions.create(request, { signal })
+      : await client.chat.completions.create(request);
     return response.choices[0]?.message?.content || "";
   }
 
@@ -385,15 +409,18 @@ export async function handleSimpleGeneration(
       client,
       model: modelName,
       prompt,
+      signal,
     });
   }
 
   if (isGoogleProviderType(provider.type)) {
     const client = ProviderFactory.createGoogleClient(provider);
-    const result = await client.models.generateContent({
+    const request: any = {
       model: modelName,
       contents: { parts: [{ text: prompt }] },
-    });
+    };
+    if (signal) request.config = { abortSignal: signal };
+    const result = await client.models.generateContent(request);
     return result.text || "";
   }
 

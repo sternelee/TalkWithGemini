@@ -52,11 +52,8 @@ jobs:
       - name: Build Cloudflare Worker
         run: pnpm build:worker
 
-      - name: Check Worker Size
+      - name: Check Worker Dry-Run Size
         run: pnpm worker:size
-
-      - name: Cloudflare Worker Dry Run
-        run: pnpm worker:dry-run
 
       - name: Audit dependencies
         run: pnpm audit --prod --audit-level moderate

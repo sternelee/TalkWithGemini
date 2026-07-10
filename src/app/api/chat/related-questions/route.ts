@@ -22,6 +22,7 @@ export const POST = withApiHandler(async (request: NextRequest, body: any) => {
     await resolveProviderRuntimeConfig(parsed.provider),
     parsed.modelName,
     parsed.history,
+    request.signal,
   );
 
   return Response.json({ questions });

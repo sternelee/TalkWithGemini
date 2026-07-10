@@ -49,6 +49,7 @@ import {
 import { resolveEffectiveChatContext } from "@/lib/chat/effectiveChatContext";
 import { resolveEffectiveChatRequestConfig } from "@/lib/chat/effectiveChatConfig";
 import { buildDirectMemoryPromptContext } from "@/lib/memory/entities";
+import { getSuppressedMemoryIds } from "@/lib/memory/compression";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
 import {
   getActiveMessagePath,
@@ -73,6 +74,7 @@ import {
   shouldRunSettingsStartupEffects,
 } from "@/lib/app/startupEffects";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
+import { getSearchCompatibility } from "@/lib/settings/searchRag";
 
 const logChatAppError = logDevError;
 const EMPTY_MESSAGES: Message[] = [];
@@ -88,6 +90,8 @@ const ChatApp = () => {
       currentSessionId,
       activeMessages,
       activeMessageTree,
+      isActiveSessionLoading,
+      activeSessionLoadError,
       selectedModel,
       chatConfig,
       createSession,
@@ -156,6 +160,7 @@ const ChatApp = () => {
     viewMode,
     settingsTab,
     isSidebarOpen,
+    isNonDesktopViewport,
     isSidebarDrawerOpen,
     mainInertProps,
     setIsSidebarOpen,
@@ -163,11 +168,26 @@ const ChatApp = () => {
     handleSettingsTabChange,
   } = useChatPanelNavigation();
 
+  const backgroundPostProcessControllerRef = useRef<AbortController | null>(
+    null,
+  );
+  const abortBackgroundPostProcessing = useCallback(() => {
+    backgroundPostProcessControllerRef.current?.abort();
+    backgroundPostProcessControllerRef.current = null;
+  }, []);
+  const beginBackgroundPostProcessing = useCallback(() => {
+    abortBackgroundPostProcessing();
+    const controller = new AbortController();
+    backgroundPostProcessControllerRef.current = controller;
+    return controller.signal;
+  }, [abortBackgroundPostProcessing]);
+
   const queueMemoryExtraction = useCallback(
     (
       sessionId: string,
       userMessage: Pick<Message, "id" | "content">,
       assistantMessage: Pick<Message, "id" | "content">,
+      signal?: AbortSignal,
     ) => {
       loadChatService()
         .then(({ performBackgroundMemoryExtraction }) =>
@@ -175,9 +195,16 @@ const ChatApp = () => {
             sessionId,
             userMessage,
             assistantMessage,
+            signal,
           }),
         )
         .catch((err) => {
+          if (
+            signal?.aborted ||
+            (err instanceof Error && err.name === "AbortError")
+          ) {
+            return;
+          }
           logChatAppError("Memory extraction failed:", err);
         });
     },
@@ -219,6 +246,23 @@ const ChatApp = () => {
   const messages = activeMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
   const currentSessionConfig = currentSession?.config;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
+  const selectedProvider = useMemo(() => {
+    const { providerId } = parseModelString(selectedModel);
+    return providerId
+      ? providers.find((provider) => provider.id === providerId)
+      : providers.find((provider) => provider.enabled);
+  }, [providers, selectedModel]);
+  const currentSearchCompatibility = useMemo(() => {
+    const searchConfig =
+      search.provider === "google"
+        ? undefined
+        : search.configs[search.provider];
+    return getSearchCompatibility({
+      searchProvider: search.provider,
+      searchConfig,
+      modelProviderType: selectedProvider?.type,
+    });
+  }, [search.configs, search.provider, selectedProvider?.type]);
   useChatThemeEffects(theme, system.fontSize);
 
   // Logic for Assistant List Animation
@@ -286,6 +330,12 @@ const ChatApp = () => {
   });
 
   // Fetch Metadata & Ensure Plugins on mount
+  useEffect(() => {
+    if (chatConfig.useSearch && !currentSearchCompatibility.enabled) {
+      setChatConfig({ useSearch: false });
+    }
+  }, [chatConfig.useSearch, currentSearchCompatibility.enabled, setChatConfig]);
+
   useEffect(() => {
     if (!shouldRunSettingsStartupEffects(_hasHydrated)) return;
     fetchModelMetadata();
@@ -462,13 +512,19 @@ const ChatApp = () => {
 
   useEffect(() => {
     return () => {
+      abortBackgroundPostProcessing();
       assistantSelectRequestRef.current += 1;
       if (actionErrorTimerRef.current) {
         clearTimeout(actionErrorTimerRef.current);
         actionErrorTimerRef.current = null;
       }
     };
-  }, []);
+  }, [abortBackgroundPostProcessing]);
+
+  useEffect(
+    () => () => abortBackgroundPostProcessing(),
+    [abortBackgroundPostProcessing, currentSessionId],
+  );
 
   // Ensure a session exists on mount
   useEffect(() => {
@@ -533,6 +589,12 @@ const ChatApp = () => {
     }, 5000);
   };
 
+  useEffect(() => {
+    if (activeSessionLoadError === "session_load_failed") {
+      showActionError(t("errLoadChat"));
+    }
+  }, [activeSessionLoadError, t]);
+
   const syncActiveSessionWithNotice = async (
     sessionId: string,
     logMessage: string,
@@ -546,6 +608,7 @@ const ChatApp = () => {
   };
 
   const stopActiveGenerationWithFeedback = async () => {
+    abortBackgroundPostProcessing();
     try {
       await stopActiveGeneration();
     } catch (error) {
@@ -596,6 +659,7 @@ const ChatApp = () => {
     session: typeof currentSession | null | undefined,
     text: string,
     attachments: Attachment[],
+    signal: AbortSignal,
     existingMemoryContext?: Message["memoryContext"],
   ) => {
     const effectiveContext = getEffectiveContextForSession(session);
@@ -610,6 +674,7 @@ const ChatApp = () => {
       knowledgeCollections,
       workspaceKnowledgeCollectionIds:
         effectiveContext.workspaceKnowledgeCollectionIds,
+      signal,
     });
 
     const memoryState = useMemoryStore.getState();
@@ -624,8 +689,10 @@ const ChatApp = () => {
         ? buildDirectMemoryPromptContext({
             memories: memoryState.memories,
             query: text,
-            alreadyInjectedMemoryIds:
-              session?.memoryContext?.injectedMemoryIds || [],
+            alreadyInjectedMemoryIds: getSuppressedMemoryIds(
+              session,
+              useChatStore.getState().activeMessages,
+            ),
           })
         : { text: "", injectedMemoryIds: [] };
     const memoryContext =
@@ -676,9 +743,16 @@ const ChatApp = () => {
   };
 
   const handleSendMessage = async (text: string, attachments: Attachment[]) => {
-    if ((!text.trim() && attachments.length === 0) || isGenerating) return;
+    const chatState = useChatStore.getState();
+    if (
+      (!text.trim() && attachments.length === 0) ||
+      isGenerating ||
+      chatState.isActiveSessionLoading
+    ) {
+      return;
+    }
 
-    let targetSessionId = currentSessionId;
+    let targetSessionId = chatState.currentSessionId;
 
     if (!targetSessionId) {
       targetSessionId = createSession();
@@ -705,6 +779,7 @@ const ChatApp = () => {
       shouldAutoRename = true;
     }
 
+    abortBackgroundPostProcessing();
     const generation = beginActiveGeneration();
 
     const modelDisplayName = getModelDisplayName(
@@ -726,6 +801,7 @@ const ChatApp = () => {
         sessionForProcessing,
         text,
         attachments,
+        generation.controller.signal,
       );
 
       const {
@@ -791,6 +867,7 @@ const ChatApp = () => {
         selectedModel,
         modelMetadata,
         customModelMetadata,
+        searchCompatibility: effectiveContext.searchCompatibility,
       });
       const skillResolution = await resolveSkillsForMessage({
         message: text,
@@ -901,6 +978,7 @@ const ChatApp = () => {
       // --- Post-Generation ---
       // Force sync active messages to storage at end of generation
       await syncActiveSession(targetSessionId);
+      if (!isGenerationRunActive(generation)) return;
 
       const postGenerationState = useChatStore.getState();
       const postGenerationSession = postGenerationState.sessions.find(
@@ -923,21 +1001,28 @@ const ChatApp = () => {
             content: completedBotMessage.content,
           }
         : null;
+      const postProcessSignal = beginBackgroundPostProcessing();
 
       if (completedBotMessage) {
-        queueMemoryExtraction(targetSessionId, userMessage, {
-          id: completedBotMessage.id,
-          content: completedBotMessage.content,
-        });
+        queueMemoryExtraction(
+          targetSessionId,
+          userMessage,
+          {
+            id: completedBotMessage.id,
+            content: completedBotMessage.content,
+          },
+          postProcessSignal,
+        );
       }
 
       // 1. Follow-up Questions
       if (system.enableRelatedQuestions && updatedHistory.length > 0) {
         loadChatService()
           .then(({ generateRelatedQuestions }) =>
-            generateRelatedQuestions(updatedHistory),
+            generateRelatedQuestions(updatedHistory, postProcessSignal),
           )
           .then((questions) => {
+            if (postProcessSignal.aborted) return;
             const state = useChatStore.getState();
             const currentMessage =
               state.currentSessionId === targetSessionId
@@ -961,6 +1046,7 @@ const ChatApp = () => {
             }
           })
           .catch((err) => {
+            if (postProcessSignal.aborted) return;
             logChatAppError("Related question generation failed:", err);
           });
       }
@@ -968,8 +1054,11 @@ const ChatApp = () => {
       // 2. Auto-Rename
       if (shouldAutoRename && updatedHistory.length > 0) {
         loadChatService()
-          .then(({ generateChatTitle }) => generateChatTitle(updatedHistory))
+          .then(({ generateChatTitle }) =>
+            generateChatTitle(updatedHistory, postProcessSignal),
+          )
           .then((newTitle) => {
+            if (postProcessSignal.aborted) return;
             const currentSession = useChatStore
               .getState()
               .sessions.find((session) => session.id === targetSessionId);
@@ -981,6 +1070,7 @@ const ChatApp = () => {
             }
           })
           .catch((err) => {
+            if (postProcessSignal.aborted) return;
             logChatAppError("Chat title generation failed:", err);
           });
       }
@@ -997,9 +1087,11 @@ const ChatApp = () => {
               updatedHistory,
               postGenerationSession.compression,
               selectedModel,
+              postProcessSignal,
             ),
           )
           .then((newCompression) => {
+            if (postProcessSignal.aborted) return;
             const currentSession = useChatStore
               .getState()
               .sessions.find((session) => session.id === targetSessionId);
@@ -1014,6 +1106,7 @@ const ChatApp = () => {
             }
           })
           .catch((err) => {
+            if (postProcessSignal.aborted) return;
             logChatAppError("Context compression failed:", err);
           });
       }
@@ -1086,7 +1179,13 @@ const ChatApp = () => {
       logPrefix: string;
     },
   ) => {
-    if (isGenerating || !currentSessionId) return;
+    if (
+      isGenerating ||
+      !currentSessionId ||
+      useChatStore.getState().isActiveSessionLoading
+    ) {
+      return;
+    }
 
     const sessionMessages = activeMessages;
     if (!sessionMessages) return;
@@ -1120,6 +1219,7 @@ const ChatApp = () => {
       showActionError(errorMessage);
       return;
     }
+    abortBackgroundPostProcessing();
     const generation = beginActiveGeneration();
     const startTime = Date.now();
 
@@ -1136,8 +1236,10 @@ const ChatApp = () => {
         sessionMeta,
         promptText,
         promptAttachments,
+        generation.controller.signal,
         lastUserMsg.memoryContext,
       );
+      if (!isGenerationRunActive(generation)) return;
       commitInjectedMemoryContext(
         currentSessionId,
         sessionMeta,
@@ -1152,6 +1254,7 @@ const ChatApp = () => {
         autoSelect: skillAutoSelect,
         signal: generation.controller.signal,
       });
+      if (!isGenerationRunActive(generation)) return;
       if (ragSources.length > 0 || ragError) {
         updateMessage(currentSessionId, branchMessageId, {
           ragSources,
@@ -1187,6 +1290,7 @@ const ChatApp = () => {
           selectedModel,
           modelMetadata,
           customModelMetadata,
+          searchCompatibility: effectiveContext.searchCompatibility,
         }),
         (streamText, streamReasoning, outputBlocks) => {
           if (!isGenerationRunActive(generation)) return;
@@ -1266,14 +1370,21 @@ const ChatApp = () => {
       });
 
       await syncActiveSession(currentSessionId);
+      if (!isGenerationRunActive(generation)) return;
+      const postProcessSignal = beginBackgroundPostProcessing();
       const completedBranchMessage = useChatStore
         .getState()
         .activeMessages.find((message) => message.id === branchMessageId);
       if (completedBranchMessage) {
-        queueMemoryExtraction(currentSessionId, lastUserMsg, {
-          id: completedBranchMessage.id,
-          content: completedBranchMessage.content,
-        });
+        queueMemoryExtraction(
+          currentSessionId,
+          lastUserMsg,
+          {
+            id: completedBranchMessage.id,
+            content: completedBranchMessage.content,
+          },
+          postProcessSignal,
+        );
       }
     } catch (error: any) {
       if (error.name === "AbortError" || generation.controller.signal.aborted) {
@@ -1311,7 +1422,7 @@ const ChatApp = () => {
   };
 
   const handleVersionChange = (msgId: string, direction: "prev" | "next") => {
-    if (currentSessionId) {
+    if (currentSessionId && !useChatStore.getState().isActiveSessionLoading) {
       switchMessageVersion(currentSessionId, msgId, direction);
     }
   };
@@ -1360,11 +1471,12 @@ const ChatApp = () => {
       }
     }
 
+    abortBackgroundPostProcessing();
     createSession(instruction, agent.meta.title);
   };
 
   const handleEditMessage = (msgId: string, newContent: string) => {
-    if (currentSessionId) {
+    if (currentSessionId && !useChatStore.getState().isActiveSessionLoading) {
       updateMessageContent(currentSessionId, msgId, newContent);
       void syncActiveSessionWithNotice(
         currentSessionId,
@@ -1378,7 +1490,14 @@ const ChatApp = () => {
     newContent: string,
   ) => {
     const sessionId = currentSessionId;
-    if (!sessionId || isGenerating || !newContent.trim()) return;
+    if (
+      !sessionId ||
+      isGenerating ||
+      useChatStore.getState().isActiveSessionLoading ||
+      !newContent.trim()
+    ) {
+      return;
+    }
 
     const sessionMessages = activeMessages;
     const msgIndex = sessionMessages.findIndex(
@@ -1391,6 +1510,7 @@ const ChatApp = () => {
     }
     if (newContent === sourceMessage.content) return;
 
+    abortBackgroundPostProcessing();
     const generation = beginActiveGeneration();
     let modelMessageId: string | null = null;
     let editedUserMessageId: string | null = null;
@@ -1410,6 +1530,7 @@ const ChatApp = () => {
         sessionMeta,
         newContent,
         sourceMessage.attachments || [],
+        generation.controller.signal,
       );
       if (!isGenerationRunActive(generation)) return;
       commitInjectedMemoryContext(sessionId, sessionMeta, injectedMemoryIds);
@@ -1479,6 +1600,7 @@ const ChatApp = () => {
           selectedModel,
           modelMetadata,
           customModelMetadata,
+          searchCompatibility: effectiveContext.searchCompatibility,
         }),
         (streamText, streamReasoning, outputBlocks) => {
           if (!isGenerationRunActive(generation) || !modelMessageId) return;
@@ -1567,6 +1689,8 @@ const ChatApp = () => {
       });
 
       await syncActiveSession(sessionId);
+      if (!isGenerationRunActive(generation)) return;
+      const postProcessSignal = beginBackgroundPostProcessing();
       const completedModelMessage = useChatStore
         .getState()
         .activeMessages.find((message) => message.id === modelMessageId);
@@ -1578,6 +1702,7 @@ const ChatApp = () => {
             id: completedModelMessage.id,
             content: completedModelMessage.content,
           },
+          postProcessSignal,
         );
       }
     } catch (error: any) {
@@ -1614,7 +1739,7 @@ const ChatApp = () => {
 
   const handleDeleteMessage = async (msgId: string) => {
     const sessionId = currentSessionId;
-    if (!sessionId) return;
+    if (!sessionId || useChatStore.getState().isActiveSessionLoading) return;
 
     try {
       await deleteMessage(sessionId, msgId);
@@ -1626,6 +1751,9 @@ const ChatApp = () => {
 
   const handleDeleteSession = async (sessionId: string) => {
     try {
+      if (sessionId === currentSessionId) {
+        abortBackgroundPostProcessing();
+      }
       if (
         shouldAbortActiveGenerationForSessionDelete({
           currentSessionId,
@@ -1644,7 +1772,10 @@ const ChatApp = () => {
   };
 
   const handleDuplicateSession = async (sessionId: string) => {
+    if (isGenerating || useChatStore.getState().isActiveSessionLoading) return;
+
     try {
+      abortBackgroundPostProcessing();
       await duplicateSession(sessionId);
     } catch (error) {
       logChatAppError("Failed to duplicate session", error);
@@ -1654,7 +1785,7 @@ const ChatApp = () => {
 
   const handleRetractMessage = async (msg: Message) => {
     const sessionId = currentSessionId;
-    if (!sessionId) return;
+    if (!sessionId || useChatStore.getState().isActiveSessionLoading) return;
 
     try {
       await deleteMessageAndSubsequent(sessionId, msg.id);
@@ -1710,12 +1841,18 @@ const ChatApp = () => {
   };
 
   const handleNewChat = () => {
+    abortBackgroundPostProcessing();
     if (isGenerating) {
       void stopActiveGenerationWithFeedback();
     }
 
     createSession();
     navigateToPanel("chat");
+  };
+
+  const handleSelectSession = async (sessionId: string) => {
+    abortBackgroundPostProcessing();
+    await selectSession(sessionId);
   };
 
   const handleSuggestionClick = (question: string) => {
@@ -1733,12 +1870,14 @@ const ChatApp = () => {
       messages={messages}
       activeMessageTree={activeMessageTree}
       isGenerating={isGenerating}
+      isActiveSessionLoading={isActiveSessionLoading}
       availableModels={availableModels}
       selectedModel={selectedModel}
       isSearchEnabled={chatConfig.useSearch}
       viewMode={viewMode}
       settingsTab={settingsTab}
       isSidebarOpen={isSidebarOpen}
+      isNonDesktopViewport={isNonDesktopViewport}
       isSidebarDrawerOpen={isSidebarDrawerOpen}
       mainInertProps={mainInertProps}
       shouldShowChatTitleBar={shouldShowChatTitleBar}
@@ -1752,7 +1891,7 @@ const ChatApp = () => {
       handleSettingsTabChange={handleSettingsTabChange}
       updateIsNearMessageBottom={updateIsNearMessageBottom}
       stopActiveGenerationWithFeedback={stopActiveGenerationWithFeedback}
-      selectSession={selectSession}
+      selectSession={handleSelectSession}
       handleNewChat={handleNewChat}
       handleDeleteSession={handleDeleteSession}
       updateSessionTitle={updateSessionTitle}

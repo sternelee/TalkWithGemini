@@ -5,6 +5,7 @@
   "errDeleteMessage": "无法删除该消息，对话已恢复。",
   "errDeleteChat": "无法删除该对话，请重试。",
   "errDuplicateChat": "无法复制该对话，请重试。",
+  "errLoadChat": "无法加载该对话，当前对话已保留。",
   "errRetractMessage": "无法撤回该消息，对话已恢复。",
   "errEditUserMessage": "无法编辑该消息，请重试。",
   "errRenameChat": "无法重命名该对话，请重试。",

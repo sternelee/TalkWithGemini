@@ -62,12 +62,14 @@ interface ChatAppShellProps {
   messages: Message[];
   activeMessageTree: SessionMessageTree;
   isGenerating: boolean;
+  isActiveSessionLoading: boolean;
   availableModels: ModelInfo[];
   selectedModel: string;
   isSearchEnabled: boolean;
   viewMode: ChatPanel;
   settingsTab: SettingsTabId;
   isSidebarOpen: boolean;
+  isNonDesktopViewport: boolean;
   isSidebarDrawerOpen: boolean;
   mainInertProps: React.HTMLAttributes<HTMLElement> & { inert?: boolean };
   shouldShowChatTitleBar: boolean;
@@ -118,12 +120,14 @@ const ChatAppShell = ({
   messages,
   activeMessageTree,
   isGenerating,
+  isActiveSessionLoading,
   availableModels,
   selectedModel,
   isSearchEnabled,
   viewMode,
   settingsTab,
   isSidebarOpen,
+  isNonDesktopViewport,
   isSidebarDrawerOpen,
   mainInertProps,
   shouldShowChatTitleBar,
@@ -159,6 +163,13 @@ const ChatAppShell = ({
   onToggleSearch,
 }: ChatAppShellProps) => {
   const t = useTranslations("ChatApp");
+  let lastUserMessageIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "user") {
+      lastUserMessageIndex = index;
+      break;
+    }
+  }
 
   return (
     <div className="relative flex h-dvh w-full overflow-hidden bg-background font-sans text-foreground transition-colors duration-300">
@@ -190,8 +201,10 @@ const ChatAppShell = ({
         onRenameSession={updateSessionTitle}
         onTogglePin={toggleSessionPin}
         onDuplicate={handleDuplicateSession}
+        isDuplicateDisabled={isGenerating || isActiveSessionLoading}
         onSmartRename={handleSmartRename}
         isOpen={isSidebarOpen}
+        isHidden={isNonDesktopViewport && !isSidebarOpen}
         toggleSidebar={() => setIsSidebarOpen((open) => !open)}
         isModal={isSidebarDrawerOpen}
         onRequestClose={() => setIsSidebarOpen(false)}
@@ -212,7 +225,7 @@ const ChatAppShell = ({
         {...mainInertProps}
         id="main-chat"
         tabIndex={-1}
-        className="flex-1 flex flex-col h-full relative z-0 min-w-0 overflow-hidden md:pl-16 lg:pl-0"
+        className="flex-1 flex flex-col h-full relative z-0 min-w-0 overflow-hidden"
       >
         {actionError && (
           <div
@@ -248,7 +261,7 @@ const ChatAppShell = ({
                 <Tooltip
                   content={isSidebarOpen ? t("closeSidebar") : t("openSidebar")}
                   position="right"
-                  className="md:hidden"
+                  className="lg:hidden"
                 >
                   <button
                     type="button"
@@ -328,8 +341,7 @@ const ChatAppShell = ({
                   <div className="space-y-1 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 fill-mode-forwards">
                     {messages.map((msg, idx) => {
                       const isLastUserMessage =
-                        msg.role === "user" &&
-                        !messages.slice(idx + 1).some((m) => m.role === "user");
+                        msg.role === "user" && idx === lastUserMessageIndex;
                       const isLastMessage = idx === messages.length - 1;
 
                       return (
@@ -337,6 +349,7 @@ const ChatAppShell = ({
                           <div className="[content-visibility:auto] [contain-intrinsic-size:0_240px]">
                             <MessageItem
                               message={msg}
+                              actionsDisabled={isActiveSessionLoading}
                               branchInfo={getMessageBranchInfo(
                                 activeMessageTree,
                                 msg.id,
@@ -413,7 +426,11 @@ const ChatAppShell = ({
                   variant={messageInputVariant}
                   onSend={handleSendMessage}
                   onStop={isGenerating ? handleStopGeneration : undefined}
-                  disabled={isGenerating || availableModels.length === 0}
+                  disabled={
+                    isGenerating ||
+                    isActiveSessionLoading ||
+                    availableModels.length === 0
+                  }
                   availableModels={availableModels}
                   selectedModel={selectedModel}
                   onSelectModel={setModel}

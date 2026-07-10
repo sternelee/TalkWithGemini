@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveEffectiveChatContext } from "../lib/chat/effectiveChatContext";
 
 describe("effective chat context", () => {
-  it("normalizes session plugins and skills and reports unavailable capabilities", () => {
+  it("uses global plugins as request truth while preserving session skills", () => {
     const context = resolveEffectiveChatContext({
       session: {
         id: "session-1",
@@ -80,7 +80,7 @@ describe("effective chat context", () => {
         { id: "workspace-skill" },
       ] as any,
       pluginConfigs: {},
-      activePlugins: [],
+      activePlugins: ["free-plugin"],
     });
 
     expect(context.workspaceFiles).toHaveLength(1);
@@ -93,13 +93,11 @@ describe("effective chat context", () => {
     expect(context.systemInstruction).toContain("2026-07-01T02:03:04.000Z");
     expect(context.activePluginIds).toEqual(["free-plugin"]);
     expect(context.activeSkillIds).toEqual(["session-skill"]);
-    expect(context.capabilityStatuses.map((status) => status.code)).toEqual(
-      expect.arrayContaining([
-        "search_unavailable",
-        "rag_unavailable",
-        "plugin_auth_missing",
-      ]),
+    const statusCodes = context.capabilityStatuses.map((status) => status.code);
+    expect(statusCodes).toEqual(
+      expect.arrayContaining(["search_unavailable", "rag_unavailable"]),
     );
+    expect(statusCodes).not.toContain("plugin_auth_missing");
   });
 
   it("uses workspace skills when the session does not override them", () => {

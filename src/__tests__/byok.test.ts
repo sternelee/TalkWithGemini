@@ -43,6 +43,7 @@ function resetByokKeyMaterial() {
 
 describe("BYOK secret envelopes", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     restoreEnv();
     resetByokKeyMaterial();
@@ -110,6 +111,66 @@ describe("BYOK secret envelopes", () => {
     await expect(
       freshEncryptSecret("secret", "provider:Gemini"),
     ).rejects.toThrow(/Invalid BYOK RSA public key/);
+  });
+
+  it("cancels a caller waiting for the shared public key request", async () => {
+    vi.resetModules();
+    const {
+      clearByokPublicKeyCache: clearFreshCache,
+      encryptSecret: freshEncryptSecret,
+    } = await import("../lib/byok/client");
+    let requestSignal: AbortSignal | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          requestSignal = init?.signal || undefined;
+          requestSignal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    const controller = new AbortController();
+
+    const pending = freshEncryptSecret(
+      "secret",
+      "provider:Gemini",
+      controller.signal,
+    );
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(requestSignal?.aborted).toBe(false);
+
+    clearFreshCache();
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("reports the public-key watchdog as a timeout, not caller cancellation", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const { encryptSecret: freshEncryptSecret } =
+      await import("../lib/byok/client");
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      });
+    });
+
+    const request = freshEncryptSecret("secret", "provider:Gemini");
+    const expectation = expect(request).rejects.toMatchObject({
+      name: "ResponseTimeoutError",
+      code: "RESPONSE_TIMEOUT",
+      statusCode: 504,
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
   });
 
   it("refreshes the public key and retries BYOK auth failures once", async () => {

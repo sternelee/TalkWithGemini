@@ -97,7 +97,7 @@
   --markdown-surface: #ffffff;
   --markdown-surface-muted: #f9fafb;
   --markdown-surface-hover: #f3f4f6;
-  --neo-font-size-base: 12px;
+  --neo-font-size-base: 14px;
 }
 
 html.dark {
@@ -194,8 +194,8 @@ html.dark {
   --markdown-surface-hover: #1f2937;
 }
 
-html[data-font-size="medium"] {
-  --neo-font-size-base: 14px;
+html[data-font-size="small"] {
+  --neo-font-size-base: 12px;
 }
 
 html[data-font-size="large"] {

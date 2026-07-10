@@ -39,7 +39,7 @@ describe("Sidebar composition", () => {
     expect(source).not.toContain("newExpanded[w.id] = true");
   });
 
-  it("keeps the pad collapsed rail while expanded pad sidebar uses a drawer", () => {
+  it("uses a drawer below the desktop breakpoint and a collapsible desktop rail", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
       "utf8",
@@ -48,12 +48,8 @@ describe("Sidebar composition", () => {
     expect(source).toContain("transition-transform");
     expect(source).toContain("will-change-transform");
     expect(source).toContain("lg:transition-[width,transform]");
-    expect(source).toContain(
-      'isOpen ? "translate-x-0" : "-translate-x-full md:-translate-x-56"',
-    );
-    expect(source).toContain(
-      'isOpen ? "w-full" : "ml-auto w-16 lg:ml-0 lg:w-full"',
-    );
+    expect(source).toContain('isOpen ? "translate-x-0" : "-translate-x-full"');
+    expect(source).toContain('className="flex h-full w-full flex-col"');
     expect(source).toContain("lg:translate-x-0 lg:relative");
     expect(source).toContain('isOpen ? "lg:w-72" : "lg:w-16"');
     expect(source).not.toContain("transition-[width,transform] duration-300");

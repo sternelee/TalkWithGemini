@@ -243,7 +243,7 @@ export function resolveEffectiveChatContext(
     modelMetadata,
     customModelMetadata,
   });
-  const requestedPluginIds = session?.config?.activePlugins || activePlugins;
+  const requestedPluginIds = activePlugins;
   const activePluginIds = normalizeActivePluginIds(
     requestedPluginIds,
     installedPlugins,

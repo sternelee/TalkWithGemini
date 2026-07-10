@@ -1,6 +1,11 @@
 import "server-only";
 
-import { HostedProxyBlockedError } from "../errors";
+import {
+  ApiError,
+  HostedProxyBlockedError,
+  ResponseTimeoutError,
+} from "../errors";
+export { ResponseTimeoutError } from "../errors";
 import {
   getSafeUrlPolicy,
   isLocalhostName,
@@ -14,6 +19,9 @@ interface SafeFetchOptions {
   policy?: SafeUrlPolicy;
   timeoutMs?: number;
   maxResponseBytes?: number;
+  enforceResponseLimits?: boolean;
+  countDecodedText?: boolean;
+  signal?: AbortSignal;
 }
 
 interface SafeFetchTextResult {
@@ -50,12 +58,27 @@ const CROSS_ORIGIN_REDIRECT_SENSITIVE_HEADERS = [
   "x-goog-api-key",
 ];
 
+export class ResponseSizeLimitError extends ApiError {
+  constructor(readonly maxBytes: number) {
+    super(
+      `Upstream response exceeded ${maxBytes} bytes`,
+      502,
+      "RESPONSE_SIZE_LIMIT",
+      { maxBytes },
+    );
+    this.name = "ResponseSizeLimitError";
+  }
+}
+
 function createSafeFetchTimeout(timeoutMs: number): SafeFetchTimeout {
   const controller = new AbortController();
   return {
     timeoutMs,
     controller,
-    timer: setTimeout(() => controller.abort(), timeoutMs),
+    timer: setTimeout(
+      () => controller.abort(new ResponseTimeoutError(timeoutMs)),
+      timeoutMs,
+    ),
   };
 }
 
@@ -64,7 +87,7 @@ function clearSafeFetchTimeout(timeout: SafeFetchTimeout) {
 }
 
 function createTimeoutError(timeoutMs: number): Error {
-  return new Error(`Request timed out after ${timeoutMs}ms`);
+  return new ResponseTimeoutError(timeoutMs);
 }
 
 function createAbortError(): Error {
@@ -164,7 +187,9 @@ async function lookupAddresses(
 
 function throwIfTimedOut(timeout: SafeFetchTimeout) {
   if (timeout.controller.signal.aborted) {
-    throw createTimeoutError(timeout.timeoutMs);
+    throw timeout.controller.signal.reason instanceof ResponseTimeoutError
+      ? timeout.controller.signal.reason
+      : createTimeoutError(timeout.timeoutMs);
   }
 }
 
@@ -177,6 +202,9 @@ async function lookupWithAbort(
   }
   const dns = await loadNodeDnsModule();
   if (!dns) return null;
+  if (signal.aborted) {
+    throw createAbortError();
+  }
 
   let abortListener: (() => void) | null = null;
   const abortPromise = new Promise<never>((_, reject) => {
@@ -268,14 +296,19 @@ function mergeAbortSignals(
   if (!userSignal) return { signal: timeoutSignal, cleanup: () => {} };
 
   const controller = new AbortController();
-  const abort = () => controller.abort();
+  const abortFromTimeout = () =>
+    controller.abort(timeoutSignal.reason || createAbortError());
+  const abortFromUser = () =>
+    controller.abort(userSignal.reason || createAbortError());
   let isListening = false;
 
-  if (timeoutSignal.aborted || userSignal.aborted) {
-    controller.abort();
+  if (userSignal.aborted) {
+    abortFromUser();
+  } else if (timeoutSignal.aborted) {
+    abortFromTimeout();
   } else {
-    timeoutSignal.addEventListener("abort", abort, { once: true });
-    userSignal.addEventListener("abort", abort, { once: true });
+    timeoutSignal.addEventListener("abort", abortFromTimeout, { once: true });
+    userSignal.addEventListener("abort", abortFromUser, { once: true });
     isListening = true;
   }
 
@@ -283,8 +316,8 @@ function mergeAbortSignals(
     signal: controller.signal,
     cleanup: () => {
       if (!isListening) return;
-      timeoutSignal.removeEventListener("abort", abort);
-      userSignal.removeEventListener("abort", abort);
+      timeoutSignal.removeEventListener("abort", abortFromTimeout);
+      userSignal.removeEventListener("abort", abortFromUser);
       isListening = false;
     },
   };
@@ -354,7 +387,7 @@ async function readWithLimit(
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel();
-        throw new Error(`Response exceeded ${maxBytes} bytes`);
+        throw new ResponseSizeLimitError(maxBytes);
       }
       chunks.push(value);
     }
@@ -376,6 +409,126 @@ async function readWithLimit(
     offset += chunk.byteLength;
   }
   return result;
+}
+
+function createLimitedResponse(
+  response: Response,
+  {
+    timeout,
+    maxResponseBytes,
+    userSignal,
+    countDecodedText,
+  }: {
+    timeout: SafeFetchTimeout;
+    maxResponseBytes: number;
+    userSignal?: AbortSignal | null;
+    countDecodedText?: boolean;
+  },
+): Response {
+  if (!response.body) {
+    clearSafeFetchTimeout(timeout);
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = countDecodedText ? new TextDecoder() : null;
+  const encoder = countDecodedText ? new TextEncoder() : null;
+  let total = 0;
+  let cleanedUp = false;
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+
+  const abortError = () => {
+    if (timeout.controller.signal.aborted) {
+      return timeout.controller.signal.reason instanceof ResponseTimeoutError
+        ? timeout.controller.signal.reason
+        : new ResponseTimeoutError(timeout.timeoutMs);
+    }
+    return createAbortError();
+  };
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearSafeFetchTimeout(timeout);
+    timeout.controller.signal.removeEventListener("abort", handleAbort);
+    userSignal?.removeEventListener("abort", handleAbort);
+  };
+  const handleAbort = () => {
+    const error = abortError();
+    void reader.cancel(error).catch(() => undefined);
+    controllerRef?.error(error);
+    cleanup();
+  };
+
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controllerRef = controller;
+      timeout.controller.signal.addEventListener("abort", handleAbort, {
+        once: true,
+      });
+      userSignal?.addEventListener("abort", handleAbort, { once: true });
+      if (timeout.controller.signal.aborted || userSignal?.aborted) {
+        handleAbort();
+      }
+    },
+    async pull(controller) {
+      if (timeout.controller.signal.aborted || userSignal?.aborted) {
+        handleAbort();
+        return;
+      }
+      try {
+        const { done, value } = await reader.read();
+        if (timeout.controller.signal.aborted || userSignal?.aborted) {
+          handleAbort();
+          return;
+        }
+        if (done) {
+          if (decoder && encoder) {
+            total += encoder.encode(decoder.decode()).byteLength;
+          }
+          if (total > maxResponseBytes) {
+            const error = new ResponseSizeLimitError(maxResponseBytes);
+            controller.error(error);
+            cleanup();
+            return;
+          }
+          controller.close();
+          cleanup();
+          return;
+        }
+        if (!value) return;
+        total +=
+          decoder && encoder
+            ? encoder.encode(decoder.decode(value, { stream: true })).byteLength
+            : value.byteLength;
+        if (total > maxResponseBytes) {
+          const error = new ResponseSizeLimitError(maxResponseBytes);
+          await reader.cancel(error).catch(() => undefined);
+          controller.error(error);
+          cleanup();
+          return;
+        }
+        controller.enqueue(value);
+      } catch (error) {
+        controller.error(
+          timeout.controller.signal.aborted || userSignal?.aborted
+            ? abortError()
+            : error,
+        );
+        cleanup();
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      return reader.cancel(reason);
+    },
+  });
+  const limited = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+  Object.defineProperty(limited, "url", { value: response.url });
+  return limited;
 }
 
 async function safeFetchResponse(
@@ -461,19 +614,36 @@ export async function safeFetch(
   const timeout = createSafeFetchTimeout(
     options.timeoutMs || DEFAULT_TIMEOUT_MS,
   );
+  const lifecycleSignal = mergeAbortSignals(
+    timeout.controller.signal,
+    init.signal,
+  );
+  let responseOwnsTimeout = false;
 
   try {
-    return await safeFetchResponse(
+    const response = await safeFetchResponse(
       input,
       init,
       options,
-      timeout.controller.signal,
+      lifecycleSignal.signal,
     );
+    if (options.enforceResponseLimits && response.body) {
+      responseOwnsTimeout = true;
+      return createLimitedResponse(response, {
+        timeout,
+        maxResponseBytes:
+          options.maxResponseBytes || DEFAULT_MAX_RESPONSE_BYTES,
+        userSignal: init.signal,
+        countDecodedText: options.countDecodedText,
+      });
+    }
+    return response;
   } catch (error) {
     throwIfTimedOut(timeout);
     throw error;
   } finally {
-    clearSafeFetchTimeout(timeout);
+    lifecycleSignal.cleanup();
+    if (!responseOwnsTimeout) clearSafeFetchTimeout(timeout);
   }
 }
 
@@ -484,15 +654,20 @@ export async function assertOutboundUrlAllowed(
   const timeout = createSafeFetchTimeout(
     options.timeoutMs || DEFAULT_TIMEOUT_MS,
   );
+  const lifecycleSignal = mergeAbortSignals(
+    timeout.controller.signal,
+    options.signal,
+  );
 
   try {
     const policy = options.policy || getSafeUrlPolicy("plugin");
     const { url } = validateOutboundUrl(input, policy);
-    await assertResolvedAddressAllowed(url, policy, timeout.controller.signal);
+    await assertResolvedAddressAllowed(url, policy, lifecycleSignal.signal);
   } catch (error) {
     throwIfTimedOut(timeout);
     throw error;
   } finally {
+    lifecycleSignal.cleanup();
     clearSafeFetchTimeout(timeout);
   }
 }
@@ -505,34 +680,30 @@ export async function safeFetchText(
   const timeout = createSafeFetchTimeout(
     options.timeoutMs || DEFAULT_TIMEOUT_MS,
   );
+  const lifecycleSignal = mergeAbortSignals(
+    timeout.controller.signal,
+    init.signal,
+  );
 
   try {
     const response = await safeFetchResponse(
       input,
       init,
       options,
-      timeout.controller.signal,
+      lifecycleSignal.signal,
     );
-    const mergedSignal = mergeAbortSignals(
-      timeout.controller.signal,
-      init.signal,
+    const bytes = await readWithLimit(
+      response,
+      options.maxResponseBytes || DEFAULT_MAX_RESPONSE_BYTES,
+      lifecycleSignal.signal,
     );
-    let bytes: Uint8Array;
-    try {
-      bytes = await readWithLimit(
-        response,
-        options.maxResponseBytes || DEFAULT_MAX_RESPONSE_BYTES,
-        mergedSignal.signal,
-      );
-    } finally {
-      mergedSignal.cleanup();
-    }
     const text = new TextDecoder().decode(bytes);
     return { response, text, url: redactUrl(response.url) };
   } catch (error) {
     throwIfTimedOut(timeout);
     throw error;
   } finally {
+    lifecycleSignal.cleanup();
     clearSafeFetchTimeout(timeout);
   }
 }
@@ -558,28 +729,23 @@ export async function safeFetchArrayBuffer(
   const timeout = createSafeFetchTimeout(
     options.timeoutMs || DEFAULT_TIMEOUT_MS,
   );
+  const lifecycleSignal = mergeAbortSignals(
+    timeout.controller.signal,
+    init.signal,
+  );
 
   try {
     const response = await safeFetchResponse(
       input,
       init,
       options,
-      timeout.controller.signal,
+      lifecycleSignal.signal,
     );
-    const mergedSignal = mergeAbortSignals(
-      timeout.controller.signal,
-      init.signal,
+    const bytes = await readWithLimit(
+      response,
+      options.maxResponseBytes || DEFAULT_MAX_RESPONSE_BYTES,
+      lifecycleSignal.signal,
     );
-    let bytes: Uint8Array;
-    try {
-      bytes = await readWithLimit(
-        response,
-        options.maxResponseBytes || DEFAULT_MAX_RESPONSE_BYTES,
-        mergedSignal.signal,
-      );
-    } finally {
-      mergedSignal.cleanup();
-    }
     const arrayBuffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(arrayBuffer).set(bytes);
     return {
@@ -591,6 +757,7 @@ export async function safeFetchArrayBuffer(
     throwIfTimedOut(timeout);
     throw error;
   } finally {
+    lifecycleSignal.cleanup();
     clearSafeFetchTimeout(timeout);
   }
 }

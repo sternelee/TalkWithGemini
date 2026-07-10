@@ -38,6 +38,7 @@ export interface ProcessMessageOptions {
   ragEnabled?: boolean;
   knowledgeCollections: any[];
   workspaceKnowledgeCollectionIds?: string[];
+  signal?: AbortSignal;
 }
 
 export interface ProcessedMessageData {
@@ -64,6 +65,7 @@ export async function processMessageForSending(
     ragEnabled = true,
     knowledgeCollections,
     workspaceKnowledgeCollectionIds = [],
+    signal,
   } = options;
 
   let finalText = text;
@@ -114,6 +116,7 @@ export async function processMessageForSending(
       effectiveRagConfig,
       supportAttachment,
       knowledgeCollections,
+      signal,
     );
     convertedContent += ragResult.convertedContent;
     finalAttachments.push(...ragResult.finalAttachments);

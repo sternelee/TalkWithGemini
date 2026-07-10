@@ -51,11 +51,17 @@ describe("chat shell accessibility", () => {
     );
 
     expect(panelNavigation).toContain("isNonDesktopViewport");
-    expect(panelNavigation).toContain("window.innerWidth < 1024");
+    expect(panelNavigation).toContain(
+      "window.innerWidth < DESKTOP_SIDEBAR_BREAKPOINT",
+    );
+    expect(panelNavigation).toContain(
+      "window.innerWidth >= DESKTOP_SIDEBAR_BREAKPOINT",
+    );
     expect(panelNavigation).toContain(
       "const isSidebarDrawerOpen = isSidebarOpen && isNonDesktopViewport",
     );
-    expect(chatShell).toContain("md:pl-16 lg:pl-0");
+    expect(chatShell).not.toContain("md:pl-16");
+    expect(chatShell).toContain('className="lg:hidden"');
     expect(chatShell).not.toContain("backdrop-blur-[1px]");
     expect(panelNavigation).toContain("mainInertProps");
     expect(panelNavigation).toContain("inert");
@@ -64,6 +70,8 @@ describe("chat shell accessibility", () => {
     expect(sidebar).toContain("aria-modal={isModal || undefined}");
     expect(sidebar).toContain("handleSidebarKeyDown");
     expect(sidebar).toContain("restoreFocusRef");
+    expect(sidebar).toContain("inert={isHidden || undefined}");
+    expect(sidebar).toContain("aria-hidden={isHidden || undefined}");
   });
 
   it("keeps mobile header icon buttons keyboard-focus visible", () => {
@@ -153,5 +161,52 @@ describe("chat shell accessibility", () => {
 
     expect(userMessageEditor).not.toContain("autoFocus");
     expect(userMessageEditor).toContain("preventScroll");
+  });
+
+  it("uses the configured medium font before hydration", () => {
+    const globals = readFileSync(
+      resolve(process.cwd(), "src/app/globals.css"),
+      "utf8",
+    );
+    const themeInit = readFileSync(
+      resolve(process.cwd(), "src/lib/themeInitScript.ts"),
+      "utf8",
+    );
+    const themeEffects = readFileSync(
+      resolve(process.cwd(), "src/features/chat/hooks/useChatThemeEffects.ts"),
+      "utf8",
+    );
+
+    expect(globals).toContain("--neo-font-size-base: 14px");
+    expect(globals).toContain('html[data-font-size="small"]');
+    expect(themeInit).toContain('localStorage.getItem("neo-chat-font-size")');
+    expect(themeInit).toContain("document.documentElement.dataset.fontSize");
+    expect(themeEffects).toContain(
+      'localStorage.setItem("neo-chat-font-size", fontSize)',
+    );
+  });
+
+  it("keeps Enter as a newline on narrow or coarse-pointer devices", () => {
+    const messageInput = readFileSync(
+      resolve(process.cwd(), "src/components/chat/MessageInput.tsx"),
+      "utf8",
+    );
+
+    expect(messageInput).toContain('"(pointer: coarse), (max-width: 1023px)"');
+    expect(messageInput).toContain("requiresExplicitSend");
+    expect(messageInput).toContain(
+      '"inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"',
+    );
+  });
+
+  it("finds the last user message once before rendering the list", () => {
+    const chatShell = readFileSync(
+      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
+      "utf8",
+    );
+
+    expect(chatShell).toContain("let lastUserMessageIndex = -1");
+    expect(chatShell).toContain("idx === lastUserMessageIndex");
+    expect(chatShell).not.toContain("messages.slice(idx + 1)");
   });
 });

@@ -126,7 +126,7 @@ const iconButtonFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
 
 const iconButtonBaseClass =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg";
 
 const loadChatService = () => import("@/services/api/chatService");
 
@@ -548,11 +548,15 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }, [validPlugins]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
+      const requiresExplicitSend = window.matchMedia(
+        "(pointer: coarse), (max-width: 1023px)",
+      ).matches;
       if (
         shouldSubmitOnEnter({
           key: e.key,
           shiftKey: e.shiftKey,
           isComposing: e.nativeEvent.isComposing,
+          requiresExplicitSend,
         })
       ) {
         e.preventDefault();
@@ -1778,7 +1782,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       aria-label={t("selectModelAria", {
                         model: currentModelName,
                       })}
-                      className={`group inline-flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:w-auto md:max-w-52 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground ${iconButtonFocusClass}`}
+                      className={`group inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:w-auto md:max-w-52 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground ${iconButtonFocusClass}`}
                       disabled={isInputBusy}
                     >
                       {/* Mobile: Just Icon */}

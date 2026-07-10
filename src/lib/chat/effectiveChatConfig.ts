@@ -8,11 +8,13 @@ export function resolveEffectiveChatRequestConfig({
   selectedModel,
   modelMetadata,
   customModelMetadata,
+  searchCompatibility,
 }: {
   chatConfig: ChatConfig;
   selectedModel: string;
   modelMetadata: Record<string, ModelMetadata>;
   customModelMetadata: Record<string, ModelMetadata>;
+  searchCompatibility?: { enabled: boolean };
 }): ChatConfig {
   const { modelName: selectedModelId } = parseModelString(selectedModel);
   const selectedModelMetadata =
@@ -25,6 +27,7 @@ export function resolveEffectiveChatRequestConfig({
 
   return {
     ...chatConfig,
+    useSearch: chatConfig.useSearch && (searchCompatibility?.enabled ?? true),
     reasoningMode,
     useReasoning: isReasoningEnabled(reasoningMode),
   };

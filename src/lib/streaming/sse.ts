@@ -18,7 +18,7 @@ export type SSEMessage =
   | { type: "usage"; usage?: any; usageMetadata?: any }
   | { type: "timing"; timing: any }
   | { type: "image"; image: Attachment }
-  | { type: "error"; error: string }
+  | { type: "error"; error: string; code?: string; statusCode?: number }
   | { type: "done" };
 
 export interface StreamController {
@@ -48,7 +48,12 @@ export function createStreamHandler(
         await handler(controller);
       } catch (error) {
         const errorPayload = toPublicErrorPayload(error);
-        const errorData = `data: ${JSON.stringify({ type: "error", error: errorPayload.error })}\n\n`;
+        const errorData = `data: ${JSON.stringify({
+          type: "error",
+          error: errorPayload.error,
+          code: errorPayload.code,
+          statusCode: errorPayload.statusCode,
+        })}\n\n`;
         controller.enqueue(new TextEncoder().encode(errorData));
       } finally {
         controller.close();

@@ -480,6 +480,7 @@ export async function executePluginFunctionRequest({
   authConfig,
   decryptSecret = decryptOptionalSecret,
   fetchText = safeFetchText,
+  signal,
 }: {
   plugin: Plugin;
   functionDef: PluginFunction;
@@ -487,6 +488,7 @@ export async function executePluginFunctionRequest({
   authConfig?: PluginAuthConfig;
   decryptSecret?: DecryptOptionalSecret;
   fetchText?: SafeFetchText;
+  signal?: AbortSignal;
 }) {
   if (!plugin.baseUrl) {
     return NextResponse.json(
@@ -720,6 +722,7 @@ export async function executePluginFunctionRequest({
         method !== "GET"
           ? (requestBody ?? JSON.stringify(outboundArgs))
           : undefined,
+      signal,
     },
     {
       policy: getSafeUrlPolicy("plugin"),
@@ -736,7 +739,7 @@ export async function executePluginFunctionRequest({
         plugin.id === GEMINI_IMAGE_PLUGIN_ID ||
         plugin.id === OPENAI_IMAGE_PLUGIN_ID ||
         plugin.id === OPENAI_RESPONSES_IMAGE_PLUGIN_ID
-          ? 16 * 1024 * 1024
+          ? 36 * 1024 * 1024
           : 2 * 1024 * 1024,
     },
   );

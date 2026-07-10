@@ -1,7 +1,7 @@
 "use client";
-import React, { useEffect, useId, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { Lightbulb, LoaderCircle, ChevronDown } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import MarkdownRenderer from "./MarkdownRenderer";
 import { extractReasoningTitle } from "@/lib/utils/reasoningDisplay";
 
@@ -11,11 +11,14 @@ interface ReasoningBlockProps {
   durationMs?: number;
 }
 
-function formatReasoningDuration(durationMs?: number): string | null {
+function formatReasoningDuration(
+  durationMs: number | undefined,
+  formatter: Intl.NumberFormat,
+): string | null {
   if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) {
     return null;
   }
-  return `${(durationMs / 1000).toFixed(1)}s`;
+  return formatter.format(durationMs / 1000);
 }
 
 const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
@@ -27,6 +30,18 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
   const panelId = useId();
 
   const t = useTranslations("Content");
+  const locale = useLocale();
+  const durationFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit: "second",
+        unitDisplay: "short",
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    [locale],
+  );
 
   // Dynamic Title Logic
   const dynamicTitle = reasoning ? extractReasoningTitle(reasoning) : null;
@@ -34,7 +49,7 @@ const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
     ? dynamicTitle || t("thinking")
     : t("thoughtProcess");
   const durationLabel = !isThinking
-    ? formatReasoningDuration(durationMs)
+    ? formatReasoningDuration(durationMs, durationFormatter)
     : null;
 
   useEffect(() => {

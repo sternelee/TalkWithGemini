@@ -37,9 +37,11 @@ import {
 import { createMessageOutputBlockBuilder } from "../../lib/chat/messageOutputBlocks";
 import { resolveImageGenerationOptions } from "../../lib/chat/imageGenerationOptions";
 import {
+  buildCompressionSource,
   createContextCompressionSummaryPrompt,
-  mergeCompressedContent,
+  mergeCompressedContentWithMemoryIds,
   normalizeCompressedContent,
+  normalizeCompressedContentWithMemoryIds,
   textToBase64,
 } from "@/lib/utils/contextCompression";
 import {
@@ -78,8 +80,94 @@ import {
 import { resolveModelMetadata } from "./chat/modelSelection";
 import { compactPluginImageResultForHistory } from "./chat/pluginImageResults";
 import type { ChatToolDefinition } from "./chat/types";
+import { mapWithConcurrency } from "../../lib/utils/concurrency";
+import { boundHistoryForRequest } from "../../lib/chat/requestContextBudget";
 
 type ChatUsagePayload = { usage?: unknown; usageMetadata?: unknown };
+
+export class IncompleteChatStreamError extends Error {
+  readonly code = "INCOMPLETE_CHAT_STREAM";
+  readonly recoverable = true;
+
+  constructor() {
+    super("The response stream ended before completion. Please retry.");
+    this.name = "IncompleteChatStreamError";
+  }
+}
+
+export class ChatStreamEventError extends Error {
+  constructor(
+    message: string,
+    readonly code = "CHAT_STREAM_ERROR",
+  ) {
+    super(message);
+    this.name = "ChatStreamEventError";
+  }
+}
+
+export class ChatStreamTimeoutError extends ChatStreamEventError {
+  constructor(message: string) {
+    super(message, "RESPONSE_TIMEOUT");
+    this.name = "ChatStreamTimeoutError";
+  }
+}
+
+export class ChatStreamSizeLimitError extends ChatStreamEventError {
+  constructor(message: string) {
+    super(message, "RESPONSE_SIZE_LIMIT");
+    this.name = "ChatStreamSizeLimitError";
+  }
+}
+
+type ChatStreamRoundPayload = {
+  content: string;
+  reasoning: string;
+  toolCalls: ToolCall[];
+};
+
+type ChatStreamRoundResult =
+  | (ChatStreamRoundPayload & { status: "done" })
+  | (ChatStreamRoundPayload & { status: "aborted"; error: Error })
+  | (ChatStreamRoundPayload & { status: "error"; error: Error })
+  | (ChatStreamRoundPayload & {
+      status: "incomplete";
+      error: IncompleteChatStreamError;
+    });
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function createAbortError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) return signal.reason;
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("The operation was aborted", "AbortError");
+  }
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function createChatStreamEventError(event: {
+  error?: string;
+  code?: string;
+}): ChatStreamEventError {
+  const message = event.error || "The response stream failed.";
+  if (event.code === "INCOMPLETE_PROVIDER_STREAM") {
+    return new IncompleteChatStreamError();
+  }
+  if (event.code === "RESPONSE_TIMEOUT") {
+    return new ChatStreamTimeoutError(message);
+  }
+  if (event.code === "RESPONSE_SIZE_LIMIT") {
+    return new ChatStreamSizeLimitError(message);
+  }
+  return new ChatStreamEventError(message, event.code);
+}
+
 function coerceToolDefinition(tool: unknown): ChatToolDefinition {
   return tool as ChatToolDefinition;
 }
@@ -131,6 +219,7 @@ export const executeCode = async (
 
 export const generateChatTitle = async (
   history: Message[],
+  signal?: AbortSignal,
 ): Promise<string> => {
   const fallbackTitle = () =>
     normalizeSessionTitle(history.find((m) => m.role === "user")?.content);
@@ -158,10 +247,11 @@ export const generateChatTitle = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(targetProvider),
+          provider: await buildProviderRuntimeConfig(targetProvider, signal),
           modelName,
           history,
         }),
+        signal,
       }),
     );
 
@@ -177,6 +267,7 @@ export const generateChatTitle = async (
     );
     return normalizeSessionTitle(data.title);
   } catch (error) {
+    if (isAbortError(error, signal)) throw error;
     logDevError("Title generation error:", error);
     return fallbackTitle();
   }
@@ -184,6 +275,7 @@ export const generateChatTitle = async (
 
 export const generateRelatedQuestions = async (
   history: Message[],
+  signal?: AbortSignal,
 ): Promise<string[]> => {
   const { providers } = useCoreSettingsStore.getState();
   const provider = providers.find((p) => p.enabled);
@@ -209,10 +301,11 @@ export const generateRelatedQuestions = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(targetProvider),
+          provider: await buildProviderRuntimeConfig(targetProvider, signal),
           modelName,
           history,
         }),
+        signal,
       }),
     );
 
@@ -231,6 +324,7 @@ export const generateRelatedQuestions = async (
     );
     return data.questions || [];
   } catch (error) {
+    if (isAbortError(error, signal)) throw error;
     logDevError("Related questions error:", error);
     return [];
   }
@@ -238,6 +332,7 @@ export const generateRelatedQuestions = async (
 
 export const generateRAGSearchQueries = async (
   userPrompt: string,
+  signal?: AbortSignal,
 ): Promise<string[]> => {
   const { providers } = useCoreSettingsStore.getState();
   const provider = providers.find((p) => p.enabled);
@@ -263,10 +358,11 @@ export const generateRAGSearchQueries = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(targetProvider),
+          provider: await buildProviderRuntimeConfig(targetProvider, signal),
           modelName,
           userMessage: userPrompt,
         }),
+        signal,
       }),
     );
 
@@ -285,6 +381,7 @@ export const generateRAGSearchQueries = async (
     );
     return data.queries || [userPrompt];
   } catch (error) {
+    if (isAbortError(error, signal)) throw error;
     logDevError("RAG queries error:", error);
     return [userPrompt];
   }
@@ -316,7 +413,7 @@ export const generateImage = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(provider),
+          provider: await buildProviderRuntimeConfig(provider, signal),
           modelName,
           prompt,
           imageCount: options.imageCount,
@@ -336,12 +433,15 @@ export const generateImage = async (
       images?: Attachment[];
       message?: string;
     }>(response, "Image generation failed");
-    const images = await cacheGeneratedImageAttachments(data.images || []);
+    const images = await cacheGeneratedImageAttachments(data.images || [], {
+      signal,
+    });
     return {
       images,
       message: data.message || "No images generated.",
     };
   } catch (error) {
+    if (isAbortError(error, signal)) throw createAbortError(signal);
     logDevError("Image generation error:", error);
     throw error;
   }
@@ -487,6 +587,7 @@ export const streamChatResponse = async (
       await stripAttachmentsDisplayCacheForModel(attachments);
     let requestConfig: Partial<ChatConfig> = { ...config };
     const maxToolRounds = PLUGIN_EXECUTION_LIMITS.maxToolRounds;
+    let executedToolCallCount = 0;
 
     if (
       requestConfig.imageCount === undefined &&
@@ -518,6 +619,14 @@ export const streamChatResponse = async (
       (!supportsTextOutput(selectedModelMetadata) ||
         modelName.toLowerCase().startsWith("gpt-image-"))
     ) {
+      boundHistoryForRequest([], {
+        newMessage: requestMessage,
+        attachments: requestAttachments,
+        systemInstruction: userSystemInstruction,
+        tools,
+        modelInputTokenLimit: selectedModelMetadata?.limit?.context,
+        reservedOutputTokens: selectedModelMetadata?.limit?.output,
+      });
       const loadingBlockId = outputBlockBuilder.appendImageGenerationStatus();
       emitOutputBlocks();
 
@@ -579,11 +688,15 @@ export const streamChatResponse = async (
       emitToolCalls();
     };
 
-    const runRound = async (): Promise<{
-      content: string;
-      reasoning: string;
-      toolCalls: ToolCall[];
-    }> => {
+    const runRound = async (): Promise<ChatStreamRoundResult> => {
+      const boundedRequestHistory = boundHistoryForRequest(requestHistory, {
+        newMessage: requestMessage,
+        attachments: requestAttachments,
+        modelInputTokenLimit: selectedModelMetadata?.limit?.context,
+        reservedOutputTokens: selectedModelMetadata?.limit?.output,
+        systemInstruction: userSystemInstruction,
+        tools,
+      });
       const response = await fetchWithByokRetry(async () =>
         signedApiFetch("/api/chat", {
           method: "POST",
@@ -591,9 +704,9 @@ export const streamChatResponse = async (
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            provider: await buildProviderRuntimeConfig(provider),
+            provider: await buildProviderRuntimeConfig(provider, signal),
             modelName,
-            history: requestHistory,
+            history: boundedRequestHistory,
             newMessage: requestMessage,
             attachments: requestAttachments,
             config: requestConfig,
@@ -632,8 +745,15 @@ export const streamChatResponse = async (
       let buffer = "";
       const roundToolCalls: ToolCall[] = [];
 
+      const getRoundPayload = (): ChatStreamRoundPayload => ({
+        content: fullContent,
+        reasoning: fullReasoning,
+        toolCalls: roundToolCalls,
+      });
+
       const handleEventData = async (data: string) => {
-        if (!data || data === "[DONE]") return false;
+        if (!data) return false;
+        if (data === "[DONE]") return true;
         const parsed = JSON.parse(data);
 
         switch (parsed.type) {
@@ -690,9 +810,10 @@ export const streamChatResponse = async (
 
           case "image":
             if (parsed.image) {
-              const [image] = await cacheGeneratedImageAttachments([
-                parsed.image,
-              ]);
+              const [image] = await cacheGeneratedImageAttachments(
+                [parsed.image],
+                { signal },
+              );
               outputBlockBuilder.appendImage(image);
               onChunk(
                 committedContent + fullContent,
@@ -715,7 +836,7 @@ export const streamChatResponse = async (
           }
 
           case "error":
-            throw new Error(parsed.error);
+            throw createChatStreamEventError(parsed);
 
           case "done":
             if (outputBlockBuilder.finalizeActiveReasoning()) {
@@ -740,56 +861,88 @@ export const streamChatResponse = async (
           return await handleEventData(dataLines.join("\n"));
         } catch (eventError) {
           if (eventError instanceof SyntaxError) {
-            logDevError("Failed to parse SSE data:", eventError);
-            return false;
+            throw new ChatStreamEventError(
+              "The response stream contained malformed data.",
+              "MALFORMED_CHAT_STREAM",
+            );
           }
           throw eventError;
         }
       };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const cancelReader = () => {
+        void reader.cancel(signal?.reason).catch(() => undefined);
+      };
+      signal?.addEventListener("abort", cancelReader, { once: true });
 
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split("\n\n");
-        buffer = events.pop() || "";
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        for (const event of events) {
-          const isDone = await processSSEEvent(event);
-          if (isDone) {
-            return {
-              content: fullContent,
-              reasoning: fullReasoning,
-              toolCalls: roundToolCalls,
-            };
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() || "";
+
+          for (const event of events) {
+            const isDone = await processSSEEvent(event);
+            if (isDone) {
+              await reader.cancel().catch(() => undefined);
+              return { status: "done", ...getRoundPayload() };
+            }
           }
         }
-      }
 
-      if (buffer.trim()) {
-        const isDone = await processSSEEvent(buffer);
-        if (isDone) {
+        if (buffer.trim()) {
+          const isDone = await processSSEEvent(buffer);
+          if (isDone) {
+            await reader.cancel().catch(() => undefined);
+            return { status: "done", ...getRoundPayload() };
+          }
+        }
+
+        if (signal?.aborted) {
           return {
-            content: fullContent,
-            reasoning: fullReasoning,
-            toolCalls: roundToolCalls,
+            status: "aborted",
+            error: createAbortError(signal),
+            ...getRoundPayload(),
           };
         }
-      }
 
-      if (outputBlockBuilder.finalizeActiveReasoning()) {
-        emitOutputBlocks();
+        if (outputBlockBuilder.finalizeActiveReasoning()) {
+          emitOutputBlocks();
+        }
+        return {
+          status: "incomplete",
+          error: new IncompleteChatStreamError(),
+          ...getRoundPayload(),
+        };
+      } catch (error) {
+        await reader.cancel().catch(() => undefined);
+        const normalizedError =
+          error instanceof Error ? error : new Error(String(error));
+        if (isAbortError(normalizedError, signal)) {
+          return {
+            status: "aborted",
+            error: createAbortError(signal),
+            ...getRoundPayload(),
+          };
+        }
+        return {
+          status: "error",
+          error: normalizedError,
+          ...getRoundPayload(),
+        };
+      } finally {
+        signal?.removeEventListener("abort", cancelReader);
       }
-      return {
-        content: fullContent,
-        reasoning: fullReasoning,
-        toolCalls: roundToolCalls,
-      };
     };
 
     for (let round = 0; round <= maxToolRounds; round++) {
       const result = await runRound();
+      if (result.status !== "done") {
+        throw result.error;
+      }
       const pendingToolCalls = result.toolCalls.filter(
         (toolCall) =>
           toolCall.name &&
@@ -822,15 +975,38 @@ export const streamChatResponse = async (
         );
       }
 
-      pendingToolCalls.forEach((toolCall) => {
+      const remainingToolBudget = Math.max(
+        0,
+        PLUGIN_EXECUTION_LIMITS.maxTotalToolCalls - executedToolCallCount,
+      );
+      const toolCallsToExecute = pendingToolCalls.slice(0, remainingToolBudget);
+      const budgetSkippedToolCalls = pendingToolCalls
+        .slice(remainingToolBudget)
+        .map((toolCall): ToolCall => ({
+          ...toolCall,
+          status: "skipped",
+          isError: true,
+          result:
+            "Tool execution skipped because the per-generation total tool-call budget was reached.",
+        }));
+      budgetSkippedToolCalls.forEach((toolCall) => {
+        outputBlockBuilder.updateToolCall(toolCall);
+        emitOutputBlocks();
+        upsertToolCall(toolCall);
+      });
+      executedToolCallCount += toolCallsToExecute.length;
+
+      toolCallsToExecute.forEach((toolCall) => {
         const runningToolCall: ToolCall = { ...toolCall, status: "running" };
         outputBlockBuilder.updateToolCall(runningToolCall);
         emitOutputBlocks();
         upsertToolCall(runningToolCall);
       });
 
-      const executedToolCalls = await Promise.all(
-        pendingToolCalls.map(async (toolCall) => {
+      const completedToolCalls = await mapWithConcurrency(
+        toolCallsToExecute,
+        PLUGIN_EXECUTION_LIMITS.maxToolConcurrency,
+        async (toolCall) => {
           try {
             const resultData = isInternalMemoryTool(toolCall.name)
               ? await executeMemorySearchTool(toolCall.args)
@@ -859,6 +1035,7 @@ export const streamChatResponse = async (
             upsertToolCall(completed);
             return completed;
           } catch (toolError) {
+            if (isAbortError(toolError, signal)) throw toolError;
             const failed: ToolCall = {
               ...toolCall,
               status: "error",
@@ -873,8 +1050,12 @@ export const streamChatResponse = async (
             upsertToolCall(failed);
             return failed;
           }
-        }),
+        },
       );
+      const executedToolCalls = [
+        ...completedToolCalls,
+        ...budgetSkippedToolCalls,
+      ];
 
       committedContent = result.content
         ? `${committedContent}${result.content}\n\n`
@@ -908,9 +1089,6 @@ export const streamChatResponse = async (
 
     return committedContent;
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
-    }
     throw error;
   }
 };
@@ -930,7 +1108,10 @@ const getCompressionConfig = () => {
 };
 
 // Generate summary using backend API
-const generateSummary = async (text: string): Promise<string> => {
+const generateSummary = async (
+  text: string,
+  signal?: AbortSignal,
+): Promise<string> => {
   try {
     // Use configured task model
     const summaryModel = getTaskModel("contextCompression");
@@ -941,9 +1122,11 @@ const generateSummary = async (text: string): Promise<string> => {
       summaryModel,
       prompt,
       () => {},
+      signal,
     );
     return response;
   } catch (e) {
+    if (isAbortError(e, signal)) throw e;
     logDevWarn("Summary generation failed, returning raw truncation", e);
     return normalizeCompressedContent(
       `${text.slice(0, 1000)}... [Summary Failed]`,
@@ -1048,12 +1231,14 @@ export const performBackgroundCompression = async (
   allMessages: Message[],
   currentCompression: Session["compression"],
   model: string,
+  signal?: AbortSignal,
 ): Promise<Session["compression"] | null> => {
   const { thresholdMessages, keepMessages } = getCompressionConfig();
 
   // 1. Identify Uncompressed Segment
   let startIndex = 0;
   let oldContent = "";
+  let oldIncludedMemoryIds: string[] = [];
 
   if (currentCompression) {
     const lastIdx = allMessages.findIndex(
@@ -1061,7 +1246,12 @@ export const performBackgroundCompression = async (
     );
     if (lastIdx !== -1) {
       startIndex = lastIdx + 1;
-      oldContent = currentCompression.compressedContent;
+      const normalizedPrevious = normalizeCompressedContentWithMemoryIds({
+        content: currentCompression.compressedContent,
+        memoryIds: currentCompression.includedMemoryIds || [],
+      });
+      oldContent = normalizedPrevious.content;
+      oldIncludedMemoryIds = normalizedPrevious.representedMemoryIds;
     }
   } else {
     // If no previous compression, start from index 1 (keeping index 0 User safe)
@@ -1079,37 +1269,39 @@ export const performBackgroundCompression = async (
   // We keep the last 'keepMessages' raw. Compress everything else in the uncompressed segment.
   const splitIndex = uncompressedMessages.length - keepMessages;
   const messagesToCompress = uncompressedMessages.slice(0, splitIndex);
-  const lastCompressedMsg = messagesToCompress[messagesToCompress.length - 1];
-
-  if (!lastCompressedMsg) return null;
+  if (messagesToCompress.length === 0) return null;
 
   // 4. Generate Content
-  const textToCompress = messagesToCompress
-    .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
-    .join("\n\n");
+  const compressionSource = buildCompressionSource(messagesToCompress);
+  if (!compressionSource.lastIncludedMessageId) return null;
+  const textToCompress = compressionSource.text;
 
   const { modelMetadata, customModelMetadata } = useSettingsStore.getState();
   const { modelName: modelId } = parseModelString(model);
   const meta = customModelMetadata[modelId] || modelMetadata[modelId];
   const supportAttachment = meta ? (meta.attachment ?? false) : true;
 
-  let newCompressedContent = "";
+  let nextCompressedContent = textToCompress;
 
-  if (supportAttachment) {
-    // Append raw text
-    newCompressedContent = mergeCompressedContent(oldContent, textToCompress);
-  } else {
+  if (!supportAttachment) {
     // Generate Summary
-    const summary = await generateSummary(textToCompress);
-    newCompressedContent = mergeCompressedContent(
-      oldContent,
-      oldContent ? `[New Summary Segment]:\n${summary}` : summary,
-    );
+    const summary = await generateSummary(textToCompress, signal);
+    nextCompressedContent = oldContent
+      ? `[New Summary Segment]:\n${summary}`
+      : summary;
   }
 
+  const mergedCompression = mergeCompressedContentWithMemoryIds({
+    previousContent: oldContent,
+    previousMemoryIds: oldIncludedMemoryIds,
+    nextContent: nextCompressedContent,
+    nextMemoryIds: compressionSource.includedMemoryIds,
+  });
+
   return {
-    compressedContent: newCompressedContent,
-    lastCompressedMessageId: lastCompressedMsg.id,
+    compressedContent: mergedCompression.content,
+    lastCompressedMessageId: compressionSource.lastIncludedMessageId,
+    includedMemoryIds: mergedCompression.representedMemoryIds,
   };
 };
 
@@ -1129,6 +1321,7 @@ export const streamGenerateContent = async (
 
   if (!provider) throw new Error("No provider found");
 
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     const response = await fetchWithByokRetry(async () =>
       signedApiFetch("/api/chat/generate", {
@@ -1137,7 +1330,7 @@ export const streamGenerateContent = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(provider),
+          provider: await buildProviderRuntimeConfig(provider, signal),
           modelName,
           prompt,
         }),
@@ -1151,12 +1344,46 @@ export const streamGenerateContent = async (
       );
     }
 
-    const reader = response.body?.getReader();
+    reader = response.body?.getReader();
     if (!reader) throw new Error("No response body");
 
     const decoder = new TextDecoder();
     let fullText = "";
     let buffer = "";
+
+    const processEvent = (event: string): boolean => {
+      const data = event
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice(6))
+        .join("\n");
+
+      if (!data) return false;
+      if (data === "[DONE]") return true;
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        throw new ChatStreamEventError(
+          "The response stream contained malformed data.",
+          "MALFORMED_CHAT_STREAM",
+        );
+      }
+
+      switch (parsed.type) {
+        case "content":
+          fullText += parsed.content;
+          onChunk(fullText);
+          return false;
+        case "error":
+          throw createChatStreamEventError(parsed);
+        case "done":
+          return true;
+        default:
+          return false;
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -1167,43 +1394,19 @@ export const streamGenerateContent = async (
       buffer = events.pop() || "";
 
       for (const event of events) {
-        const data = event
-          .split("\n")
-          .filter((line) => line.startsWith("data: "))
-          .map((line) => line.slice(6))
-          .join("\n");
-
-        if (!data || data === "[DONE]") continue;
-
-        try {
-          const parsed = JSON.parse(data);
-
-          switch (parsed.type) {
-            case "content":
-              fullText += parsed.content;
-              onChunk(fullText); // Pass accumulated text, not just the chunk
-              break;
-
-            case "error":
-              throw new Error(parsed.error);
-
-            case "done":
-              return fullText;
-          }
-        } catch (e) {
-          if (e instanceof Error && data.includes('"type":"error"')) {
-            throw e;
-          }
-          logDevError("Failed to parse SSE data:", e);
+        if (processEvent(event)) {
+          await reader.cancel().catch(() => undefined);
+          return fullText;
         }
       }
     }
 
-    return fullText;
+    if (buffer.trim() && processEvent(buffer)) return fullText;
+    if (signal?.aborted) throw createAbortError(signal);
+    throw new IncompleteChatStreamError();
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
-    }
+    await reader?.cancel().catch(() => undefined);
+    if (isAbortError(error, signal)) throw createAbortError(signal);
     logDevError("Stream generate error:", error);
     throw error;
   }
@@ -1237,7 +1440,7 @@ export const streamGenerateToolCall = async (
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: await buildProviderRuntimeConfig(provider),
+          provider: await buildProviderRuntimeConfig(provider, signal),
           modelName,
           history: [],
           newMessage: prompt,
@@ -1260,26 +1463,37 @@ export const streamGenerateToolCall = async (
 
     const decoder = new TextDecoder();
     let buffer = "";
+    let pendingToolCall: ToolCall | null = null;
 
-    const readEvent = (event: string): ToolCall | null | undefined => {
+    const readEvent = (event: string): "done" | "continue" => {
       const data = event
         .split("\n")
         .filter((line) => line.startsWith("data: "))
         .map((line) => line.slice(6))
         .join("\n");
 
-      if (!data || data === "[DONE]") return undefined;
+      if (!data) return "continue";
+      if (data === "[DONE]") return "done";
 
-      const parsed = JSON.parse(data);
+      let parsed: any;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        throw new ChatStreamEventError(
+          "The response stream contained malformed data.",
+          "MALFORMED_CHAT_STREAM",
+        );
+      }
       switch (parsed.type) {
         case "tool_call":
-          return parsed.toolCall || null;
+          pendingToolCall = parsed.toolCall || null;
+          return "continue";
         case "error":
-          throw new Error(parsed.error);
+          throw createChatStreamEventError(parsed);
         case "done":
-          return null;
+          return "done";
         default:
-          return undefined;
+          return "continue";
       }
     };
 
@@ -1292,22 +1506,25 @@ export const streamGenerateToolCall = async (
       buffer = events.pop() || "";
 
       for (const event of events) {
-        const result = readEvent(event);
-        if (result !== undefined) {
+        if (readEvent(event) === "done") {
           await reader.cancel().catch(() => undefined);
-          return result;
+          return pendingToolCall;
         }
       }
     }
 
     if (buffer.trim()) {
-      const result = readEvent(buffer);
-      if (result !== undefined) return result;
+      if (readEvent(buffer) === "done") return pendingToolCall;
     }
 
-    return null;
+    if (signal?.aborted) throw createAbortError(signal);
+    throw new IncompleteChatStreamError();
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (isAbortError(error, signal)) throw createAbortError(signal);
+    if (
+      error instanceof IncompleteChatStreamError ||
+      error instanceof ChatStreamEventError
+    ) {
       throw error;
     }
     logDevWarn("Skill tool selection failed:", error);
@@ -1326,6 +1543,7 @@ export const performBackgroundMemoryExtraction = async ({
   assistantMessage: Pick<Message, "id" | "content">;
   signal?: AbortSignal;
 }) => {
+  if (signal?.aborted) throw createAbortError(signal);
   const state = useMemoryStore.getState();
   const { _hasHydrated, settings } = state;
   if (
@@ -1348,6 +1566,7 @@ export const performBackgroundMemoryExtraction = async ({
     [coerceToolDefinition(MEMORY_RECORD_TOOL)],
     signal,
   );
+  if (signal?.aborted) throw createAbortError(signal);
 
   if (!toolCall || toolCall.name !== MEMORY_RECORD_TOOL_NAME) return [];
 
@@ -1357,6 +1576,7 @@ export const performBackgroundMemoryExtraction = async ({
     sourceMessageIds: [userMessage.id, assistantMessage.id],
   });
   if (memories.length === 0) return [];
+  if (signal?.aborted) throw createAbortError(signal);
 
   const saved = useMemoryStore.getState().upsertMemories(memories);
   const nextState = useMemoryStore.getState();
@@ -1365,7 +1585,11 @@ export const performBackgroundMemoryExtraction = async ({
     nextState.settings.dreamEnabled &&
     nextState.memories.length > nextState.settings.triggerCount
   ) {
-    void performMemoryDream({ force: false, signal });
+    void performMemoryDream({ force: false, signal }).catch((error) => {
+      if (!isAbortError(error, signal)) {
+        logDevWarn("Memory dream failed:", error);
+      }
+    });
   }
 
   return saved;
@@ -1378,6 +1602,7 @@ export const performMemoryDream = async ({
   force?: boolean;
   signal?: AbortSignal;
 } = {}) => {
+  if (signal?.aborted) throw createAbortError(signal);
   const state = useMemoryStore.getState();
   const { _hasHydrated, settings, memories, dreamStatus } = state;
   if (
@@ -1416,10 +1641,15 @@ export const performMemoryDream = async ({
       throw new Error("Memory dream returned an invalid memory set.");
     }
 
+    if (signal?.aborted) throw createAbortError(signal);
     useMemoryStore.getState().replaceMemories(dreamed);
     useMemoryStore.getState().finishDream();
     return dreamed;
   } catch (error) {
+    if (isAbortError(error, signal)) {
+      useMemoryStore.getState().finishDream();
+      throw createAbortError(signal);
+    }
     const message = error instanceof Error ? error.message : String(error);
     useMemoryStore.getState().finishDream(message);
     logDevWarn("Memory dream failed:", error);

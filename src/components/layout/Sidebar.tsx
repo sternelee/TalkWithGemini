@@ -77,8 +77,10 @@ interface SidebarProps {
   onRenameSession: (id: string, newTitle: string) => void;
   onTogglePin?: (id: string) => void;
   onDuplicate?: (id: string) => void | Promise<void>;
+  isDuplicateDisabled?: boolean;
   onSmartRename?: (id: string) => void;
   isOpen: boolean;
+  isHidden?: boolean;
   toggleSidebar: () => void;
   isModal?: boolean;
   onRequestClose?: () => void;
@@ -146,8 +148,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   onRenameSession,
   onTogglePin,
   onDuplicate,
+  isDuplicateDisabled = false,
   onSmartRename,
   isOpen,
+  isHidden = false,
   toggleSidebar,
   isModal = false,
   onRequestClose,
@@ -758,13 +762,15 @@ const Sidebar: React.FC<SidebarProps> = ({
       ref={sidebarRef}
       role={isModal ? "dialog" : undefined}
       aria-modal={isModal || undefined}
+      inert={isHidden || undefined}
+      aria-hidden={isHidden || undefined}
       aria-label={isModal ? PRODUCT_NAME : undefined}
       tabIndex={isModal ? -1 : undefined}
       onKeyDown={handleSidebarKeyDown}
       className={`
       glass-shell border-r border-gray-200 dark:border-sidebar-border flex flex-col shrink-0 h-full w-72 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] transition-transform duration-200 ease-out will-change-transform md:pb-0 md:pt-0 lg:transition-[width,transform] lg:duration-300
       fixed inset-y-0 left-0 z-40
-      ${isOpen ? "translate-x-0" : "-translate-x-full md:-translate-x-56"}
+      ${isOpen ? "translate-x-0" : "-translate-x-full"}
       lg:translate-x-0 lg:relative
       ${isOpen ? "lg:w-72" : "lg:w-16"}
     `}
@@ -779,9 +785,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      <div
-        className={`flex h-full flex-col ${isOpen ? "w-full" : "ml-auto w-16 lg:ml-0 lg:w-full"}`}
-      >
+      <div className="flex h-full w-full flex-col">
         <div
           className={`px-3 py-3 flex shrink-0 transition-[height,padding] duration-300 ${
             isOpen ? "h-14 items-center gap-2" : "items-center justify-center"
@@ -1436,6 +1440,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         </DropdownMenuItem>
 
                         <DropdownMenuItem
+                          disabled={isDuplicateDisabled}
                           onSelect={() => {
                             if (onDuplicate) void onDuplicate(session.id);
                             setContextMenu(null);

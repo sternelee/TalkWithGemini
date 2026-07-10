@@ -319,6 +319,8 @@ export const PLUGIN_EXECUTION_LIMITS = {
   maxArgEntries: 5_000,
   maxToolRounds: 20,
   maxStreamedToolCalls: 100,
+  maxToolConcurrency: 4,
+  maxTotalToolCalls: 100,
   maxToolCallIdChars: 200,
 } as const;
 

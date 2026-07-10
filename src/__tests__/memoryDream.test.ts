@@ -230,4 +230,55 @@ describe("memory dream consolidation", () => {
     expect(useMemoryStore.getState().memories).toHaveLength(101);
     expect(useMemoryStore.getState().dreamStatus.lastError).toMatch(/invalid/i);
   });
+
+  it("does not replace memories when cancellation races with stream completion", async () => {
+    useMemoryStore.setState({
+      memories: Array.from({ length: 101 }, (_, index) => makeMemory(index)),
+    });
+    const abortController = new AbortController();
+    const toolEvent = {
+      type: "tool_call",
+      toolCall: {
+        id: "call_dream",
+        name: "memory_dream",
+        args: {
+          memories: Array.from({ length: 50 }, (_, index) => ({
+            type: "project",
+            content: `Cancelled memory ${index}`,
+            importance: 4,
+            tags: ["cancelled"],
+          })),
+        },
+        status: "pending",
+      },
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(toolEvent)}\n\n`),
+            );
+            queueMicrotask(() => {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`),
+              );
+              controller.close();
+              abortController.abort();
+            });
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const { performMemoryDream } = await import("../services/api/chatService");
+    await expect(
+      performMemoryDream({ signal: abortController.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(useMemoryStore.getState().memories).toHaveLength(101);
+    expect(useMemoryStore.getState().dreamStatus.isRunning).toBe(false);
+    expect(useMemoryStore.getState().dreamStatus.lastError).toBeUndefined();
+  });
 });

@@ -7,7 +7,7 @@ const DARK_THEME_COLOR = "#09090b";
 
 export function useChatThemeEffects(
   theme: "light" | "dark" | "system",
-  fontSize: "small" | "medium" | "large" = "small",
+  fontSize: "small" | "medium" | "large" = "medium",
 ) {
   useEffect(() => {
     const root = window.document.documentElement;
@@ -39,5 +39,6 @@ export function useChatThemeEffects(
 
   useEffect(() => {
     window.document.documentElement.dataset.fontSize = fontSize;
+    window.localStorage.setItem("neo-chat-font-size", fontSize);
   }, [fontSize]);
 }

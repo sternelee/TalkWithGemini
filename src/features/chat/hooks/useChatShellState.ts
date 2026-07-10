@@ -16,6 +16,8 @@ export function useChatShellState() {
       currentSessionId: state.currentSessionId,
       activeMessages: state.activeMessages,
       activeMessageTree: state.activeMessageTree,
+      isActiveSessionLoading: state.isActiveSessionLoading,
+      activeSessionLoadError: state.activeSessionLoadError,
       selectedModel: state.selectedModel,
       chatConfig: state.chatConfig,
       createSession: state.createSession,

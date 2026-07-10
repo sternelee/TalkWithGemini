@@ -1,6 +1,6 @@
 import { LobeAgent } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { readJsonResponseOrThrow } from "../../lib/api/client";
+import { readJsonResponseOrThrow, signedApiFetch } from "../../lib/api/client";
 import {
   normalizeAgentDetail,
   normalizeMarketAgents,
@@ -98,7 +98,7 @@ export const getAgents = async (
 
   const request = (async () => {
     logDevInfo("Fetching agents from API...");
-    const response = await fetch(`/api/agents?locale=${locale}`);
+    const response = await signedApiFetch(`/api/agents?locale=${locale}`);
     if (!response.ok) throw new Error("Failed to fetch agents");
 
     const data = await readJsonResponseOrThrow<AgentListResponse>(
@@ -151,7 +151,7 @@ export const getAgentDetail = async (
 ): Promise<any> => {
   const locale = normalizeAgentMarketLocale(requestedLocale);
   try {
-    const response = await fetch(
+    const response = await signedApiFetch(
       `/api/agents/${encodeURIComponent(identifier)}?locale=${locale}`,
     );
     if (!response.ok) throw new Error("Failed to fetch agent details");

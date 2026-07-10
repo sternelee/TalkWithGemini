@@ -16,6 +16,14 @@ async function* asyncChunks(chunks: unknown[]) {
   for (const chunk of chunks) {
     yield chunk;
   }
+
+  // This file shares one success-stream helper across all provider adapters.
+  // Emit each provider's semantic terminal so every fixture represents a
+  // completed upstream stream rather than a premature EOF.
+  yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+  yield { type: "response.completed", response: {} };
+  yield { type: "message_stop" };
+  yield { candidates: [{ finishReason: "STOP" }] };
 }
 
 function toolCallMessages(messages: SSEMessage[]) {
@@ -1103,5 +1111,62 @@ describe("streamed tool-call normalization", () => {
       includeThoughts: true,
       thinkingLevel: "LOW",
     });
+  });
+
+  it("passes AbortSignal through every provider SDK streaming request", async () => {
+    const controller = new AbortController();
+    const openAIChatCreate = vi.fn(async () => asyncChunks([]));
+    const openAIResponsesCreate = vi.fn(async () => asyncChunks([]));
+    const anthropicCreate = vi.fn(async () => asyncChunks([]));
+    const geminiGenerate = vi.fn(async () => asyncChunks([]));
+
+    await streamOpenAIChatCompletions({
+      client: {
+        chat: { completions: { create: openAIChatCreate } },
+      } as any,
+      model: "gpt-test",
+      messages: [],
+      signal: controller.signal,
+      onChunk: () => undefined,
+    });
+    await streamOpenAIResponses({
+      client: { responses: { create: openAIResponsesCreate } } as any,
+      model: "gpt-test",
+      input: [],
+      signal: controller.signal,
+      onChunk: () => undefined,
+    });
+    await streamAnthropicMessages({
+      client: { messages: { create: anthropicCreate } } as any,
+      model: "claude-test",
+      messages: [],
+      signal: controller.signal,
+      onChunk: () => undefined,
+    });
+    await streamGeminiResponse({
+      client: { models: { generateContentStream: geminiGenerate } } as any,
+      model: "gemini-test",
+      contents: [],
+      signal: controller.signal,
+      onChunk: () => undefined,
+    });
+
+    expect(openAIChatCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(openAIResponsesCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(anthropicCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(geminiGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ abortSignal: controller.signal }),
+      }),
+    );
   });
 });

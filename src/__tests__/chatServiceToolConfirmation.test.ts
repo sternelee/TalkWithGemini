@@ -96,6 +96,10 @@ vi.mock("@/lib/chat/htmlVisualPrompt", async () =>
 );
 
 vi.mock("@/lib/utils/contextCompression", () => ({
+  buildCompressionSource: vi.fn(() => ({
+    text: "",
+    includedMemoryIds: [],
+  })),
   createContextCompressionSummaryPrompt: vi.fn((text: string) => text),
   mergeCompressedContent: vi.fn((content: string) => content),
   normalizeCompressedContent: vi.fn((content: string) => content),
@@ -125,6 +129,53 @@ function sseResponse(events: unknown[]) {
       start(controller) {
         controller.enqueue(encoder.encode(body));
         controller.close();
+      },
+    }),
+    {
+      headers: {
+        "content-type": "text/event-stream",
+      },
+    },
+  );
+}
+
+function rawSseResponse(body: string) {
+  return new Response(body, {
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
+function pendingToolEvents(count: number, prefix: string) {
+  return Array.from({ length: count }, (_, index) => ({
+    type: "tool_call",
+    toolCall: {
+      id: `${prefix}_${index}`,
+      name: "create_record",
+      args: { index },
+      status: "pending",
+    },
+  }));
+}
+
+function abortableSseResponse(
+  signal: AbortSignal,
+  events: unknown[],
+): Response {
+  const body = events
+    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+    .join("");
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(body));
+        signal.addEventListener(
+          "abort",
+          () => {
+            controller.error(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
       },
     }),
     {
@@ -423,6 +474,93 @@ describe("chat service tool execution", () => {
       expect.arrayContaining([
         expect.objectContaining({ status: "awaiting_confirmation" }),
         expect.objectContaining({ status: "denied" }),
+      ]),
+    );
+  });
+
+  it("limits tool execution concurrency to four", async () => {
+    let activeExecutions = 0;
+    let maxActiveExecutions = 0;
+    mocks.executePluginFunction.mockImplementation(async () => {
+      activeExecutions += 1;
+      maxActiveExecutions = Math.max(maxActiveExecutions, activeExecutions);
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      activeExecutions -= 1;
+      return { ok: true };
+    });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([...pendingToolEvents(8, "first"), { type: "done" }]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ type: "content", content: "Done" }, { type: "done" }]),
+      );
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Run tools",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      ["writer"],
+    );
+
+    expect(maxActiveExecutions).toBeLessThanOrEqual(
+      PLUGIN_EXECUTION_LIMITS.maxToolConcurrency,
+    );
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(8);
+  });
+
+  it("skips tool calls beyond the per-generation total budget", async () => {
+    mocks.executePluginFunction.mockResolvedValue({ ok: true });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([...pendingToolEvents(60, "first"), { type: "done" }]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([...pendingToolEvents(60, "second"), { type: "done" }]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ type: "content", content: "Done" }, { type: "done" }]),
+      );
+    const updates: ToolCall[][] = [];
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Run many tools",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      (toolCalls) => updates.push(toolCalls),
+      undefined,
+      undefined,
+      undefined,
+      ["writer"],
+    );
+
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(
+      PLUGIN_EXECUTION_LIMITS.maxTotalToolCalls,
+    );
+    expect(updates.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "skipped",
+          result: expect.stringMatching(/total tool-call budget/i),
+        }),
       ]),
     );
   });
@@ -1071,5 +1209,339 @@ describe("chat service tool execution", () => {
       PLUGIN_EXECUTION_LIMITS.maxToolRounds + 1,
     );
     expect(result).toContain("20 tool-call rounds");
+  });
+
+  describe("stream termination contract", () => {
+    it("resolves only after an explicit done event", async () => {
+      const chunks: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Complete" },
+          { type: "done" },
+        ]),
+      );
+
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+      const result = await streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Answer",
+        [],
+        {},
+        (content) => chunks.push(content),
+      );
+
+      expect(result).toBe("Complete");
+      expect(chunks).toEqual(["Complete"]);
+    });
+
+    it("rejects an early EOF as a recoverable incomplete stream while preserving chunks", async () => {
+      const chunks: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([{ type: "content", content: "Partial" }]),
+      );
+
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+      const response = streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Answer",
+        [],
+        {},
+        (content) => chunks.push(content),
+      );
+
+      await expect(response).rejects.toMatchObject({
+        name: "IncompleteChatStreamError",
+        code: "INCOMPLETE_CHAT_STREAM",
+        recoverable: true,
+      });
+      expect(chunks).toEqual(["Partial"]);
+    });
+
+    it("rejects an explicit stream error without treating it as done", async () => {
+      const chunks: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Partial" },
+          { type: "error", error: "Provider stream failed" },
+          { type: "done" },
+        ]),
+      );
+
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+      const response = streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Answer",
+        [],
+        {},
+        (content) => chunks.push(content),
+      );
+
+      await expect(response).rejects.toMatchObject({
+        name: "ChatStreamEventError",
+        code: "CHAT_STREAM_ERROR",
+        message: "Provider stream failed",
+      });
+      expect(chunks).toEqual(["Partial"]);
+    });
+
+    it("maps provider incomplete terminals to a recoverable stream error", async () => {
+      const chunks: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Partial" },
+          {
+            type: "error",
+            error: "Provider stream ended before its terminal event.",
+            code: "INCOMPLETE_PROVIDER_STREAM",
+          },
+        ]),
+      );
+
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamChatResponse(
+          "session-1",
+          "openai:gpt-4",
+          [],
+          "Answer",
+          [],
+          {},
+          (content) => chunks.push(content),
+        ),
+      ).rejects.toMatchObject({
+        name: "IncompleteChatStreamError",
+        code: "INCOMPLETE_CHAT_STREAM",
+        recoverable: true,
+      });
+      expect(chunks).toEqual(["Partial"]);
+    });
+
+    it("rejects a malformed chat event even when done follows", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        rawSseResponse(
+          'data: {"type":"content","content":"Partial"}\n\n' +
+            "data: {malformed\n\n" +
+            'data: {"type":"done"}\n\n',
+        ),
+      );
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamChatResponse(
+          "session-1",
+          "openai:gpt-4",
+          [],
+          "Answer",
+          [],
+          {},
+          () => {},
+        ),
+      ).rejects.toMatchObject({
+        name: "ChatStreamEventError",
+        code: "MALFORMED_CHAT_STREAM",
+      });
+    });
+
+    it("rejects a malformed helper event even when done follows", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        rawSseResponse(
+          'data: {"type":"content","content":"Partial"}\n\n' +
+            "data: {malformed\n\n" +
+            'data: {"type":"done"}\n\n',
+        ),
+      );
+      const { streamGenerateContent } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamGenerateContent("openai:gpt-task", "Prompt", () => {}),
+      ).rejects.toMatchObject({
+        name: "ChatStreamEventError",
+        code: "MALFORMED_CHAT_STREAM",
+      });
+    });
+
+    it("rejects a malformed tool-selection event instead of returning null", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        rawSseResponse("data: {malformed\n\n" + 'data: {"type":"done"}\n\n'),
+      );
+      const { streamGenerateToolCall } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamGenerateToolCall("openai:gpt-task", "Prompt", [
+          {
+            type: "function",
+            function: {
+              name: "select_skill",
+              description: "Select a skill",
+              parameters: { type: "object", properties: {} },
+            },
+          },
+        ]),
+      ).rejects.toMatchObject({
+        name: "ChatStreamEventError",
+        code: "MALFORMED_CHAT_STREAM",
+      });
+    });
+
+    it("preserves response timeout and size error types from SSE", async () => {
+      vi.spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(
+          sseResponse([
+            {
+              type: "error",
+              error: "Upstream timed out",
+              code: "RESPONSE_TIMEOUT",
+            },
+          ]),
+        )
+        .mockResolvedValueOnce(
+          sseResponse([
+            {
+              type: "error",
+              error: "Upstream was too large",
+              code: "RESPONSE_SIZE_LIMIT",
+            },
+          ]),
+        );
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+      const run = () =>
+        streamChatResponse(
+          "session-1",
+          "openai:gpt-4",
+          [],
+          "Answer",
+          [],
+          {},
+          () => {},
+        );
+
+      await expect(run()).rejects.toMatchObject({
+        name: "ChatStreamTimeoutError",
+        code: "RESPONSE_TIMEOUT",
+      });
+      await expect(run()).rejects.toMatchObject({
+        name: "ChatStreamSizeLimitError",
+        code: "RESPONSE_SIZE_LIMIT",
+      });
+    });
+
+    it("preserves AbortError identity when the active stream is cancelled", async () => {
+      const controller = new AbortController();
+      const chunks: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) =>
+        abortableSseResponse(init?.signal as AbortSignal, [
+          { type: "content", content: "Partial" },
+        ]),
+      );
+
+      const { streamChatResponse } =
+        await import("../services/api/chatService");
+      const response = streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Answer",
+        [],
+        {},
+        (content) => chunks.push(content),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        controller.signal,
+      );
+
+      await vi.waitFor(() => expect(chunks).toEqual(["Partial"]));
+      controller.abort();
+
+      await expect(response).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("rejects helper text generation when its stream ends before done", async () => {
+      const chunks: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([{ type: "content", content: "Partial" }]),
+      );
+      const { streamGenerateContent } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamGenerateContent("openai:gpt-task", "Prompt", (text) =>
+          chunks.push(text),
+        ),
+      ).rejects.toMatchObject({
+        name: "IncompleteChatStreamError",
+        code: "INCOMPLETE_CHAT_STREAM",
+      });
+      expect(chunks).toEqual(["Partial"]);
+    });
+
+    it("waits for done before accepting a helper tool call", async () => {
+      const toolCall = {
+        id: "tool-1",
+        name: "select_skill",
+        args: { selectedSkillIds: ["skill-1"] },
+      };
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([{ type: "tool_call", toolCall }, { type: "done" }]),
+      );
+      const { streamGenerateToolCall } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamGenerateToolCall("openai:gpt-task", "Prompt", [
+          {
+            type: "function",
+            function: {
+              name: "select_skill",
+              description: "Select a skill",
+              parameters: { type: "object", properties: {} },
+            },
+          },
+        ]),
+      ).resolves.toEqual(toolCall);
+    });
+
+    it("rejects a helper tool call that is not followed by done", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: { id: "tool-1", name: "select_skill", args: {} },
+          },
+        ]),
+      );
+      const { streamGenerateToolCall } =
+        await import("../services/api/chatService");
+
+      await expect(
+        streamGenerateToolCall("openai:gpt-task", "Prompt", [
+          {
+            type: "function",
+            function: {
+              name: "select_skill",
+              description: "Select a skill",
+              parameters: { type: "object", properties: {} },
+            },
+          },
+        ]),
+      ).rejects.toMatchObject({ name: "IncompleteChatStreamError" });
+    });
   });
 });

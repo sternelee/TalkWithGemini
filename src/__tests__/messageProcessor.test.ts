@@ -202,6 +202,7 @@ describe("message preprocessing", () => {
   });
 
   it("uses RAG retrieval for indexed knowledge file attachments", async () => {
+    const controller = new AbortController();
     mocks.queryRAG.mockResolvedValue([
       {
         title: "notes.md",
@@ -254,11 +255,17 @@ describe("message preprocessing", () => {
           ],
         },
       ],
+      signal: controller.signal,
     });
 
+    expect(mocks.generateRAGSearchQueries).toHaveBeenCalledWith(
+      "Summarize notes",
+      controller.signal,
+    );
     expect(mocks.queryRAG).toHaveBeenCalledWith(
       "knowledge query",
       "collection_1",
+      controller.signal,
     );
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(result.finalText).toContain("Indexed notes content");
@@ -348,6 +355,57 @@ describe("message preprocessing", () => {
     });
     expect(result.ragError?.message).toMatch(/knowledge base/i);
     expect(result.finalText).toContain("[Knowledge Base Error]");
+  });
+
+  it("limits RAG query concurrency and preserves successful partial results", async () => {
+    const collectionIds = Array.from(
+      { length: 6 },
+      (_, index) => `collection_${index + 1}`,
+    );
+    let activeQueries = 0;
+    let maxActiveQueries = 0;
+    mocks.queryRAG.mockImplementation(
+      async (_query: string, collectionId: string) => {
+        activeQueries += 1;
+        maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+        await new Promise<void>((resolve) => queueMicrotask(resolve));
+        activeQueries -= 1;
+        if (collectionId === "collection_2") {
+          throw new Error("one collection unavailable");
+        }
+        return [
+          {
+            title: collectionId,
+            url: "#",
+            content: `Result from ${collectionId}`,
+            metadata: { collectionId },
+          },
+        ];
+      },
+    );
+
+    const result = await processMessageForSending({
+      text: "Use all docs",
+      attachments: collectionIds.map((collectionId) =>
+        createKnowledgeCollectionAttachment({
+          collectionId,
+          collectionName: collectionId,
+        }),
+      ),
+      selectedModel: "provider:model",
+      modelMetadata: { model: { attachment: false } },
+      customModelMetadata: {},
+      ragConfig: {
+        enabled: true,
+        useDefaultVectorStore: true,
+        serverVectorStoreAvailable: true,
+      },
+      knowledgeCollections: collectionIds.map((id) => ({ id, files: [] })),
+    });
+
+    expect(maxActiveQueries).toBeLessThanOrEqual(4);
+    expect(result.ragSources).toHaveLength(5);
+    expect(result.ragError).toBeUndefined();
   });
 
   it("keeps unindexed knowledge file attachments on the local context path when RAG is enabled", async () => {

@@ -28,6 +28,7 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 export async function queryRAG(
   text: string,
   namespace = "",
+  signal?: AbortSignal,
 ): Promise<Source[]> {
   const { rag } = useSettingsStore.getState();
 
@@ -43,7 +44,7 @@ export async function queryRAG(
       const token = useDefault ? undefined : await resolveRagToken(rag);
       const tokenSecret = useDefault
         ? undefined
-        : await encryptSecret(token, BYOK_CONTEXTS.ragToken);
+        : await encryptSecret(token, BYOK_CONTEXTS.ragToken, signal);
       return signedApiFetch("/api/rag/query", {
         method: "POST",
         headers: {
@@ -57,6 +58,7 @@ export async function queryRAG(
           tokenSecret,
           topK: rag.topK || 10,
         }),
+        signal,
       });
     });
 
@@ -75,6 +77,9 @@ export async function queryRAG(
       maxSources: rag.topK || 10,
     });
   } catch (e) {
+    if (signal?.aborted || (e instanceof Error && e.name === "AbortError")) {
+      throw e;
+    }
     logDevError("RAG Query Failed:", e);
     throw e;
   }

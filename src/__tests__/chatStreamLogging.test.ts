@@ -125,4 +125,80 @@ describe("chat stream logging", () => {
     });
     expect(JSON.stringify(request.messages)).not.toContain('"mimeType"');
   });
+
+  it("passes the request signal to provider streaming", async () => {
+    const controller = new AbortController();
+    mocks.streamOpenAIChatCompletions.mockResolvedValue(undefined);
+
+    const { handleChatStream } = await import("../lib/api/chat-handler");
+    const response = await handleChatStream({
+      provider: {
+        type: "OpenAI Compatible",
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "sk-secret",
+      },
+      modelName: "compat-model",
+      history: [],
+      newMessage: "Hello",
+      signal: controller.signal,
+    });
+
+    await response.text();
+
+    expect(mocks.streamOpenAIChatCompletions).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
+  it("closes an aborted provider stream without emitting error or done", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const controller = new AbortController();
+    controller.abort();
+    mocks.streamOpenAIChatCompletions.mockRejectedValue(
+      new DOMException("Aborted", "AbortError"),
+    );
+
+    const { handleChatStream } = await import("../lib/api/chat-handler");
+    const response = await handleChatStream({
+      provider: {
+        type: "OpenAI Compatible",
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "sk-secret",
+      },
+      modelName: "compat-model",
+      history: [],
+      newMessage: "Hello",
+      signal: controller.signal,
+    });
+
+    await expect(response.text()).resolves.toBe("");
+    expect(consoleSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes AbortSignal to simple provider SDK requests", async () => {
+    const controller = new AbortController();
+    const create = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: "ok" } }],
+    });
+    mocks.createOpenAIClient.mockReturnValue({
+      chat: { completions: { create } },
+    });
+
+    const { handleSimpleGeneration } = await import("../lib/api/chat-handler");
+    await handleSimpleGeneration(
+      {
+        type: "OpenAI Compatible",
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "sk-secret",
+      },
+      "compat-model",
+      "Hello",
+      controller.signal,
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
 });

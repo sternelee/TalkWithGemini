@@ -277,6 +277,7 @@ export interface Session {
   compression?: {
     compressedContent: string;
     lastCompressedMessageId: string;
+    includedMemoryIds?: string[];
   };
   memoryContext?: {
     injectedMemoryIds: string[];

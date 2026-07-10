@@ -28,7 +28,7 @@ describe("deployment hygiene", () => {
     );
     expect(ci).toContain("pnpm build:worker");
     expect(ci).toContain("pnpm worker:size");
-    expect(ci).toContain("pnpm worker:dry-run");
+    expect(ci).not.toContain("pnpm worker:dry-run");
     expect(ci).toContain("pnpm hygiene:artifacts");
     expect(ci).toContain("pnpm audit --prod --audit-level moderate");
   });

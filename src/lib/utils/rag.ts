@@ -18,6 +18,9 @@ import {
   isKnowledgeFileAttachment,
   parseKnowledgeFileAttachmentData,
 } from "./knowledgeAttachments";
+import { mapSettledWithConcurrency } from "./concurrency";
+
+const RAG_QUERY_CONCURRENCY = 4;
 
 type IndexedKnowledgeFileSelector = {
   collectionId: string;
@@ -137,6 +140,7 @@ export const processRAGAttachments = async (
   },
   supportAttachment: boolean,
   knowledgeCollections: any[] = [],
+  signal?: AbortSignal,
 ): Promise<{
   convertedContent: string;
   finalAttachments: Attachment[];
@@ -186,32 +190,61 @@ export const processRAGAttachments = async (
       }
 
       // 1. Generate search queries based on user input
-      const queries = await generateRAGSearchQueries(text);
+      const queries = await generateRAGSearchQueries(text, signal);
 
       if (queries && queries.length > 0) {
         // 2. Perform the search across all selected collections
         const collectionIds = Array.from(queryCollectionIds);
 
-        const searchPromises: Promise<Source[]>[] = [];
+        const searchRequests: Array<{ query: string; collectionId: string }> =
+          [];
         for (const query of queries) {
           for (const id of collectionIds) {
-            searchPromises.push(
-              queryRAG(query, id).then((sources) =>
-                sources.map((source) => ({
-                  ...source,
-                  metadata: {
-                    ...(source.metadata || {}),
-                    collectionId:
-                      getSourceMetadataString(source, "collectionId") || id,
-                  },
-                })),
-              ),
-            );
+            searchRequests.push({ query, collectionId: id });
           }
         }
 
-        const resultsParts = await Promise.all(searchPromises);
-        const allResults = resultsParts
+        const settledResults = await mapSettledWithConcurrency<
+          { query: string; collectionId: string },
+          Source[]
+        >(searchRequests, RAG_QUERY_CONCURRENCY, ({ query, collectionId }) => {
+          signal?.throwIfAborted();
+          const request = signal
+            ? queryRAG(query, collectionId, signal)
+            : queryRAG(query, collectionId);
+          return request.then((sources) =>
+            sources.map((source): Source => ({
+              ...source,
+              metadata: {
+                ...(source.metadata || {}),
+                collectionId:
+                  getSourceMetadataString(source, "collectionId") ||
+                  collectionId,
+              },
+            })),
+          );
+        });
+        signal?.throwIfAborted();
+        const successfulResults = settledResults.filter(
+          (result): result is PromiseFulfilledResult<Source[]> =>
+            result.status === "fulfilled",
+        );
+        const failedResults = settledResults.filter(
+          (result): result is PromiseRejectedResult =>
+            result.status === "rejected",
+        );
+        if (successfulResults.length === 0 && failedResults.length > 0) {
+          throw failedResults[0].reason;
+        }
+        failedResults.forEach((result) => {
+          logDevError(
+            "RAG query failed; preserving partial results",
+            result.reason,
+          );
+        });
+
+        const allResults = successfulResults
+          .map((result) => result.value)
           .flat()
           .filter((source) =>
             sourceMatchesSelectedRagScope(
@@ -291,6 +324,9 @@ export const processRAGAttachments = async (
         }
       }
     } catch (e) {
+      if (signal?.aborted || (e instanceof Error && e.name === "AbortError")) {
+        throw e;
+      }
       logDevError("RAG Pre-flight failed:", e);
       ragError = {
         code: "RAG_QUERY_FAILED",

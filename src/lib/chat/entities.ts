@@ -7,7 +7,7 @@ import type {
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
-import { normalizeCompressedContent } from "../utils/contextCompression";
+import { normalizeCompressedContentWithMemoryIds } from "../utils/contextCompression";
 import { isReasoningEnabled, normalizeReasoningMode } from "./reasoning";
 
 const WORKSPACE_COLORS = new Set([
@@ -169,16 +169,32 @@ function normalizeSessionCompression(
     compression.lastCompressedMessageId,
     120,
   );
-  const compressedContent =
-    typeof compression.compressedContent === "string"
-      ? normalizeCompressedContent(compression.compressedContent)
-      : "";
+  const includedMemoryIds: string[] = [];
+  const seenMemoryIds = new Set<string>();
+  for (const value of Array.isArray(compression.includedMemoryIds)
+    ? compression.includedMemoryIds
+    : []) {
+    const id = trimString(value, 160);
+    if (!id || seenMemoryIds.has(id)) continue;
+    seenMemoryIds.add(id);
+    includedMemoryIds.push(id);
+    if (includedMemoryIds.length >= 200) break;
+  }
+  const normalizedCompression = normalizeCompressedContentWithMemoryIds({
+    content:
+      typeof compression.compressedContent === "string"
+        ? compression.compressedContent
+        : "",
+    memoryIds: includedMemoryIds,
+  });
+  const compressedContent = normalizedCompression.content;
 
   if (!lastCompressedMessageId || !compressedContent) return undefined;
 
   return {
     compressedContent,
     lastCompressedMessageId,
+    includedMemoryIds: normalizedCompression.representedMemoryIds,
   };
 }
 

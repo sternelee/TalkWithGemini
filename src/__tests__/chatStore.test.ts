@@ -111,6 +111,8 @@ describe("chat store persistence", () => {
       activeMessages: [],
       activeMessageTree: normalizeSessionMessageTree([]),
       isActiveSessionLoading: false,
+      pendingSessionId: null,
+      activeSessionLoadError: null,
       selectedModel: "model",
       chatConfig: {
         useSearch: false,
@@ -197,6 +199,172 @@ describe("chat store persistence", () => {
       `session_messages_${sessionId}`,
       expect.anything(),
     );
+  });
+
+  it("keeps the active session unchanged when the target message tree fails to load", async () => {
+    const activeMessage = makeMessage("a1", "session a");
+    const activeTree = normalizeSessionMessageTree([activeMessage]);
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b")],
+      currentSessionId: "a",
+      activeMessages: [activeMessage],
+      activeMessageTree: activeTree,
+    });
+    appDbMock.getItem.mockRejectedValueOnce(new Error("indexeddb failed"));
+
+    await useChatStore.getState().selectSession("b");
+
+    expect(useChatStore.getState()).toMatchObject({
+      currentSessionId: "a",
+      activeMessages: [activeMessage],
+      activeMessageTree: activeTree,
+      isActiveSessionLoading: false,
+      pendingSessionId: null,
+      activeSessionLoadError: "session_load_failed",
+    });
+  });
+
+  it("commits only the newest session load and keeps the previous session visible while loading", async () => {
+    const activeMessage = makeMessage("a1", "session a");
+    const bMessage = makeMessage("b1", "session b");
+    const cMessage = makeMessage("c1", "session c");
+    let resolveB: ((value: Message[]) => void) | undefined;
+    let resolveC: ((value: Message[]) => void) | undefined;
+    appDbMock.getItem.mockImplementation((key: string) => {
+      if (key === "session_messages_b") {
+        return new Promise((resolve) => {
+          resolveB = resolve;
+        });
+      }
+      if (key === "session_messages_c") {
+        return new Promise((resolve) => {
+          resolveC = resolve;
+        });
+      }
+      return Promise.resolve(storedItems.get(key));
+    });
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b"), makeSession("c")],
+      currentSessionId: "a",
+      activeMessages: [activeMessage],
+      activeMessageTree: normalizeSessionMessageTree([activeMessage]),
+    });
+
+    const loadB = useChatStore.getState().selectSession("b");
+    expect(useChatStore.getState()).toMatchObject({
+      currentSessionId: "a",
+      activeMessages: [activeMessage],
+      isActiveSessionLoading: true,
+      pendingSessionId: "b",
+    });
+
+    const loadC = useChatStore.getState().selectSession("c");
+    resolveC?.([cMessage]);
+    await loadC;
+    resolveB?.([bMessage]);
+    await loadB;
+
+    expect(useChatStore.getState()).toMatchObject({
+      currentSessionId: "c",
+      activeMessages: [cMessage],
+      isActiveSessionLoading: false,
+      pendingSessionId: null,
+      activeSessionLoadError: null,
+    });
+  });
+
+  it("waits for a pending session write before loading that session", async () => {
+    const freshMessage = makeMessage("fresh", "freshly persisted");
+    const freshTree = normalizeSessionMessageTree([freshMessage]);
+    let resolveWrite: (() => void) | undefined;
+    appDbMock.setItem.mockImplementationOnce(
+      (key: string, value: unknown) =>
+        new Promise((resolve) => {
+          resolveWrite = () => {
+            storedItems.set(key, value);
+            resolve(value);
+          };
+        }),
+    );
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b")],
+      currentSessionId: "b",
+      activeMessages: [],
+      activeMessageTree: normalizeSessionMessageTree([]),
+    });
+
+    const write = useChatStore.getState().syncActiveSession("a", freshTree);
+    const load = useChatStore.getState().selectSession("a");
+    await Promise.resolve();
+
+    expect(appDbMock.getItem).not.toHaveBeenCalledWith("session_messages_a");
+
+    resolveWrite?.();
+    await write;
+    await load;
+
+    expect(useChatStore.getState().activeMessages).toEqual([freshMessage]);
+  });
+
+  it("keeps the current session when the target pending write fails", async () => {
+    const activeMessage = makeMessage("b1", "current session");
+    let rejectWrite: ((error: Error) => void) | undefined;
+    appDbMock.setItem.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectWrite = reject;
+        }),
+    );
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b")],
+      currentSessionId: "b",
+      activeMessages: [activeMessage],
+      activeMessageTree: normalizeSessionMessageTree([activeMessage]),
+    });
+
+    const write = useChatStore
+      .getState()
+      .syncActiveSession("a", [makeMessage("a1", "new")]);
+    const load = useChatStore.getState().selectSession("a");
+    rejectWrite?.(new Error("write failed"));
+    const [writeResult, loadResult] = await Promise.allSettled([write, load]);
+
+    expect(writeResult.status).toBe("rejected");
+    expect(loadResult.status).toBe("fulfilled");
+    expect(useChatStore.getState()).toMatchObject({
+      currentSessionId: "b",
+      activeMessages: [activeMessage],
+      activeSessionLoadError: "session_load_failed",
+    });
+  });
+
+  it("clears a cancelled session load when a new chat is created", async () => {
+    let resolveLoad: ((value: Message[]) => void) | undefined;
+    appDbMock.getItem.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b")],
+      currentSessionId: "a",
+      activeMessages: [makeMessage("a1", "session a")],
+    });
+
+    const pendingLoad = useChatStore.getState().selectSession("b");
+    const createdId = useChatStore.getState().createSession();
+
+    expect(useChatStore.getState()).toMatchObject({
+      currentSessionId: createdId,
+      isActiveSessionLoading: false,
+      pendingSessionId: null,
+      activeSessionLoadError: null,
+    });
+
+    resolveLoad?.([makeMessage("b1", "session b")]);
+    await pendingLoad;
+    expect(useChatStore.getState().currentSessionId).toBe(createdId);
   });
 
   it("reuses only empty chats with matching workspace and session config", () => {
@@ -402,11 +570,14 @@ describe("chat store persistence", () => {
     const selectedMessage = makeMessage("b1", "session b");
     storedItems.set("session_messages_b", [selectedMessage]);
 
-    let resolveDuplicateRead: ((messages: Message[]) => void) | undefined;
-    appDbMock.getItem.mockImplementationOnce(
-      () =>
+    let resolveDuplicateWrite: (() => void) | undefined;
+    appDbMock.setItem.mockImplementationOnce(
+      (key: string, value: unknown) =>
         new Promise((resolve) => {
-          resolveDuplicateRead = resolve;
+          resolveDuplicateWrite = () => {
+            storedItems.set(key, value);
+            resolve(value);
+          };
         }),
     );
 
@@ -418,7 +589,7 @@ describe("chat store persistence", () => {
 
     const duplicatePromise = useChatStore.getState().duplicateSession("a");
     const selectPromise = useChatStore.getState().selectSession("b");
-    resolveDuplicateRead?.([originalMessage]);
+    resolveDuplicateWrite?.();
 
     await Promise.all([duplicatePromise, selectPromise]);
 
@@ -427,6 +598,38 @@ describe("chat store persistence", () => {
     expect(state.activeMessages).toEqual([selectedMessage]);
     expect(state.sessions).toHaveLength(3);
     expect(state.sessions[0]?.title).toBe("a (Copy)");
+  });
+
+  it("does not duplicate stale data when the source pending write fails", async () => {
+    let rejectWrite: ((error: Error) => void) | undefined;
+    appDbMock.setItem.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectWrite = reject;
+        }),
+    );
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b")],
+      currentSessionId: "b",
+      activeMessages: [],
+      activeMessageTree: normalizeSessionMessageTree([]),
+    });
+
+    const write = useChatStore
+      .getState()
+      .syncActiveSession("a", [makeMessage("a1", "new")]);
+    const duplicate = useChatStore.getState().duplicateSession("a");
+    rejectWrite?.(new Error("write failed"));
+    const [writeResult, duplicateResult] = await Promise.allSettled([
+      write,
+      duplicate,
+    ]);
+
+    expect(writeResult.status).toBe("rejected");
+    expect(duplicateResult.status).toBe("rejected");
+    expect(
+      useChatStore.getState().sessions.map((session) => session.id),
+    ).toEqual(["a", "b"]);
   });
 
   it("keeps session state unchanged when duplicated messages cannot be saved", async () => {
@@ -919,6 +1122,41 @@ describe("chat store persistence", () => {
     expect(useChatStore.getState().currentSessionId).toBe("b");
     expect(storedItems.get("session_messages_a")).toEqual([deletedMessage]);
     expect(deleteFromOPFSMock).not.toHaveBeenCalled();
+  });
+
+  it("queues deletion after pending writes so a deleted tree cannot reappear", async () => {
+    const pendingTree = normalizeSessionMessageTree([
+      makeMessage("late", "pending write"),
+    ]);
+    let resolveWrite: (() => void) | undefined;
+    appDbMock.setItem.mockImplementationOnce(
+      (key: string, value: unknown) =>
+        new Promise((resolve) => {
+          resolveWrite = () => {
+            storedItems.set(key, value);
+            resolve(value);
+          };
+        }),
+    );
+    useChatStore.setState({
+      sessions: [makeSession("a"), makeSession("b")],
+      currentSessionId: "b",
+      activeMessages: [],
+      activeMessageTree: normalizeSessionMessageTree([]),
+    });
+
+    const write = useChatStore.getState().syncActiveSession("a", pendingTree);
+    const deletion = useChatStore.getState().deleteSession("a");
+    await Promise.resolve();
+
+    expect(appDbMock.removeItem).not.toHaveBeenCalledWith("session_messages_a");
+
+    resolveWrite?.();
+    await write;
+    await deletion;
+
+    expect(storedItems.has("session_messages_a")).toBe(false);
+    expect(appDbMock.removeItem).toHaveBeenCalledWith("session_messages_a");
   });
 
   it("restores the active session when deleting the only session fails", async () => {

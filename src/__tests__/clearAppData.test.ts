@@ -251,6 +251,19 @@ describe("clear app data", () => {
     expect(appDbMock.clear).not.toHaveBeenCalled();
   });
 
+  it("clears the synchronous font preference with settings", async () => {
+    const removeItem = vi.fn();
+    vi.stubGlobal("window", { localStorage: { removeItem } });
+
+    await clearBrowserAppDataSources({
+      sources: ["settings"],
+      rag: ragConfig,
+    });
+
+    expect(removeItem).toHaveBeenCalledWith("neo-chat-font-size");
+    vi.unstubAllGlobals();
+  });
+
   it("clears knowledge metadata, vectors, and OPFS knowledge files when requested", async () => {
     await clearBrowserAppDataSources({
       sources: ["knowledge"],

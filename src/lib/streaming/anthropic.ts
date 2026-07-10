@@ -13,6 +13,7 @@ import {
 } from "../chat/reasoning";
 import { SSEMessage } from "./sse";
 import { finalizeStreamedToolCall } from "./toolCalls";
+import { IncompleteProviderStreamError } from "../errors";
 
 const DEFAULT_ANTHROPIC_MAX_TOKENS = 4096;
 const ANTHROPIC_THINKING_BUDGETS: Record<
@@ -33,6 +34,7 @@ export interface AnthropicMessagesStreamOptions {
   tools?: Tool[];
   useReasoning?: boolean;
   reasoningMode?: ReasoningMode;
+  signal?: AbortSignal;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -121,6 +123,7 @@ export async function streamAnthropicMessages(
     tools,
     useReasoning,
     reasoningMode: rawReasoningMode,
+    signal,
     onChunk,
   } = options;
   const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
@@ -141,10 +144,13 @@ export async function streamAnthropicMessages(
   }
   if (tools && tools.length > 0) requestParams.tools = tools;
 
-  const stream = (await client.messages.create(requestParams)) as any;
+  const stream = (await (signal
+    ? client.messages.create(requestParams, { signal })
+    : client.messages.create(requestParams))) as any;
   const pendingToolUses = new Map<number, PendingAnthropicToolUse>();
   let inputTokens = 0;
   let emittedToolCalls = 0;
+  let receivedMessageStop = false;
 
   for await (const event of stream) {
     switch (event?.type) {
@@ -229,17 +235,26 @@ export async function streamAnthropicMessages(
       }
 
       case "error":
-        onChunk({
-          type: "error",
-          error: event.error?.message || "Anthropic stream error",
-        });
-        break;
+        throw new Error(
+          `Anthropic stream failed: ${event.error?.message || "upstream terminal error"}`,
+        );
 
       case "ping":
+        break;
+
       case "message_stop":
+        receivedMessageStop = true;
+        break;
+
       default:
         break;
     }
+  }
+
+  if (!receivedMessageStop) {
+    throw new IncompleteProviderStreamError(
+      "Anthropic stream ended before message_stop.",
+    );
   }
 
   const endTime = Date.now();
@@ -258,11 +273,13 @@ export async function createAnthropicMessageText({
   model,
   prompt,
   system,
+  signal,
 }: {
   client: Anthropic;
   model: string;
   prompt: string;
   system?: string;
+  signal?: AbortSignal;
 }): Promise<string> {
   const requestParams: any = {
     model,
@@ -271,6 +288,8 @@ export async function createAnthropicMessageText({
   };
   if (system) requestParams.system = system;
 
-  const message = await client.messages.create(requestParams);
+  const message = signal
+    ? await client.messages.create(requestParams, { signal })
+    : await client.messages.create(requestParams);
   return extractContentText(message.content);
 }

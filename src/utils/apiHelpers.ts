@@ -36,8 +36,9 @@ export function validateAndGetApiKey(provider: ProviderConfig): string {
 
 export async function assertProviderOutboundAllowed(
   provider: ProviderConfig,
+  signal?: AbortSignal,
 ): Promise<void> {
-  await ProviderFactory.assertProviderOutboundAllowed(provider);
+  await ProviderFactory.assertProviderOutboundAllowed(provider, signal);
 }
 
 /**

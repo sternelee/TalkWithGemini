@@ -66,11 +66,12 @@ export async function POST(request: NextRequest) {
             includeData: true,
           },
         ]),
+        signal: request.signal,
       },
       {
         policy: getSafeUrlPolicy("rag"),
         timeoutMs: 30_000,
-        maxResponseBytes: 5 * 1024 * 1024,
+        maxResponseBytes: 2 * 1024 * 1024,
       },
     );
 
@@ -101,6 +102,12 @@ export async function POST(request: NextRequest) {
       }),
     });
   } catch (error) {
+    if (
+      request.signal.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      return new Response(null, { status: 499 });
+    }
     safeServerLogError("RAG query error:", error);
     return createApiErrorResponse(error, "RAG query failed");
   }

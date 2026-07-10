@@ -31,6 +31,7 @@ interface SearchProviderContext {
   baseUrl?: string;
   maxResultNumber: number;
   fetchJson?: SafeFetchJson;
+  signal?: AbortSignal;
 }
 
 function pick<T, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
@@ -70,7 +71,7 @@ function getFetchOptions(provider: SearchProvider): SafeFetchOptions {
   return {
     policy: getSearchProviderPolicy(provider),
     timeoutMs: 30_000,
-    maxResponseBytes: 5 * 1024 * 1024,
+    maxResponseBytes: 2 * 1024 * 1024,
   };
 }
 
@@ -92,6 +93,7 @@ export async function runSearchProvider({
   baseUrl,
   maxResultNumber,
   fetchJson = safeFetchJson,
+  signal,
 }: SearchProviderContext): Promise<SearchProviderResult> {
   const headers = buildSearchHeaders(apiKey);
   const fetchOptions = getFetchOptions(provider);
@@ -116,6 +118,7 @@ export async function runSearchProvider({
           include_answer: false,
           include_raw_content: "markdown",
         }),
+        signal,
       },
       fetchOptions,
     );
@@ -154,6 +157,7 @@ export async function runSearchProvider({
           },
           timeout: 25_000,
         }),
+        signal,
       },
       fetchOptions,
     );
@@ -224,6 +228,7 @@ export async function runSearchProvider({
             },
           },
         }),
+        signal,
       },
       fetchOptions,
     );
@@ -267,6 +272,7 @@ export async function runSearchProvider({
           summary: true,
           count: maxResultNumber,
         }),
+        signal,
       },
       fetchOptions,
     );
@@ -315,7 +321,7 @@ export async function runSearchProvider({
     ).toString();
     const { response, data } = await fetchJson<any>(
       endpoint,
-      { method: "GET" },
+      { method: "GET", signal },
       fetchOptions,
     );
 

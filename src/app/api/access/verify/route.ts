@@ -36,8 +36,9 @@ function noStore(response: NextResponse): NextResponse {
   return response;
 }
 
-function getServerFailureKey(request: NextRequest): string {
-  return `access-password:${getRateLimitClientIp(request)}`;
+function getServerFailureKey(request: NextRequest): string | null {
+  const clientIp = getRateLimitClientIp(request);
+  return clientIp === "unknown" ? null : `access-password:${clientIp}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -46,7 +47,9 @@ export async function POST(request: NextRequest) {
   }
 
   const serverFailureKey = getServerFailureKey(request);
-  const serverFailures = await getRateLimitBucket(serverFailureKey);
+  const serverFailures = serverFailureKey
+    ? await getRateLimitBucket(serverFailureKey)
+    : null;
   if (serverFailures && serverFailures.count >= ACCESS_MAX_ATTEMPTS) {
     return noStore(
       NextResponse.json(
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (password && (await isValidAccessPassword(password))) {
-    await resetRateLimitBucket(serverFailureKey);
+    if (serverFailureKey) await resetRateLimitBucket(serverFailureKey);
     const response = noStore(NextResponse.json({ ok: true }));
     response.cookies.set(
       ACCESS_SESSION_COOKIE,
@@ -103,13 +106,14 @@ export async function POST(request: NextRequest) {
   }
 
   const failure = await recordAccessPasswordFailure(attemptsCookie);
-  const serverFailure = await incrementRateLimitBucket(
-    serverFailureKey,
-    ACCESS_LOCKOUT_MS,
+  const serverFailure = serverFailureKey
+    ? await incrementRateLimitBucket(serverFailureKey, ACCESS_LOCKOUT_MS)
+    : null;
+  const serverLocked = Boolean(
+    serverFailure && serverFailure.count >= ACCESS_MAX_ATTEMPTS,
   );
-  const serverLocked = serverFailure.count >= ACCESS_MAX_ATTEMPTS;
   const lockedUntil =
-    failure.lockedUntil || (serverLocked ? serverFailure.resetAt : undefined);
+    failure.lockedUntil || (serverLocked ? serverFailure?.resetAt : undefined);
   const status = lockedUntil ? 423 : 401;
   const response = noStore(
     NextResponse.json(
@@ -122,7 +126,9 @@ export async function POST(request: NextRequest) {
           : ACCESS_ERROR_CODES.invalid,
         remainingAttempts: Math.min(
           failure.remainingAttempts,
-          Math.max(0, ACCESS_MAX_ATTEMPTS - serverFailure.count),
+          serverFailure
+            ? Math.max(0, ACCESS_MAX_ATTEMPTS - serverFailure.count)
+            : failure.remainingAttempts,
         ),
         ...(lockedUntil ? { lockedUntil } : {}),
       },

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, useId } from "react";
-import { useTranslations } from "next-intl";
+import React, { useState, useRef, useEffect, useId, useMemo } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { v7 as uuidv7 } from "uuid";
 import {
   Check,
@@ -50,12 +50,6 @@ interface ArtifactProps {
 const artifactFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
 
-const artifactTimeFormatter = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
 const withHiddenIcon = (icon: React.ReactNode) =>
   React.isValidElement(icon)
     ? React.cloneElement(icon as React.ReactElement<Record<string, unknown>>, {
@@ -73,6 +67,27 @@ const Artifact: React.FC<ArtifactProps> = ({
   model,
 }) => {
   const t = useTranslations("Content");
+  const locale = useLocale();
+  const artifactTimeFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }),
+    [locale],
+  );
+  const durationFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit: "second",
+        unitDisplay: "short",
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    [locale],
+  );
   const [content, setContent] = useState(initialContent);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingDuration, setProcessingDuration] = useState(0);
@@ -268,7 +283,7 @@ const Artifact: React.FC<ArtifactProps> = ({
                   {t("generating")}
                 </span>
                 <span className="text-[10px] text-gray-500 dark:text-muted-foreground font-mono">
-                  {processingDuration.toFixed(1)}s
+                  {durationFormatter.format(processingDuration)}
                 </span>
               </div>
             </div>

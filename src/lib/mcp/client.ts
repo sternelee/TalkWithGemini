@@ -206,13 +206,19 @@ export function createSafeMcpFetch(
     let { url } = validateOutboundUrl(initialTarget, policy);
     let requestInput: RequestInfo | URL = input;
     let requestInit: RequestInit = { ...init };
+    const callerSignal =
+      init?.signal ?? (input instanceof Request ? input.signal : undefined);
 
     for (
       let redirectCount = 0;
       redirectCount <= MCP_MAX_REDIRECTS;
       redirectCount += 1
     ) {
-      await assertOutboundUrlAllowed(url, { policy, timeoutMs });
+      await assertOutboundUrlAllowed(url, {
+        policy,
+        timeoutMs,
+        signal: callerSignal || undefined,
+      });
 
       const response = await fetch(requestInput, {
         ...requestInit,
@@ -241,6 +247,7 @@ export function createSafeMcpFetch(
       await assertOutboundUrlAllowed(validatedRedirect.url, {
         policy,
         timeoutMs,
+        signal: callerSignal || undefined,
       });
       requestInit = normalizeRedirectRequestInit(
         stripCrossOriginRedirectHeaders(

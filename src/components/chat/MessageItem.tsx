@@ -8,7 +8,7 @@ import React, {
   useId,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toPng } from "html-to-image";
 import type { Attachment, Message } from "@/types";
 import MarkdownRenderer from "../content/MarkdownRenderer";
@@ -86,6 +86,7 @@ import {
 
 interface MessageItemProps {
   message: Message;
+  actionsDisabled?: boolean;
   branchInfo?: {
     index: number;
     count: number;
@@ -256,6 +257,7 @@ const proxyMessageExportImages = (root: HTMLElement) => {
 
 const MessageItem: React.FC<MessageItemProps> = ({
   message,
+  actionsDisabled = false,
   branchInfo,
   onEdit,
   onDelete,
@@ -267,6 +269,18 @@ const MessageItem: React.FC<MessageItemProps> = ({
   isTyping = false,
 }) => {
   const t = useTranslations("Message");
+  const locale = useLocale();
+  const durationFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit: "second",
+        unitDisplay: "short",
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    [locale],
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
   const [readerCopyStatus, setReaderCopyStatus] = useState<CopyStatus>("idle");
@@ -381,6 +395,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const handleDeleteClick = () => {
+    if (actionsDisabled) return;
     if (isDeleteConfirming) {
       resetDeleteConfirmation();
       setShowMoreMenu(false);
@@ -653,6 +668,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
   };
 
   const handleEditClick = () => {
+    if (actionsDisabled) return;
     setIsEditing(true);
   };
 
@@ -885,7 +901,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const currentBranchIndex = branchInfo?.index ?? 0;
   const branchCount = branchInfo?.count ?? 1;
   const canEditCurrentUserMessage =
-    message.role === "user" && canEditUserMessage && !!onSubmitUserEdit;
+    !actionsDisabled &&
+    message.role === "user" &&
+    canEditUserMessage &&
+    !!onSubmitUserEdit;
 
   // --- Display Info Calculation ---
   const displayTimestamp = message.timestamp;
@@ -911,16 +930,16 @@ const MessageItem: React.FC<MessageItemProps> = ({
       message.role === "model" && displayTiming?.endTime
         ? displayTiming.endTime
         : displayTimestamp;
-    return new Date(ts).toLocaleTimeString([], {
+    return new Intl.DateTimeFormat(locale, {
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-    });
+    }).format(new Date(ts));
   };
 
   const getDurationString = () => {
     if (message.role === "model" && displayTiming?.duration) {
-      return `${(displayTiming.duration / 1000).toFixed(1)}s`;
+      return durationFormatter.format(displayTiming.duration / 1000);
     }
     return null;
   };
@@ -1487,7 +1506,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                         icon={<ChevronLeft size={13} />}
                         tooltip={t("previousVersion")}
                         onClick={() => onVersionChange(message.id, "prev")}
-                        disabled={currentBranchIndex === 0}
+                        disabled={actionsDisabled || currentBranchIndex === 0}
                         className={
                           currentBranchIndex === 0
                             ? "opacity-30 cursor-not-allowed"
@@ -1501,7 +1520,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
                         icon={<ChevronRight size={13} />}
                         tooltip={t("nextVersion")}
                         onClick={() => onVersionChange(message.id, "next")}
-                        disabled={currentBranchIndex === branchCount - 1}
+                        disabled={
+                          actionsDisabled ||
+                          currentBranchIndex === branchCount - 1
+                        }
                         className={
                           currentBranchIndex === branchCount - 1
                             ? "opacity-30 cursor-not-allowed"
@@ -1520,6 +1542,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                         icon={<Undo2 size={13} />}
                         tooltip={t("retract")}
                         onClick={onRetract}
+                        disabled={actionsDisabled}
                       />
                     )}
                     {canEditCurrentUserMessage && (
@@ -1566,11 +1589,13 @@ const MessageItem: React.FC<MessageItemProps> = ({
                       icon={<RefreshCw size={13} />}
                       tooltip={t("regenerate")}
                       onClick={onRegenerate}
+                      disabled={actionsDisabled}
                     />
                     <ActionButton
                       icon={<Edit2 size={13} />}
                       tooltip={t("edit")}
                       onClick={handleEditClick}
+                      disabled={actionsDisabled}
                       containerClass="hidden! md:flex!"
                     />
                     <ActionButton
@@ -1673,6 +1698,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     isDeleteConfirming ? t("confirmDelete") : t("delete")
                   }
                   onClick={handleDeleteClick}
+                  disabled={actionsDisabled}
                   containerClass={
                     message.role === "user" ? "flex" : "hidden! md:flex!"
                   }
@@ -1714,6 +1740,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                         className="w-48"
                       >
                         <DropdownMenuItem
+                          disabled={actionsDisabled}
                           onSelect={() => {
                             handleEditClick();
                             setShowMoreMenu(false);
@@ -1776,6 +1803,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           variant="destructive"
+                          disabled={actionsDisabled}
                           onSelect={(event) => {
                             event.preventDefault();
                             handleDeleteClick();

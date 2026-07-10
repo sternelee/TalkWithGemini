@@ -202,6 +202,7 @@ describe("BYOK route integration", () => {
   });
 
   it("routes OpenAI Compatible image generation to the Images generations endpoint", async () => {
+    const controller = new AbortController();
     mocks.resolveProviderRuntimeConfig.mockResolvedValue({
       type: "OpenAI Compatible",
       baseUrl: "https://api.krill-ai.com/v1",
@@ -215,26 +216,27 @@ describe("BYOK route integration", () => {
     });
 
     const { POST } = await import("../app/api/chat/generate-image/route");
-    const response = await POST(
-      new Request("https://neo.test/api/chat/generate-image", {
-        method: "POST",
-        body: JSON.stringify({
-          provider: {
-            type: "OpenAI Compatible",
-            baseUrl: "https://api.krill-ai.com/v1",
-            apiKeySecret,
-          },
-          modelName: "gpt-image-2",
-          prompt: "draw a quiet dashboard",
-        }),
-      }) as any,
-    );
+    const request = new Request("https://neo.test/api/chat/generate-image", {
+      method: "POST",
+      signal: controller.signal,
+      body: JSON.stringify({
+        provider: {
+          type: "OpenAI Compatible",
+          baseUrl: "https://api.krill-ai.com/v1",
+          apiKeySecret,
+        },
+        modelName: "gpt-image-2",
+        prompt: "draw a quiet dashboard",
+      }),
+    });
+    const response = await POST(request as any);
 
     expect(response.status).toBe(200);
     expect(mocks.safeFetchJson).toHaveBeenCalledWith(
       "https://api.krill-ai.com/v1/images/generations",
       expect.objectContaining({
         method: "POST",
+        signal: request.signal,
         headers: expect.objectContaining({
           Authorization: "Bearer krill-key",
         }),

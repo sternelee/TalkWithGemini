@@ -187,6 +187,7 @@ describe("generated image attachment normalization", () => {
                       },
                     ],
                   },
+                  finishReason: "STOP",
                 },
               ],
             },

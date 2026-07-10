@@ -276,6 +276,23 @@ export async function createRequestProofSession(
   };
 }
 
+export async function getRequestProofRateLimitIdentity(
+  request: NextRequest,
+  now = Date.now(),
+): Promise<string | null> {
+  const session = await verifySessionPayload(
+    request.cookies.get(API_PROOF_SESSION_COOKIE)?.value,
+    now,
+  );
+  if (!session) return null;
+
+  const digest = await getCrypto().subtle.digest(
+    "SHA-256",
+    encoder.encode(`neo-api-rate-limit:v1:${session.k}`),
+  );
+  return `proof:${bytesToBase64Url(new Uint8Array(digest))}`;
+}
+
 export function getRequestProofSigningInput({
   method,
   target,

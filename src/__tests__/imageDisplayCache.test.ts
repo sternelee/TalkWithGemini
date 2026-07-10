@@ -46,6 +46,27 @@ describe("image display cache", () => {
     expect(cached.data).toBe(attachment.data);
   });
 
+  it("removes a newly written cache file when cancellation wins the save race", async () => {
+    const controller = new AbortController();
+    const deleteFile = vi.fn(async () => undefined);
+    const saveFile = vi.fn<SaveFileMock>(async () => {
+      controller.abort();
+      return "opfs://images/generated/orphan.png";
+    });
+
+    await expect(
+      ensureImageDisplayCache(imageAttachment(), {
+        saveFile,
+        deleteFile,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(deleteFile).toHaveBeenCalledWith(
+      "opfs://images/generated/orphan.png",
+    );
+  });
+
   it("reuses a fresh display cache and rebuilds a stale one", async () => {
     const original = imageAttachment();
     const fingerprint = await getAttachmentSourceFingerprint(original);

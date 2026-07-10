@@ -117,18 +117,26 @@ Build command: pnpm build:worker
 Deploy command: pnpm exec opennextjs-cloudflare deploy -- --keep-vars
 ```
 
+OpenNext Cloudflare compatibility requires this repository to keep its Edge
+Middleware entry point at `src/middleware.ts`.
+Do not rename it to `src/proxy.ts`: the proxy entry point is emitted as Node.js
+middleware by the current Next.js toolchain, which OpenNext Cloudflare does not
+support. The middleware must also keep `/api/access/verify` and
+`/api/request-proof/session` available as bootstrap routes.
+
 Use Node 22 with Corepack-enabled `pnpm@10.30.3` for local, CI, Docker, and
 Cloudflare build parity. Before deploying Worker changes, run:
 
 ```bash
 pnpm build:worker
 pnpm worker:size
-pnpm worker:dry-run
 ```
 
-`pnpm worker:size` checks the gzipped Worker bundle against the default 3 MiB
-budget. Override with `WORKER_GZIP_BUDGET_BYTES` only for an intentional budget
-change.
+`pnpm worker:size` runs `wrangler deploy --dry-run`, reads the gzip value from
+Wrangler's `Total Upload` report, and checks it against the default 3 MiB
+budget. The command fails if Wrangler fails, the report cannot be parsed, or
+the gzip value exceeds the budget. Override with `WORKER_GZIP_BUDGET_BYTES`
+only for an intentional budget change.
 
 `--keep-vars` prevents deployments from replacing runtime variables configured
 in the Cloudflare dashboard with only the values committed in `wrangler.jsonc`.

@@ -29,7 +29,6 @@ export interface ContextBudgetPlan {
 const DEFAULT_CONTEXT_LIMIT = 32_000;
 const DEFAULT_RESERVED_OUTPUT = 2_000;
 const FALLBACK_CHARS_PER_TOKEN = 4;
-const MIN_AVAILABLE_TOKENS = 1_000;
 
 const SOURCE_WEIGHTS: Record<keyof Required<ContextBudgetSources>, number> = {
   history: 0.46,
@@ -63,7 +62,7 @@ export function allocateContextBudget(
   input: ContextBudgetInput,
 ): ContextBudgetPlan {
   const totalAvailableTokens = Math.max(
-    MIN_AVAILABLE_TOKENS,
+    0,
     (input.modelInputTokenLimit || DEFAULT_CONTEXT_LIMIT) -
       (input.reservedOutputTokens || DEFAULT_RESERVED_OUTPUT),
   );

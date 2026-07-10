@@ -63,6 +63,25 @@ export class ProviderError extends ApiError {
   }
 }
 
+export class IncompleteProviderStreamError extends ApiError {
+  constructor(message: string) {
+    super(message, 502, "INCOMPLETE_PROVIDER_STREAM");
+    this.name = "IncompleteProviderStreamError";
+  }
+}
+
+export class ResponseTimeoutError extends ApiError {
+  constructor(
+    readonly timeoutMs: number,
+    label = "Upstream response",
+  ) {
+    super(`${label} timed out after ${timeoutMs}ms`, 504, "RESPONSE_TIMEOUT", {
+      timeoutMs,
+    });
+    this.name = "ResponseTimeoutError";
+  }
+}
+
 export class HostedProxyBlockedError extends ApiError {
   constructor(
     message: string = "Hosted deployments cannot proxy local network URLs",
@@ -91,13 +110,40 @@ export function redactSensitiveText(value: string): string {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]");
 }
 
+function findNestedApiError(error: unknown): ApiError | null {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+  for (let depth = 0; depth < 6; depth += 1) {
+    if (current instanceof ApiError) return current;
+    if (
+      !current ||
+      (typeof current !== "object" && typeof current !== "function") ||
+      visited.has(current)
+    ) {
+      return null;
+    }
+    visited.add(current);
+    current = "cause" in current ? current.cause : null;
+  }
+  return null;
+}
+
 export function toPublicErrorPayload(error: unknown): PublicErrorPayload {
-  if (error instanceof ApiError) {
+  const apiError = findNestedApiError(error);
+  if (apiError) {
     return {
-      error: redactSensitiveText(error.message),
-      code: error.code || "API_ERROR",
-      statusCode: error.statusCode,
-      details: error.details,
+      error: redactSensitiveText(apiError.message),
+      code: apiError.code || "API_ERROR",
+      statusCode: apiError.statusCode,
+      details: apiError.details,
+    };
+  }
+
+  if (error instanceof Error && error.name === "APIConnectionTimeoutError") {
+    return {
+      error: "The upstream provider response deadline was exceeded.",
+      code: "RESPONSE_TIMEOUT",
+      statusCode: 504,
     };
   }
 

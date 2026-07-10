@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Brain,
+  Check,
   Database,
   Pencil,
   Plus,
@@ -12,7 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { MEMORY_LIMITS } from "@/config/limits";
 import { performMemoryDream } from "@/services/api/chatService";
 import { useMemoryStore } from "@/store/core/memoryStore";
@@ -37,13 +38,17 @@ function parseTags(value: string): string[] {
     .slice(0, MEMORY_LIMITS.maxTags);
 }
 
-function formatDate(timestamp: number | undefined): string {
+function formatDate(timestamp: number | undefined, locale: string): string {
   if (!timestamp) return "";
-  return new Date(timestamp).toLocaleString();
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
 }
 
 const MemorySettings = () => {
   const t = useTranslations("Memory");
+  const locale = useLocale();
   const {
     settings,
     memories,
@@ -59,6 +64,8 @@ const MemorySettings = () => {
   const [type, setType] = useState<MemoryType>("fact");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dreamError, setDreamError] = useState<string | null>(null);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const typeOptions = useMemo(
     () =>
@@ -86,10 +93,15 @@ const MemorySettings = () => {
     setContent("");
     setTags("");
     setType("fact");
+    setContentError(null);
   };
 
   const handleSave = () => {
-    if (!content.trim()) return;
+    if (!content.trim()) {
+      setContentError(t("contentRequired"));
+      return;
+    }
+    setContentError(null);
     const next = {
       type,
       content,
@@ -111,6 +123,8 @@ const MemorySettings = () => {
     setContent(memory.content);
     setTags(memory.tags.join(", "));
     setType(memory.type);
+    setContentError(null);
+    setPendingDeleteId(null);
   };
 
   const handleDreamNow = async () => {
@@ -249,12 +263,22 @@ const MemorySettings = () => {
             {t("privacyNote")}
           </p>
           {(dreamError || dreamStatus.lastError) && (
-            <p className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200">
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-200"
+            >
               {dreamError || dreamStatus.lastError}
             </p>
           )}
 
-          <div className="space-y-3 border-t border-gray-100 pt-4 dark:border-border">
+          <form
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSave();
+            }}
+            className="space-y-3 border-t border-gray-100 pt-4 dark:border-border"
+          >
             <div className="text-sm font-semibold text-gray-800 dark:text-foreground">
               {editingId ? t("editMemory") : t("addMemory")}
             </div>
@@ -264,14 +288,38 @@ const MemorySettings = () => {
               onChange={(value) => setType(value as MemoryType)}
               options={typeOptions}
             />
+            <label htmlFor="memory-content" className="sr-only">
+              {t("contentLabel")}
+            </label>
             <textarea
+              id="memory-content"
               value={content}
-              onChange={(event) => setContent(event.target.value)}
+              onChange={(event) => {
+                setContent(event.target.value);
+                if (contentError) setContentError(null);
+              }}
               maxLength={MEMORY_LIMITS.maxContentChars}
               placeholder={t("contentPlaceholder")}
+              aria-invalid={!!contentError}
+              aria-describedby={
+                contentError ? "memory-content-error" : undefined
+              }
               className="h-28 w-full resize-none rounded-lg border border-input bg-background p-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
+            {contentError && (
+              <p
+                id="memory-content-error"
+                role="alert"
+                className="text-xs text-red-600 dark:text-red-300"
+              >
+                {contentError}
+              </p>
+            )}
+            <label htmlFor="memory-tags" className="sr-only">
+              {t("tagsLabel")}
+            </label>
             <input
+              id="memory-tags"
               value={tags}
               onChange={(event) => setTags(event.target.value)}
               placeholder={t("tagsPlaceholder")}
@@ -279,10 +327,8 @@ const MemorySettings = () => {
             />
             <div className="flex gap-2">
               <button
-                type="button"
-                onClick={handleSave}
-                disabled={!content.trim()}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+                type="submit"
+                className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {editingId ? <Save size={16} /> : <Plus size={16} />}
                 {editingId ? t("saveEdit") : t("add")}
@@ -298,17 +344,19 @@ const MemorySettings = () => {
                 </button>
               )}
             </div>
-          </div>
+          </form>
         </div>
 
         <div className="space-y-3">
-          <label className="relative block">
+          <label htmlFor="memory-filter" className="relative block">
+            <span className="sr-only">{t("filterLabel")}</span>
             <Search
               size={16}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
               aria-hidden
             />
             <input
+              id="memory-filter"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t("filterPlaceholder")}
@@ -333,7 +381,7 @@ const MemorySettings = () => {
                         )}
                       </span>
                       <span className="text-gray-400">
-                        {formatDate(memory.updatedAt)}
+                        {formatDate(memory.updatedAt, locale)}
                       </span>
                     </div>
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-800 dark:text-foreground">
@@ -357,17 +405,39 @@ const MemorySettings = () => {
                       type="button"
                       onClick={() => handleEdit(memory)}
                       aria-label={t("editAria")}
-                      className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
+                      className="inline-flex size-10 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-foreground"
                     >
                       <Pencil size={15} aria-hidden />
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeMemory(memory.id)}
-                      aria-label={t("deleteAria")}
-                      className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/20"
+                      onClick={() => {
+                        if (pendingDeleteId !== memory.id) {
+                          setPendingDeleteId(memory.id);
+                          return;
+                        }
+                        removeMemory(memory.id);
+                        setPendingDeleteId(null);
+                      }}
+                      aria-label={
+                        pendingDeleteId === memory.id
+                          ? t("confirmDeleteAria")
+                          : t("deleteAria")
+                      }
+                      className={`inline-flex size-10 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:hover:bg-red-950/20 ${
+                        pendingDeleteId === memory.id
+                          ? "bg-red-50 dark:bg-red-950/30"
+                          : ""
+                      }`}
                     >
-                      <Trash2 size={15} aria-hidden />
+                      {pendingDeleteId === memory.id ? (
+                        <>
+                          <Check size={15} aria-hidden />
+                          <span className="sr-only">{t("confirmDelete")}</span>
+                        </>
+                      ) : (
+                        <Trash2 size={15} aria-hidden />
+                      )}
                     </button>
                   </div>
                 </div>

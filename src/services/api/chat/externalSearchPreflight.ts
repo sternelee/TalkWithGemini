@@ -46,6 +46,13 @@ type GenerateText = (
   signal?: AbortSignal,
 ) => Promise<string>;
 
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 async function decideExternalSearchUse({
   model,
   history,
@@ -68,9 +75,7 @@ async function decideExternalSearchUse({
     );
     return parseSearchDecisionResult(rawDecision, message);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw error;
-    }
+    if (isAbortError(error, signal)) throw error;
     logDevWarn("Search decision failed:", error);
     return { shouldSearch: false, query: message };
   }
@@ -138,9 +143,10 @@ export async function runExternalSearchPreflight({
     externalSearchStarted = true;
     onSearchStatus(true);
     emitOutputBlocks();
-    const searchResults = await createSearchProvider({
-      query: decision.query,
-    });
+    const searchResults = await createSearchProvider(
+      { query: decision.query },
+      signal,
+    );
     upsertSearchBlock({
       isSearching: false,
       results: searchResults,
@@ -177,6 +183,7 @@ export async function runExternalSearchPreflight({
       }
     }
   } catch (searchError) {
+    if (isAbortError(searchError, signal)) throw searchError;
     logDevWarn("Search preflight failed:", searchError);
     if (externalSearchStarted) {
       upsertSearchBlock({

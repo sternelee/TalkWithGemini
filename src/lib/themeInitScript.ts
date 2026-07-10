@@ -9,6 +9,9 @@ try {
   var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   var isDark = theme === "dark" || (theme === "system" && prefersDark);
   document.documentElement.classList.toggle("dark", isDark);
+  var storedFontSize = window.localStorage.getItem("neo-chat-font-size");
+  var fontSize = storedFontSize === "small" || storedFontSize === "large" ? storedFontSize : "medium";
+  document.documentElement.dataset.fontSize = fontSize;
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", isDark ? "${DARK_THEME_COLOR}" : "${LIGHT_THEME_COLOR}");
 } catch (_) {}

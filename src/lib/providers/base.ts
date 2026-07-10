@@ -36,6 +36,40 @@ interface GoogleApiClientWithFetch {
   };
 }
 
+const PROVIDER_TEXT_RESPONSE_LIMITS = {
+  timeoutMs: 30_000,
+  maxResponseBytes: 2 * 1024 * 1024,
+} as const;
+const PROVIDER_IMAGE_RESPONSE_LIMITS = {
+  timeoutMs: 120_000,
+  maxResponseBytes: 36 * 1024 * 1024,
+} as const;
+const PROVIDER_STREAM_RESPONSE_LIMITS = {
+  timeoutMs: 10 * 60_000,
+  maxResponseBytes: 8 * 1024 * 1024,
+} as const;
+
+export function getProviderResponseLimits(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) {
+  const url = input instanceof Request ? input.url : String(input);
+  const body = typeof init?.body === "string" ? init.body : "";
+  const isStreamingRequest =
+    /[?&]alt=sse(?:&|$)/i.test(url) ||
+    /:streamGenerateContent/i.test(url) ||
+    /"stream"\s*:\s*true/i.test(body);
+  if (isStreamingRequest) return PROVIDER_STREAM_RESPONSE_LIMITS;
+
+  const isImageRequest =
+    /\/images(?:\/|$)/i.test(url) ||
+    /"response_?modalities"\s*:\s*\[[^\]]*"IMAGE"/i.test(body) ||
+    /"type"\s*:\s*"image_generation"/i.test(body) ||
+    /"numberOfImages"\s*:/i.test(body);
+  if (isImageRequest) return PROVIDER_IMAGE_RESPONSE_LIMITS;
+  return PROVIDER_TEXT_RESPONSE_LIMITS;
+}
+
 function toSafeFetchRequest(
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -58,15 +92,23 @@ function toSafeFetchRequest(
 function createProviderFetch(): ProviderFetch {
   return async (input, init) => {
     const request = toSafeFetchRequest(input, init);
+    const limits = getProviderResponseLimits(input, init);
     return safeFetch(request.url, request.init, {
       policy: getSafeUrlPolicy("provider"),
+      ...limits,
+      enforceResponseLimits: true,
+      countDecodedText: limits === PROVIDER_STREAM_RESPONSE_LIMITS,
     });
   };
 }
 
 function installGoogleProviderFetch(client: GoogleGenAI): GoogleGenAI {
   const apiClient = (client as unknown as GoogleApiClientWithFetch).apiClient;
-  if (!apiClient?.apiCall) return client;
+  if (!apiClient?.apiCall) {
+    throw new Error(
+      "Google provider SDK does not expose the guarded fetch hook.",
+    );
+  }
 
   const providerFetch = createProviderFetch();
   apiClient.apiCall = (url, requestInit) => providerFetch(url, requestInit);
@@ -104,6 +146,7 @@ export class ProviderFactory {
 
   static async assertProviderOutboundAllowed(
     provider: ProviderConfig,
+    signal?: AbortSignal,
   ): Promise<void> {
     const baseUrl = this.getEffectiveBaseUrl(provider.baseUrl, provider.type);
     if (!baseUrl) return;
@@ -111,6 +154,7 @@ export class ProviderFactory {
     await assertOutboundUrlAllowed(baseUrl, {
       policy: getSafeUrlPolicy("provider"),
       timeoutMs: 10_000,
+      signal,
     });
   }
 
@@ -124,7 +168,12 @@ export class ProviderFactory {
       validateOutboundUrl(baseURL, getSafeUrlPolicy("provider"));
     }
 
-    return new OpenAI({ apiKey, baseURL, fetch: createProviderFetch() });
+    return new OpenAI({
+      apiKey,
+      baseURL,
+      fetch: createProviderFetch(),
+      maxRetries: 0,
+    });
   }
 
   /**
@@ -139,6 +188,7 @@ export class ProviderFactory {
       apiKey,
       baseURL,
       fetch: createProviderFetch(),
+      maxRetries: 0,
     });
   }
 

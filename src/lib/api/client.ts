@@ -1,7 +1,9 @@
 import { isApiProofProtectedRoute } from "../security/apiRoutePolicy";
+import { ResponseTimeoutError } from "../errors";
 
 const API_PROOF_SESSION_PATH = "/api/request-proof/session";
 const API_PROOF_REFRESH_SKEW_MS = 60_000;
+const API_PROOF_SESSION_TIMEOUT_MS = 30_000;
 const API_PROOF_HEADERS = {
   timestamp: "x-neo-api-proof-timestamp",
   nonce: "x-neo-api-proof-nonce",
@@ -25,12 +27,46 @@ interface CachedRequestProofSession {
 
 let apiProofSession: CachedRequestProofSession | null = null;
 let apiProofSessionPromise: Promise<CachedRequestProofSession> | null = null;
+let apiProofSessionController: AbortController | null = null;
 let apiProofCryptoKey: {
   clientKey: string;
   promise: Promise<CryptoKey>;
 } | null = null;
 
 const encoder = new TextEncoder();
+
+function createAbortError(signal?: AbortSignal): Error {
+  if (signal?.reason instanceof Error) return signal.reason;
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("The operation was aborted", "AbortError");
+  }
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw createAbortError(signal);
+}
+
+async function waitForCaller<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  throwIfAborted(signal);
+  if (!signal) return promise;
+
+  let abortListener: (() => void) | null = null;
+  const aborted = new Promise<never>((_, reject) => {
+    abortListener = () => reject(createAbortError(signal));
+    signal.addEventListener("abort", abortListener, { once: true });
+  });
+  try {
+    return await Promise.race([promise, aborted]);
+  } finally {
+    if (abortListener) signal.removeEventListener("abort", abortListener);
+  }
+}
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -137,10 +173,13 @@ function parseRequestProofSession(
   };
 }
 
-async function loadApiProofSession(): Promise<CachedRequestProofSession> {
+async function loadApiProofSession(
+  signal: AbortSignal,
+): Promise<CachedRequestProofSession> {
   const response = await fetch(API_PROOF_SESSION_PATH, {
     method: "GET",
     cache: "no-store",
+    signal,
   });
   if (!response.ok) {
     throw new Error(
@@ -158,19 +197,49 @@ async function loadApiProofSession(): Promise<CachedRequestProofSession> {
   return parseRequestProofSession(data);
 }
 
-async function getApiProofSession(): Promise<CachedRequestProofSession> {
+async function getApiProofSession(
+  signal?: AbortSignal,
+): Promise<CachedRequestProofSession> {
   if (isRequestProofSessionUsable(apiProofSession)) return apiProofSession;
   if (!apiProofSessionPromise) {
-    apiProofSessionPromise = loadApiProofSession()
+    const controller = new AbortController();
+    apiProofSessionController = controller;
+    const timeout = setTimeout(
+      () =>
+        controller.abort(
+          new ResponseTimeoutError(
+            API_PROOF_SESSION_TIMEOUT_MS,
+            "API request proof session",
+          ),
+        ),
+      API_PROOF_SESSION_TIMEOUT_MS,
+    );
+    const request = loadApiProofSession(controller.signal)
       .then((session) => {
         apiProofSession = session;
         return session;
       })
+      .catch((error) => {
+        if (apiProofSessionPromise === request) {
+          apiProofSessionPromise = null;
+        }
+        if (controller.signal.reason instanceof ResponseTimeoutError) {
+          throw controller.signal.reason;
+        }
+        throw error;
+      })
       .finally(() => {
-        apiProofSessionPromise = null;
+        clearTimeout(timeout);
+        if (apiProofSessionPromise === request) {
+          apiProofSessionPromise = null;
+        }
+        if (apiProofSessionController === controller) {
+          apiProofSessionController = null;
+        }
       });
+    apiProofSessionPromise = request;
   }
-  return apiProofSessionPromise;
+  return waitForCaller(apiProofSessionPromise, signal);
 }
 
 async function importApiProofKey(clientKey: string): Promise<CryptoKey> {
@@ -215,21 +284,28 @@ async function createApiProofHeaders({
   target,
   timestamp,
   nonce,
+  signal,
 }: {
   clientKey: string;
   method: string;
   target: string;
   timestamp: string;
   nonce: string;
+  signal?: AbortSignal;
 }): Promise<Record<string, string>> {
-  const key = await importApiProofKey(clientKey);
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    key,
-    encoder.encode(
-      getApiProofSigningInput({ method, target, timestamp, nonce }),
+  const key = await waitForCaller(importApiProofKey(clientKey), signal);
+  throwIfAborted(signal);
+  const signature = await waitForCaller(
+    crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(
+        getApiProofSigningInput({ method, target, timestamp, nonce }),
+      ),
     ),
+    signal,
   );
+  throwIfAborted(signal);
 
   return {
     [API_PROOF_HEADERS.timestamp]: timestamp,
@@ -239,6 +315,8 @@ async function createApiProofHeaders({
 }
 
 export function clearApiProofSessionCache(): void {
+  apiProofSessionController?.abort();
+  apiProofSessionController = null;
   apiProofSession = null;
   apiProofSessionPromise = null;
   apiProofCryptoKey = null;
@@ -250,11 +328,13 @@ export async function signedApiFetch(
 ): Promise<Response> {
   const url = resolveFetchUrl(input);
   const method = getFetchMethod(input, init);
+  const signal = init?.signal ?? undefined;
   if (!url || !isApiProofProtectedRoute(url.pathname, method)) {
     return fetch(input, init);
   }
 
-  const session = await getApiProofSession();
+  const session = await getApiProofSession(signal);
+  throwIfAborted(signal);
   if (!session.enabled || !session.clientKey) {
     return fetch(input, init);
   }
@@ -269,11 +349,13 @@ export async function signedApiFetch(
     target,
     timestamp,
     nonce,
+    signal,
   });
   for (const [key, value] of Object.entries(proofHeaders)) {
     headers.set(key, value);
   }
 
+  throwIfAborted(signal);
   return fetch(input, { ...init, headers });
 }
 

@@ -26,6 +26,7 @@ export const POST = withStreamApiHandler(
       enableImageGeneration: parsed.enableImageGeneration,
       enableGoogleSearch: parsed.enableGoogleSearch,
       enableOpenAIWebSearch: parsed.enableOpenAIWebSearch,
+      signal: request.signal,
     });
   },
 );

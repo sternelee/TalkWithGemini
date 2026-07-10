@@ -53,9 +53,12 @@ import {
   getReferencedWorkspaceFileUrls,
   getRemovedWorkspaceFileUrls,
 } from "../../lib/chat/attachmentReferences";
+import {
+  enqueueSessionMessageWrite,
+  waitForSessionMessageWrites,
+} from "../sessionMessagePersistence";
 
 let selectSessionRequestId = 0;
-const sessionMessageWriteQueues = new Map<string, Promise<void>>();
 
 const createEmptyMessageTree = () => normalizeSessionMessageTree([]);
 
@@ -169,26 +172,6 @@ const cleanupUnreferencedAttachmentUrls = async (
   });
 };
 
-const enqueueSessionMessageWrite = async (
-  sessionId: string,
-  write: () => Promise<void>,
-) => {
-  const previousWrite = sessionMessageWriteQueues.get(sessionId);
-  const queuedWrite = previousWrite
-    ? previousWrite.catch(() => undefined).then(write)
-    : write();
-
-  sessionMessageWriteQueues.set(sessionId, queuedWrite);
-
-  try {
-    await queuedWrite;
-  } finally {
-    if (sessionMessageWriteQueues.get(sessionId) === queuedWrite) {
-      sessionMessageWriteQueues.delete(sessionId);
-    }
-  }
-};
-
 interface ChatState {
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
@@ -198,6 +181,8 @@ interface ChatState {
   activeMessages: Message[]; // Currently loaded messages
   activeMessageTree: SessionMessageTree;
   isActiveSessionLoading: boolean;
+  pendingSessionId: string | null;
+  activeSessionLoadError: "session_load_failed" | null;
 
   selectedModel: string;
   chatConfig: ChatConfig;
@@ -387,6 +372,8 @@ export const useChatStore = create<ChatState>()(
       activeMessages: [],
       activeMessageTree: createEmptyMessageTree(),
       isActiveSessionLoading: false,
+      pendingSessionId: null,
+      activeSessionLoadError: null,
       selectedModel: "",
       chatConfig: { ...DEFAULT_CHAT_CONFIG },
 
@@ -416,6 +403,8 @@ export const useChatStore = create<ChatState>()(
             activeMessages: [],
             activeMessageTree: createEmptyMessageTree(),
             isActiveSessionLoading: false,
+            pendingSessionId: null,
+            activeSessionLoadError: null,
             chatConfig: applySessionConfig(
               state.chatConfig,
               reusableSession.config,
@@ -452,19 +441,34 @@ export const useChatStore = create<ChatState>()(
           currentSessionId: newSession.id,
           activeMessages: [],
           activeMessageTree: initialMessageTree,
+          isActiveSessionLoading: false,
+          pendingSessionId: null,
+          activeSessionLoadError: null,
         }));
 
         return newSession.id;
       },
 
       selectSession: async (id) => {
+        const session = get().sessions.find((candidate) => candidate.id === id);
+        if (!session) return;
+
         const requestId = selectSessionRequestId + 1;
         selectSessionRequestId = requestId;
-        set({ isActiveSessionLoading: true });
+        set({
+          isActiveSessionLoading: true,
+          pendingSessionId: id,
+          activeSessionLoadError: null,
+        });
 
         // Fetch data first
-        let messageTree = createEmptyMessageTree();
+        let messageTree: SessionMessageTree;
         try {
+          const pendingWrite = waitForSessionMessageWrites(id);
+          if (pendingWrite) {
+            await pendingWrite;
+            if (requestId !== selectSessionRequestId) return;
+          }
           messageTree = normalizeStoredMessageTree(
             await appDb.getItem<Message[] | SessionMessageTree>(
               `session_messages_${id}`,
@@ -472,68 +476,44 @@ export const useChatStore = create<ChatState>()(
           );
         } catch (e) {
           logDevError("Failed to load session messages", e);
+          if (requestId === selectSessionRequestId) {
+            set({
+              isActiveSessionLoading: false,
+              pendingSessionId: null,
+              activeSessionLoadError: "session_load_failed",
+            });
+          }
+          return;
         }
 
         if (requestId !== selectSessionRequestId) return;
 
-        // Apply Session Config to State
-        const session = get().sessions.find((s) => s.id === id);
-        if (!session) {
-          set({
-            currentSessionId: null,
-            activeMessages: [],
-            activeMessageTree: createEmptyMessageTree(),
-            isActiveSessionLoading: false,
-          });
-          return;
-        }
-
         const activeMessages = getActiveMessagePath(messageTree);
 
-        if (session && session.config) {
-          set({
-            chatConfig: applySessionConfig(get().chatConfig, session.config),
-          });
-        }
-
-        set({
+        set((state) => ({
           currentSessionId: id,
           activeMessages,
           activeMessageTree: messageTree,
           isActiveSessionLoading: false,
-          sessions: get().sessions.map((s) =>
-            s.id === id ? { ...s, messageCount: activeMessages.length } : s,
+          pendingSessionId: null,
+          activeSessionLoadError: null,
+          chatConfig: applySessionConfig(state.chatConfig, session.config),
+          sessions: state.sessions.map((candidate) =>
+            candidate.id === id
+              ? { ...candidate, messageCount: activeMessages.length }
+              : candidate,
           ),
-        });
+        }));
       },
 
       deleteSession: async (id) => {
         selectSessionRequestId += 1;
         const deleteRequestId = selectSessionRequestId;
         const stateBeforeDelete = get();
+        const wasActiveSession = stateBeforeDelete.currentSessionId === id;
         const deletedSession = stateBeforeDelete.sessions.find(
           (session) => session.id === id,
         );
-        const deletedMessagesPromise =
-          stateBeforeDelete.currentSessionId === id
-            ? Promise.resolve(
-                getAllMessagesFromTree(stateBeforeDelete.activeMessageTree),
-              )
-            : appDb
-                .getItem<Message[] | SessionMessageTree>(
-                  `session_messages_${id}`,
-                )
-                .then((messages) =>
-                  getAllMessagesFromTree(normalizeStoredMessageTree(messages)),
-                )
-                .catch((error) => {
-                  logDevError(
-                    "Failed to load deleted session messages for attachment cleanup",
-                    error,
-                  );
-                  return null;
-                });
-
         // Remove metadata from state
         set((state) => {
           const filtered = state.sessions.filter((s) => s.id !== id);
@@ -552,26 +532,46 @@ export const useChatStore = create<ChatState>()(
             currentSessionId: nextId,
             activeMessages: nextActiveMessages,
             activeMessageTree: nextMessageTree,
+            isActiveSessionLoading: false,
+            pendingSessionId: null,
+            activeSessionLoadError: null,
           };
         });
 
-        // Remove from storage
-        const removeMessagesPromise = appDb.removeItem(
-          `session_messages_${id}`,
+        let deletedMessages: Message[] | null = wasActiveSession
+          ? getAllMessagesFromTree(stateBeforeDelete.activeMessageTree)
+          : null;
+        const removeMessagesPromise = enqueueSessionMessageWrite(
+          id,
+          async () => {
+            if (!wasActiveSession) {
+              try {
+                deletedMessages = getAllMessagesFromTree(
+                  normalizeStoredMessageTree(
+                    await appDb.getItem<Message[] | SessionMessageTree>(
+                      `session_messages_${id}`,
+                    ),
+                  ),
+                );
+              } catch (error) {
+                logDevError(
+                  "Failed to load deleted session messages for attachment cleanup",
+                  error,
+                );
+              }
+            }
+            await appDb.removeItem(`session_messages_${id}`);
+          },
         );
 
         // Trigger load for next session if auto-selected
         const currentId = get().currentSessionId;
-        if (currentId && currentId !== id) {
+        if (wasActiveSession && currentId && currentId !== id) {
           void get().selectSession(currentId);
         }
 
-        let deletedMessages: Message[] | null;
         try {
-          [deletedMessages] = await Promise.all([
-            deletedMessagesPromise,
-            removeMessagesPromise,
-          ]);
+          await removeMessagesPromise;
         } catch (error) {
           if (deletedSession) {
             set((state) => {
@@ -734,12 +734,20 @@ export const useChatStore = create<ChatState>()(
 
         const newId = uuidv7();
 
-        // Load original messages
-        const originalMessageTree = normalizeStoredMessageTree(
-          await appDb.getItem<Message[] | SessionMessageTree>(
-            `session_messages_${id}`,
-          ),
-        );
+        // Load original messages after any queued persistence has settled.
+        // The active tree is already the newest atomic snapshot.
+        let originalMessageTree: SessionMessageTree;
+        if (state.currentSessionId === id) {
+          originalMessageTree = getMessageTreeFromState(state);
+        } else {
+          const pendingWrite = waitForSessionMessageWrites(id);
+          if (pendingWrite) await pendingWrite;
+          originalMessageTree = normalizeStoredMessageTree(
+            await appDb.getItem<Message[] | SessionMessageTree>(
+              `session_messages_${id}`,
+            ),
+          );
+        }
 
         const latestState = get();
         if (!latestState.sessions.some((s) => s.id === id)) {
@@ -953,6 +961,9 @@ export const useChatStore = create<ChatState>()(
         const { currentSessionId, activeMessageTree } = get();
         const targetSessionId = sessionId ?? currentSessionId;
         if (!targetSessionId) return;
+        if (!get().sessions.some((session) => session.id === targetSessionId)) {
+          return;
+        }
 
         const treeToSave = Array.isArray(messages)
           ? normalizeSessionMessageTree(normalizeMessages(messages))

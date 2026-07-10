@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
             key: authConfig?.key || plugin.auth?.name,
             addTo: authConfig?.addTo || plugin.auth?.in,
           },
+          signal: request.signal,
         });
 
         return NextResponse.json({ result });
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
         authConfig,
         decryptSecret: decryptOptionalSecret,
         fetchText: safeFetchText,
+        signal: request.signal,
       });
     }
 
@@ -179,8 +181,15 @@ export async function POST(request: NextRequest) {
       authConfig: legacyBody.authConfig,
       decryptSecret: decryptOptionalSecret,
       fetchText: safeFetchText,
+      signal: request.signal,
     });
   } catch (error) {
+    if (
+      request.signal.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      return new Response(null, { status: 499 });
+    }
     safeServerLogError("Error executing plugin function:", error);
     return createApiErrorResponse(error, "Plugin execution failed");
   }

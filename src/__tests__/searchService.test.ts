@@ -50,4 +50,27 @@ describe("search service", () => {
       /Search request failed/i,
     );
   });
+
+  it("passes AbortSignal to the search route", async () => {
+    const controller = new AbortController();
+    mocks.getState.mockReturnValue({
+      search: {
+        provider: "firecrawl",
+        configs: { firecrawl: {} },
+        resultsLimit: 5,
+      },
+    });
+    mocks.signedApiFetch.mockResolvedValue(
+      Response.json({ sources: [], images: [] }),
+    );
+    const { createSearchProvider } =
+      await import("../services/api/searchService");
+
+    await createSearchProvider({ query: "neo chat" }, controller.signal);
+
+    expect(mocks.signedApiFetch).toHaveBeenCalledWith(
+      "/api/search",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
 });

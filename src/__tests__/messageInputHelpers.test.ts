@@ -54,5 +54,13 @@ describe("message input helpers", () => {
         isComposing: false,
       }),
     ).toBe(false);
+    expect(
+      shouldSubmitOnEnter({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: false,
+        requiresExplicitSend: true,
+      }),
+    ).toBe(false);
   });
 });

@@ -29,10 +29,12 @@ export function shouldSubmitOnEnter({
   key,
   shiftKey,
   isComposing,
+  requiresExplicitSend = false,
 }: {
   key: string;
   shiftKey: boolean;
   isComposing?: boolean;
+  requiresExplicitSend?: boolean;
 }): boolean {
-  return key === "Enter" && !shiftKey && !isComposing;
+  return key === "Enter" && !shiftKey && !isComposing && !requiresExplicitSend;
 }

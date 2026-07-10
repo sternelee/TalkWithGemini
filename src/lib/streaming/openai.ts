@@ -19,6 +19,7 @@ import {
   normalizeReasoningMode,
 } from "../chat/reasoning";
 import { normalizeGeneratedImageAttachment } from "../utils/generatedImages";
+import { IncompleteProviderStreamError } from "../errors";
 
 export interface OpenAIStreamOptions {
   client: OpenAI;
@@ -28,6 +29,7 @@ export interface OpenAIStreamOptions {
   tools?: any[];
   useReasoning?: boolean;
   reasoningMode?: ReasoningMode;
+  signal?: AbortSignal;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -284,6 +286,7 @@ export interface OpenAIResponsesStreamOptions {
   reasoningMode?: ReasoningMode;
   enableWebSearch?: boolean;
   enableImageGeneration?: boolean;
+  signal?: AbortSignal;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -404,8 +407,18 @@ async function finishChatCompletionStream(
 ): Promise<void> {
   const toolCalls = createOpenAIToolCallAccumulator();
   const thinkTagParser = createThinkTagStreamParser();
+  let receivedTerminalFinishReason = false;
 
   for await (const chunk of chunks) {
+    if (
+      chunk.choices?.some(
+        (choice: any) =>
+          typeof choice?.finish_reason === "string" &&
+          choice.finish_reason.length > 0,
+      )
+    ) {
+      receivedTerminalFinishReason = true;
+    }
     emitChatCompletionChunk(
       chunk,
       toolCalls,
@@ -421,6 +434,12 @@ async function finishChatCompletionStream(
     } else if (emitReasoning) {
       onChunk({ type: "reasoning", content: event.content });
     }
+  }
+
+  if (!receivedTerminalFinishReason) {
+    throw new IncompleteProviderStreamError(
+      "OpenAI Chat Completions stream ended before a terminal finish_reason.",
+    );
   }
 
   // 发送完整的工具调用
@@ -454,6 +473,7 @@ export async function streamOpenAIChatCompletions(
     tools,
     useReasoning,
     reasoningMode: rawReasoningMode,
+    signal,
     onChunk,
   } = options;
   const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
@@ -468,7 +488,9 @@ export async function streamOpenAIChatCompletions(
     reasoningMode,
   });
 
-  const stream = (await client.chat.completions.create(requestParams)) as any;
+  const stream = (await (signal
+    ? client.chat.completions.create(requestParams, { signal })
+    : client.chat.completions.create(requestParams))) as any;
   await finishChatCompletionStream(
     stream,
     startTime,
@@ -499,6 +521,7 @@ export async function streamOpenAIResponses(
     reasoningMode: rawReasoningMode,
     enableWebSearch,
     enableImageGeneration,
+    signal,
     onChunk,
   } = options;
   const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
@@ -533,10 +556,13 @@ export async function streamOpenAIResponses(
     requestParams.reasoning = { effort: reasoningMode, summary: "auto" };
   }
 
-  const stream = (await client.responses.create(requestParams)) as any;
+  const stream = (await (signal
+    ? client.responses.create(requestParams, { signal })
+    : client.responses.create(requestParams))) as any;
   let toolCallPosition = 0;
   let hasStreamedOutputText = false;
   let hasStreamedReasoning = false;
+  let receivedCompletedEvent = false;
 
   for await (const event of stream) {
     switch (event?.type) {
@@ -645,6 +671,7 @@ export async function streamOpenAIResponses(
         break;
 
       case "response.completed": {
+        receivedCompletedEvent = true;
         const usage = event.response?.usage;
         if (usage) {
           onChunk({
@@ -660,15 +687,24 @@ export async function streamOpenAIResponses(
       }
 
       case "response.failed":
-      case "response.error": {
+      case "response.error":
+      case "response.incomplete":
+      case "error": {
         const errorMessage =
           event.error?.message ||
           event.response?.error?.message ||
-          "OpenAI Responses stream failed";
-        onChunk({ type: "error", error: errorMessage });
-        break;
+          event.message ||
+          event.response?.incomplete_details?.reason ||
+          "upstream terminal error";
+        throw new Error(`OpenAI Responses stream failed: ${errorMessage}`);
       }
     }
+  }
+
+  if (!receivedCompletedEvent) {
+    throw new IncompleteProviderStreamError(
+      "OpenAI Responses stream ended before response.completed.",
+    );
   }
 
   const endTime = Date.now();

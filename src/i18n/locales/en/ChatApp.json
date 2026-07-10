@@ -5,6 +5,7 @@
   "errDeleteMessage": "Couldn't delete the message. The chat was restored.",
   "errDeleteChat": "Couldn't delete the chat. Please try again.",
   "errDuplicateChat": "Couldn't duplicate the chat. Please try again.",
+  "errLoadChat": "Couldn't load that chat. Your current chat was kept open.",
   "errRetractMessage": "Couldn't retract the message. The chat was restored.",
   "errEditUserMessage": "Couldn't edit that message. Please try again.",
   "errRenameChat": "Couldn't rename the chat. Please try again.",

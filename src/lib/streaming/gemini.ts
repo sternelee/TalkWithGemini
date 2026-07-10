@@ -20,6 +20,7 @@ import {
   isReasoningEnabled,
   normalizeReasoningMode,
 } from "../chat/reasoning";
+import { IncompleteProviderStreamError } from "../errors";
 
 export interface GeminiStreamOptions {
   client: GoogleGenAI;
@@ -33,6 +34,7 @@ export interface GeminiStreamOptions {
   imageCount?: number;
   useReasoning?: boolean;
   reasoningMode?: ReasoningMode;
+  signal?: AbortSignal;
   onChunk: (message: SSEMessage) => void;
 }
 
@@ -147,6 +149,20 @@ function extractGeminiGroundingSources(groundingMetadata: any) {
   return normalizeSearchSources(sources);
 }
 
+function hasValidGeminiFinishReason(candidates: any): boolean {
+  if (!Array.isArray(candidates)) return false;
+
+  return candidates.some((candidate) => {
+    if (typeof candidate?.finishReason !== "string") return false;
+    const finishReason = candidate.finishReason.trim().toUpperCase();
+    return (
+      finishReason.length > 0 &&
+      finishReason !== "FINISH_REASON_UNSPECIFIED" &&
+      finishReason !== "UNSPECIFIED"
+    );
+  });
+}
+
 /**
  * 处理 Gemini 流式响应
  * 注意：由于 Gemini SDK 的限制，这里使用简化的实现
@@ -165,6 +181,7 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
     imageCount,
     useReasoning,
     reasoningMode: rawReasoningMode,
+    signal,
     onChunk,
   } = options;
   const reasoningMode = normalizeReasoningMode(rawReasoningMode, useReasoning);
@@ -188,6 +205,9 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
 
   if (temperature !== undefined) {
     config.temperature = temperature;
+  }
+  if (signal) {
+    config.abortSignal = signal;
   }
 
   const thinkingConfig = getGeminiThinkingConfig(modelName, reasoningMode);
@@ -217,9 +237,13 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
   // let fullText = "";
   // let fullReasoning = "";
   let emittedToolCalls = 0;
+  let receivedFinishReason = false;
 
   for await (const chunk of stream) {
     const candidates = (chunk as any).candidates;
+    if (hasValidGeminiFinishReason(candidates)) {
+      receivedFinishReason = true;
+    }
 
     if (candidates && candidates[0] && candidates[0].content) {
       const candidate = candidates[0];
@@ -300,6 +324,12 @@ export async function streamGeminiResponse(options: GeminiStreamOptions) {
         usageMetadata: (chunk as any).usageMetadata,
       });
     }
+  }
+
+  if (!receivedFinishReason) {
+    throw new IncompleteProviderStreamError(
+      "Gemini stream ended before a valid candidate finishReason.",
+    );
   }
 
   // 发送时间统计

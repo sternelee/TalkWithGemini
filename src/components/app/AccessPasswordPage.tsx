@@ -48,7 +48,16 @@ export default function AccessPasswordPage({
   useEffect(() => {
     if (!lockedUntil || lockedUntil <= Date.now()) return;
 
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    const interval = window.setInterval(() => {
+      const nextNow = Date.now();
+      setNow(nextNow);
+      if (lockedUntil <= nextNow) {
+        window.clearInterval(interval);
+        setLockedUntil(undefined);
+        setRemainingAttempts(undefined);
+        setErrorKey((current) => (current === "locked" ? null : current));
+      }
+    }, 1000);
     return () => window.clearInterval(interval);
   }, [lockedUntil]);
 
@@ -137,19 +146,26 @@ export default function AccessPasswordPage({
               spellCheck={false}
               disabled={isSubmitting || isLocked}
               placeholder={t("passwordPlaceholder")}
+              aria-invalid={isLocked || !!errorKey}
+              aria-describedby="access-password-status"
               className="min-w-0 flex-1 rounded-lg border border-input bg-muted px-3 py-2 font-mono text-sm text-foreground transition-[background-color,border-color,box-shadow,color] placeholder:text-muted-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:focus:border-blue-400"
             />
             <button
               type="submit"
               disabled={!trimmedPassword || isSubmitting || isLocked}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-white transition-colors hover:bg-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={isSubmitting ? t("verifying") : t("submit")}
             >
               <ArrowRight size={16} aria-hidden="true" />
             </button>
           </div>
 
-          <div className="mt-3 min-h-5 text-xs">
+          <div
+            id="access-password-status"
+            role={isLocked || errorKey ? "alert" : "status"}
+            aria-live="polite"
+            className="mt-3 min-h-5 text-xs"
+          >
             {isLocked ? (
               <p className="text-amber-600 dark:text-amber-300">
                 {t("locked", { time: formatLockTime(remainingLockSeconds) })}

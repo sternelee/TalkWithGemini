@@ -16,7 +16,10 @@ export interface SearchOptions {
   scope?: string;
 }
 
-export async function createSearchProvider({ query, scope }: SearchOptions) {
+export async function createSearchProvider(
+  { query, scope }: SearchOptions,
+  signal?: AbortSignal,
+) {
   const { search } = useSettingsStore.getState();
   const provider = search.provider;
   if (provider === "google") {
@@ -37,9 +40,10 @@ export async function createSearchProvider({ query, scope }: SearchOptions) {
           provider,
           query,
           scope,
-          config: await buildSearchRuntimeConfig(provider, config),
+          config: await buildSearchRuntimeConfig(provider, config, signal),
           maxResult,
         }),
+        signal,
       }),
     );
 
@@ -56,6 +60,12 @@ export async function createSearchProvider({ query, scope }: SearchOptions) {
       images: normalizeImageSources(data.images),
     };
   } catch (error) {
+    if (
+      signal?.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      throw error;
+    }
     logDevError("Search error:", error);
     throw error;
   }

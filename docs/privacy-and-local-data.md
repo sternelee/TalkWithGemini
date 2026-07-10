@@ -21,9 +21,12 @@ Generated images from native image models are saved as message output data in
 IndexedDB with the rest of the chat message. When users export app data, those
 image output blocks are included in the exported conversation payload. PNG/PDF
 message exports render the visible output blocks, while full app export
-preserves the stored message data. Full app export is a metadata JSON export:
-it can include `opfs://` references, but it does not bundle OPFS file blobs or
-runtime `blob:` URLs.
+preserves every stored session message tree, including trees not referenced by
+the current chat metadata. If any message tree cannot be read, the export fails
+instead of returning partial data. Full app export is a metadata JSON export:
+it preserves `opfs://` references as stored, but does not read, copy, or
+validate OPFS blobs. Missing OPFS files do not block the export, and runtime
+`blob:` URLs are not included.
 
 Image attachments keep their original `data` or remote `url` as the canonical
 message data. OPFS image copies are display caches mapped from that original

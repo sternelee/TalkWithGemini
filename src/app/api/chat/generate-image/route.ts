@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
       const requestOptions = {
         policy: getSafeUrlPolicy("provider"),
         timeoutMs: 120_000,
-        maxResponseBytes: 20 * 1024 * 1024,
+        maxResponseBytes: 36 * 1024 * 1024,
       };
 
       const { response, data } = isEditRequest
@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
                   Authorization: `Bearer ${apiKey}`,
                 },
                 body: formData,
+                signal: request.signal,
               },
               requestOptions,
             );
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
                   ? { response_format: "b64_json" }
                   : {}),
               }),
+              signal: request.signal,
             },
             requestOptions,
           );
@@ -182,7 +184,7 @@ export async function POST(request: NextRequest) {
       });
     } else if (isGoogleProviderType(provider.type)) {
       // Google
-      await assertProviderOutboundAllowed(provider);
+      await assertProviderOutboundAllowed(provider, request.signal);
       const ai = createGoogleClient(provider);
 
       if (attachments?.length) {
@@ -193,6 +195,7 @@ export async function POST(request: NextRequest) {
           },
           config: {
             responseModalities: ["TEXT", "IMAGE"],
+            abortSignal: request.signal,
           },
         });
         const parts = response.candidates?.[0]?.content?.parts || [];
@@ -230,6 +233,7 @@ export async function POST(request: NextRequest) {
         config: {
           ...(imageCount ? { numberOfImages: imageCount } : {}),
           aspectRatio: "1:1",
+          abortSignal: request.signal,
         },
       });
 
@@ -262,6 +266,12 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   } catch (error: any) {
+    if (
+      request.signal.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      return new Response(null, { status: 499 });
+    }
     safeServerLogError("Image generation error:", error);
     if (error instanceof Error && error.name === "ZodError") {
       return createApiErrorResponse(error, "Invalid image generation request");

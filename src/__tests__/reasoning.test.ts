@@ -53,4 +53,21 @@ describe("reasoning mode helpers", () => {
       temperature: 0.7,
     });
   });
+
+  it("clamps search off when the selected provider cannot execute it", () => {
+    const config = resolveEffectiveChatRequestConfig({
+      chatConfig: {
+        useSearch: true,
+        useReasoning: false,
+        reasoningMode: "off",
+        temperature: 0.7,
+      },
+      selectedModel: "provider:model-a",
+      modelMetadata: {},
+      customModelMetadata: {},
+      searchCompatibility: { enabled: false },
+    });
+
+    expect(config.useSearch).toBe(false);
+  });
 });

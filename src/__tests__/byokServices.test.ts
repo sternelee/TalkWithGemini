@@ -62,6 +62,10 @@ vi.mock("@/lib/settings/searchRag", () => ({
 }));
 
 vi.mock("@/lib/utils/contextCompression", () => ({
+  buildCompressionSource: vi.fn(() => ({
+    text: "",
+    includedMemoryIds: [],
+  })),
   createContextCompressionSummaryPrompt: vi.fn(() => ""),
   mergeCompressedContent: vi.fn((value) => value),
   normalizeCompressedContent: vi.fn((value) => value),
@@ -179,6 +183,29 @@ describe("BYOK service requests", () => {
       expect(
         JSON.stringify(getJsonRequestBody(fetchMock, index)),
       ).not.toContain("apiKey");
+    }
+  });
+
+  it("passes AbortSignal through auxiliary client requests", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ title: "Title" }))
+      .mockResolvedValueOnce(Response.json({ questions: [] }))
+      .mockResolvedValueOnce(Response.json({ queries: ["query"] }));
+    const {
+      generateChatTitle,
+      generateRAGSearchQueries,
+      generateRelatedQuestions,
+    } = await import("../services/api/chatService");
+
+    await generateChatTitle([], controller.signal);
+    await generateRelatedQuestions([], controller.signal);
+    await generateRAGSearchQueries("hello", controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const call of fetchMock.mock.calls) {
+      expect(call[1]?.signal).toBe(controller.signal);
     }
   });
 

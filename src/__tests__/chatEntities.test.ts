@@ -44,6 +44,7 @@ describe("chat entity normalization", () => {
           CONTEXT_COMPRESSION_LIMITS.maxCompressedContentChars + 10,
         ),
         lastCompressedMessageId: "m".repeat(160),
+        includedMemoryIds: ["memory-1", "memory-1", "", "memory-2"],
       },
     } as Session);
 
@@ -62,6 +63,27 @@ describe("chat entity normalization", () => {
       CONTEXT_COMPRESSION_LIMITS.maxCompressedContentChars,
     );
     expect(session.compression?.lastCompressedMessageId).toHaveLength(120);
+    expect(session.compression?.includedMemoryIds).toEqual([]);
+  });
+
+  it("treats legacy compression records without memory ids as an empty set", () => {
+    const session = normalizeSession({
+      id: "legacy",
+      title: "Legacy",
+      messageCount: 2,
+      updatedAt: 1,
+      model: "model",
+      compression: {
+        compressedContent: "Existing summary",
+        lastCompressedMessageId: "m1",
+      },
+    });
+
+    expect(session.compression).toEqual({
+      compressedContent: "Existing summary",
+      lastCompressedMessageId: "m1",
+      includedMemoryIds: [],
+    });
   });
 
   it("omits empty session plugin presets", () => {

@@ -1,9 +1,15 @@
 import type { Attachment, Message, MessageOutputBlock } from "../../types";
-import { saveToOPFS, resolveOPFSBlob, isOPFSUrl } from "../../utils/opfs";
+import {
+  deleteFromOPFS,
+  saveToOPFS,
+  resolveOPFSBlob,
+  isOPFSUrl,
+} from "../../utils/opfs";
 import { base64ToBytes, bytesToArrayBuffer, bytesToBase64 } from "./binary";
 import { logDevError } from "./devLogger";
 
 type SaveFile = (file: File, prefix?: string) => Promise<string>;
+type DeleteFile = (url?: string) => Promise<void>;
 type ResolveOPFSBlob = (url: string) => Promise<Blob | null>;
 type CreateObjectURL = (blob: Blob) => string;
 
@@ -91,14 +97,18 @@ export async function ensureImageDisplayCache(
   attachment: Attachment,
   options: {
     saveFile?: SaveFile;
+    deleteFile?: DeleteFile;
     now?: () => number;
     prefix?: string;
+    signal?: AbortSignal;
   } = {},
 ): Promise<Attachment> {
+  options.signal?.throwIfAborted();
   if (!isImageAttachment(attachment)) return attachment;
   if (!attachment.data) return attachment;
 
   const sourceFingerprint = await getAttachmentSourceFingerprint(attachment);
+  options.signal?.throwIfAborted();
   if (!sourceFingerprint) return attachment;
 
   if (
@@ -115,6 +125,12 @@ export async function ensureImageDisplayCache(
       file,
       options.prefix || DEFAULT_IMAGE_CACHE_PREFIX,
     );
+    if (options.signal?.aborted) {
+      await (options.deleteFile || deleteFromOPFS)(opfsUrl).catch((error) => {
+        logDevError("Failed to remove cancelled image cache from OPFS", error);
+      });
+      options.signal.throwIfAborted();
+    }
 
     return {
       ...attachment,
@@ -126,6 +142,12 @@ export async function ensureImageDisplayCache(
       },
     };
   } catch (error) {
+    if (
+      options.signal?.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    ) {
+      throw error;
+    }
     logDevError("Failed to cache image attachment in OPFS", error);
     return attachment;
   }

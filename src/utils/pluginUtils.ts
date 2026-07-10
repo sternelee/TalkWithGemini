@@ -60,6 +60,7 @@ async function buildPluginAuthConfig(
   authConfig?: PluginExecutionAuthConfig | PluginConfig["auth"],
   baseUrl?: string,
   model?: string,
+  signal?: AbortSignal,
 ): Promise<PluginExecutionAuthConfig | undefined> {
   if (!authConfig && !baseUrl && !model) return undefined;
   if (!authConfig) {
@@ -77,12 +78,19 @@ async function buildPluginAuthConfig(
     addTo: authConfig?.addTo,
     ...(baseUrl ? { baseUrl } : {}),
     ...(model ? { model } : {}),
-    valueSecret: await encryptSecret(value, BYOK_CONTEXTS.pluginAuth(pluginId)),
+    valueSecret: await encryptSecret(
+      value,
+      BYOK_CONTEXTS.pluginAuth(pluginId),
+      signal,
+    ),
   };
 }
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof Error && error.name === "AbortError";
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (error instanceof Error && error.name === "AbortError")
+  );
 }
 
 async function executeBackendPluginFunction(
@@ -191,6 +199,7 @@ export const executePluginFunction = async (
             hasAuth ? authOverride || config?.auth : undefined,
             config?.baseUrl,
             config?.model,
+            signal,
           );
         const response = await postPluginExecutionWithLegacyFallback(
           async () => ({
@@ -230,7 +239,7 @@ export const executePluginFunction = async (
 
         return json;
       } catch (e) {
-        if (isAbortError(e)) throw e;
+        if (isAbortError(e, signal)) throw e;
         return { error: String(e) };
       }
     }
@@ -243,6 +252,7 @@ export const executePluginFunction = async (
       authOverride || config?.auth,
       config?.baseUrl,
       config?.model,
+      signal,
     );
     return await executeBackendPluginFunction(
       foundPlugin,
@@ -252,7 +262,7 @@ export const executePluginFunction = async (
       signal,
     );
   } catch (e) {
-    if (isAbortError(e)) throw e;
+    if (isAbortError(e, signal)) throw e;
     return { error: String(e) };
   }
 };

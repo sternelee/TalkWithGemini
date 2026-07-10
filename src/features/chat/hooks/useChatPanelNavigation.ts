@@ -25,6 +25,8 @@ interface UseChatPanelNavigationResult {
   handleSettingsTabChange: (tab: SettingsTabId) => void;
 }
 
+const DESKTOP_SIDEBAR_BREAKPOINT = 1024;
+
 export function useChatPanelNavigation(): UseChatPanelNavigationResult {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isNonDesktopViewport, setIsNonDesktopViewport] = useState(false);
@@ -121,19 +123,24 @@ export function useChatPanelNavigation(): UseChatPanelNavigationResult {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    let previousIsNonDesktop: boolean | undefined;
+
     const updateViewport = () => {
-      setIsNonDesktopViewport(window.innerWidth < 1024);
+      const isNonDesktop = window.innerWidth < DESKTOP_SIDEBAR_BREAKPOINT;
+      const isDesktop = window.innerWidth >= DESKTOP_SIDEBAR_BREAKPOINT;
+      setIsNonDesktopViewport(isNonDesktop);
+      if (
+        previousIsNonDesktop === undefined ||
+        previousIsNonDesktop !== isNonDesktop
+      ) {
+        setIsSidebarOpen(isDesktop);
+      }
+      previousIsNonDesktop = isNonDesktop;
     };
 
     updateViewport();
     window.addEventListener("resize", updateViewport);
     return () => window.removeEventListener("resize", updateViewport);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth > 768) {
-      setIsSidebarOpen(true);
-    }
   }, []);
 
   const isSidebarDrawerOpen = isSidebarOpen && isNonDesktopViewport;

@@ -28,9 +28,10 @@ describe("safe fetch DNS timeout", () => {
       { method: "GET" },
       { policy: getSafeUrlPolicy("plugin"), timeoutMs: 25 },
     );
-    const expectation = expect(result).rejects.toThrow(
-      /Request timed out after 25ms/i,
-    );
+    const expectation = expect(result).rejects.toMatchObject({
+      name: "ResponseTimeoutError",
+      code: "RESPONSE_TIMEOUT",
+    });
 
     await vi.advanceTimersByTimeAsync(25);
 

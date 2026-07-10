@@ -167,4 +167,34 @@ describe("auxiliary generation handlers", () => {
     expect(queries[1]).toHaveLength(AUXILIARY_OUTPUT_LIMITS.maxRagQueryChars);
     expect(queries[2]).toBe("bananas");
   });
+
+  it("passes AbortSignal to every simple provider generation", async () => {
+    const controller = new AbortController();
+    mocks.handleSimpleGeneration
+      .mockResolvedValueOnce("Signal title")
+      .mockResolvedValueOnce('["Next?"]')
+      .mockResolvedValueOnce("query");
+    const history: Message[] = [
+      { id: "user", role: "user", content: "Hello", timestamp: 0 },
+      { id: "model", role: "model", content: "Hi", timestamp: 1 },
+    ];
+
+    await generateTitle(provider, "gemini-test", history, controller.signal);
+    await generateRelatedQuestions(
+      provider,
+      "gemini-test",
+      history,
+      controller.signal,
+    );
+    await generateRAGQueries(
+      provider,
+      "gemini-test",
+      "Hello",
+      controller.signal,
+    );
+
+    for (const call of mocks.handleSimpleGeneration.mock.calls) {
+      expect(call[3]).toBe(controller.signal);
+    }
+  });
 });

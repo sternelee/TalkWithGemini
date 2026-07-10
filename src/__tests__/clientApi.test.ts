@@ -10,6 +10,7 @@ import {
 describe("client API response helpers", () => {
   afterEach(() => {
     clearApiProofSessionCache();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -109,5 +110,56 @@ describe("client API response helpers", () => {
     const data = await response.json();
 
     expect(data.headers["x-neo-api-proof-signature"]).toBeUndefined();
+  });
+
+  it("stops waiting for the shared proof handshake when its caller aborts", async () => {
+    let resolveSession!: (response: Response) => void;
+    const sessionResponse = new Promise<Response>((resolve) => {
+      resolveSession = resolve;
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input: RequestInfo | URL) => {
+        if (String(input) === "/api/request-proof/session") {
+          return sessionResponse;
+        }
+        return Response.json({ ok: true });
+      });
+    const controller = new AbortController();
+
+    const request = signedApiFetch("/api/chat", {
+      method: "POST",
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    resolveSession(Response.json({ enabled: false, serverTime: Date.now() }));
+    await Promise.resolve();
+  });
+
+  it("reports the proof handshake watchdog as a timeout, not caller cancellation", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      });
+    });
+
+    const request = signedApiFetch("/api/chat", { method: "POST" });
+    const expectation = expect(request).rejects.toMatchObject({
+      name: "ResponseTimeoutError",
+      code: "RESPONSE_TIMEOUT",
+      statusCode: 504,
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expectation;
   });
 });

@@ -6,6 +6,7 @@ import { runSearchProvider } from "../lib/search/providerAdapters";
 
 describe("search provider adapters", () => {
   it("builds Tavily requests and normalizes source and image results", async () => {
+    const controller = new AbortController();
     const fetchJson = vi.fn().mockResolvedValue({
       response: new Response(null, { status: 200 }),
       data: {
@@ -32,6 +33,7 @@ describe("search provider adapters", () => {
       apiKey: "tvly-key",
       maxResultNumber: 2,
       fetchJson,
+      signal: controller.signal,
     });
 
     expect(fetchJson).toHaveBeenCalledOnce();
@@ -39,6 +41,7 @@ describe("search provider adapters", () => {
     expect(url).toBe("https://api.tavily.com/search");
     expect(init).toMatchObject({
       method: "POST",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer tvly-key",

@@ -3,7 +3,10 @@ import {
   assertRequestContentLengthUnderLimit,
   logRequest,
   readJsonRequestBody,
+  withApiHandler,
+  withStreamApiHandler,
 } from "../lib/api/middleware";
+import { ApiError } from "../lib/errors";
 
 describe("request body helpers", () => {
   afterEach(() => {
@@ -103,5 +106,44 @@ describe("request body helpers", () => {
     vi.stubEnv("NODE_ENV", "development");
     logRequest("Chat", { modelName: "model-a" });
     expect(logSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["JSON", withApiHandler],
+    ["stream", withStreamApiHandler],
+  ])("returns a quiet 499 when the %s wrapper is aborted", async (_, wrap) => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = wrap(async () => {
+      const error = new Error("cancelled");
+      error.name = "AbortError";
+      throw error;
+    });
+    const request = new Request("https://example.test/api", {
+      method: "POST",
+      body: "{}",
+    });
+
+    const response = await handler(request as never);
+
+    expect(response.status).toBe(499);
+    expect(await response.text()).toBe("");
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("preserves structured errors emitted by the stream wrapper", async () => {
+    const handler = withStreamApiHandler(async () => {
+      throw new ApiError("Typed failure", 422, "TYPED_FAILURE");
+    });
+    const response = await handler(
+      new Request("https://example.test/api", {
+        method: "POST",
+        body: "{}",
+      }) as never,
+    );
+
+    const payload = await response.text();
+    expect(payload).toContain('"error":"Typed failure"');
+    expect(payload).toContain('"code":"TYPED_FAILURE"');
+    expect(payload).toContain('"statusCode":422');
   });
 });

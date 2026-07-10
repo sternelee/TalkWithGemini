@@ -15,6 +15,19 @@ vi.mock("@/store/core/settingsStore", () => ({
   },
 }));
 
+vi.mock("../lib/api/client", async () => {
+  const actual =
+    await vi.importActual<typeof import("../lib/api/client")>(
+      "../lib/api/client",
+    );
+  return {
+    ...actual,
+    signedApiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      init === undefined ? fetch(input) : fetch(input, init),
+    ),
+  };
+});
+
 describe("agent service", () => {
   afterEach(() => {
     storeState.value = {

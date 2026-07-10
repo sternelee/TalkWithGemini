@@ -9,7 +9,10 @@ import {
   isMutatingApiRouteMethod,
 } from "./apiRoutePolicy";
 import { getDeploymentMode } from "./deployment";
-import { enforceApiRequestProof } from "./requestProof";
+import {
+  enforceApiRequestProof,
+  getRequestProofRateLimitIdentity,
+} from "./requestProof";
 
 export const REQUEST_GUARD_ERROR_CODES = {
   csrf: "CSRF_ORIGIN_BLOCKED",
@@ -131,7 +134,21 @@ export async function enforceRateLimit(
   const rule = getApiRateLimitPolicy(request.nextUrl.pathname, request.method);
   if (!rule) return null;
 
-  const key = `${getRateLimitClientIp(request)}:${request.method}:${request.nextUrl.pathname}`;
+  const clientIp = getRateLimitClientIp(request);
+  const useDeploymentBucket =
+    clientIp === "unknown" && rule.routeFamily === "/api/access/verify";
+  const proofIdentity =
+    clientIp === "unknown" && !useDeploymentBucket
+      ? await getRequestProofRateLimitIdentity(request, now)
+      : null;
+  if (clientIp === "unknown" && !useDeploymentBucket && !proofIdentity) {
+    return null;
+  }
+
+  const identity = useDeploymentBucket
+    ? "deployment"
+    : proofIdentity || clientIp;
+  const key = `${identity}:${request.method}:${rule.routeFamily}`;
   const current = await incrementRateLimitBucket(key, rule.windowMs, now);
   if (current.count <= rule.maxRequests) return null;
 

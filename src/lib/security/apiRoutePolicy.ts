@@ -1,6 +1,7 @@
 export type ApiRouteMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 export interface ApiRateLimitPolicy {
+  routeFamily: string;
   windowMs: number;
   maxRequests: number;
 }
@@ -20,6 +21,7 @@ export const MUTATING_API_METHODS = new Set<ApiRouteMethod>([
 ]);
 
 export const DEFAULT_MUTATING_API_RATE_LIMIT: ApiRateLimitPolicy = {
+  routeFamily: "/api/mutating",
   windowMs: 60_000,
   maxRequests: 120,
 };
@@ -37,72 +39,121 @@ const API_ROUTE_POLICIES: readonly ApiRoutePolicy[] = [
   {
     pattern: /^\/api\/access\/verify$/,
     rateLimitMethods: MUTATING_METHODS,
-    rateLimit: { windowMs: 60_000, maxRequests: 10 },
+    rateLimit: {
+      routeFamily: "/api/access/verify",
+      windowMs: 60_000,
+      maxRequests: 300,
+    },
   },
   {
     pattern: /^\/api\/chat(?:\/|$)/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,
-    rateLimit: { windowMs: 60_000, maxRequests: 60 },
+    rateLimit: {
+      routeFamily: "/api/chat",
+      windowMs: 60_000,
+      maxRequests: 60,
+    },
   },
   {
     pattern: /^\/api\/search$/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,
-    rateLimit: { windowMs: 60_000, maxRequests: 30 },
+    rateLimit: {
+      routeFamily: "/api/search",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
   },
   {
     pattern: /^\/api\/rag(?:\/|$)/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,
-    rateLimit: { windowMs: 60_000, maxRequests: 30 },
+    rateLimit: {
+      routeFamily: "/api/rag",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
   },
   {
     pattern: /^\/api\/voice(?:\/|$)/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,
-    rateLimit: { windowMs: 60_000, maxRequests: 20 },
+    rateLimit: {
+      routeFamily: "/api/voice",
+      windowMs: 60_000,
+      maxRequests: 20,
+    },
   },
   {
     pattern: /^\/api\/doc-parse(?:\/|$)/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,
-    rateLimit: { windowMs: 60_000, maxRequests: 10 },
+    rateLimit: {
+      routeFamily: "/api/doc-parse",
+      windowMs: 60_000,
+      maxRequests: 10,
+    },
   },
   {
     pattern: /^\/api\/plugins\/execute$/,
     requestProofMethods: ["POST"],
     rateLimitMethods: ["POST"],
-    rateLimit: { windowMs: 60_000, maxRequests: 30 },
+    rateLimit: {
+      routeFamily: "/api/plugins/execute",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
   },
   {
     pattern: /^\/api\/plugins\/install$/,
     requestProofMethods: ["POST"],
     rateLimitMethods: ["POST"],
-    rateLimit: { windowMs: 60_000, maxRequests: 20 },
+    rateLimit: {
+      routeFamily: "/api/plugins/install",
+      windowMs: 60_000,
+      maxRequests: 20,
+    },
   },
   {
     pattern: /^\/api\/plugins\/list$/,
     requestProofMethods: ["GET"],
     rateLimitMethods: ["GET"],
-    rateLimit: { windowMs: 60_000, maxRequests: 15 },
+    rateLimit: {
+      routeFamily: "/api/plugins/list",
+      windowMs: 60_000,
+      maxRequests: 15,
+    },
   },
   {
     pattern: /^\/api\/providers\/models$/,
     requestProofMethods: ["POST"],
     rateLimitMethods: ["POST"],
-    rateLimit: { windowMs: 60_000, maxRequests: 30 },
+    rateLimit: {
+      routeFamily: "/api/providers/models",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
   },
   {
     pattern: /^\/api\/mcp\/servers$/,
     requestProofMethods: ["GET"],
     rateLimitMethods: ["GET"],
-    rateLimit: { windowMs: 60_000, maxRequests: 30 },
+    rateLimit: {
+      routeFamily: "/api/mcp/servers",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
   },
   {
     pattern: /^\/api\/agents(?:\/|$)/,
+    requestProofMethods: ["GET"],
     rateLimitMethods: ["GET"],
-    rateLimit: { windowMs: 60_000, maxRequests: 30 },
+    rateLimit: {
+      routeFamily: "/api/agents",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
   },
 ];
 

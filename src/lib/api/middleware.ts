@@ -24,6 +24,17 @@ export type ApiHandler = (request: NextRequest, body: any) => Promise<Response>;
 
 const jsonDecoder = new TextDecoder();
 
+function isRequestAbort(error: unknown, request: Request): boolean {
+  return (
+    request.signal.aborted ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function createClientClosedResponse(): Response {
+  return new Response(null, { status: 499 });
+}
+
 export async function readJsonRequestBody(
   request: Request,
   maxBytes = API_INPUT_LIMITS.maxJsonBodyBytes,
@@ -134,6 +145,7 @@ export function withApiHandler(handler: ApiHandler) {
       const body = await readJsonRequestBody(request);
       return await handler(request, body);
     } catch (error) {
+      if (isRequestAbort(error, request)) return createClientClosedResponse();
       return handleApiError(error);
     }
   };
@@ -148,6 +160,7 @@ export function withStreamApiHandler(handler: ApiHandler) {
       const body = await readJsonRequestBody(request);
       return await handler(request, body);
     } catch (error) {
+      if (isRequestAbort(error, request)) return createClientClosedResponse();
       // 返回 SSE 格式的错误
       logDevError("Stream API Error:", error);
 
@@ -161,7 +174,12 @@ export function withStreamApiHandler(handler: ApiHandler) {
 
       const stream = createStreamHandler(async (controller) => {
         const send = createSSESender(controller);
-        send({ type: "error", error: errorPayload.error });
+        send({
+          type: "error",
+          error: errorPayload.error,
+          code: errorPayload.code,
+          statusCode: errorPayload.statusCode,
+        });
       });
 
       return createStreamResponse(stream);

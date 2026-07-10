@@ -31,11 +31,12 @@ vi.mock("@/lib/utils/safeServerLog", () => ({
   safeServerLogError: vi.fn(),
 }));
 
-function createRequest(body: unknown) {
+function createRequest(body: unknown, signal?: AbortSignal) {
   return new Request("http://localhost/api/plugins/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
 }
 
@@ -47,6 +48,7 @@ describe("MCP plugin execute route", () => {
   });
 
   it("dispatches MCP plugin execution through the MCP executor", async () => {
+    const controller = new AbortController();
     executeMcpToolRequestMock.mockResolvedValue({
       structuredContent: { answer: "ok" },
     });
@@ -85,13 +87,15 @@ describe("MCP plugin execute route", () => {
     });
 
     const { POST } = await import("../app/api/plugins/execute/route");
-    const response = await POST(
-      createRequest({
+    const request = createRequest(
+      {
         pluginId: "mcp:io.github/context7:1.2.3",
         functionName: "mcp_io_github_context7__resolve_library_id",
         args: { libraryName: "react" },
-      }) as any,
+      },
+      controller.signal,
     );
+    const response = await POST(request as any);
 
     expect(response.status).toBe(200);
     expect(executeMcpToolRequestMock).toHaveBeenCalledWith(
@@ -99,6 +103,7 @@ describe("MCP plugin execute route", () => {
         serverUrl: "https://mcp.example.com/mcp",
         toolName: "resolve-library-id",
         args: { libraryName: "react" },
+        signal: request.signal,
         staticHeaders: {
           "X-Client": "neo-chat",
         },
