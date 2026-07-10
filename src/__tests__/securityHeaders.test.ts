@@ -19,6 +19,11 @@ function getDirective(csp: string, directive: string): string {
 }
 
 describe("security headers", () => {
+  it("does not upgrade self-hosted HTTP requests to HTTPS", () => {
+    expect(getCspValue("local")).not.toContain("upgrade-insecure-requests");
+    expect(getCspValue("hosted")).not.toContain("upgrade-insecure-requests");
+  });
+
   it("keeps local development CSP permissive enough for local proxies", () => {
     const csp = getCspValue("local");
 

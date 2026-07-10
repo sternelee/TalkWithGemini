@@ -30,7 +30,6 @@ function buildCsp(mode: DeploymentMode): string {
     `connect-src 'self' https: blob:${isHosted ? "" : " http:"}`,
     "frame-src 'self' blob: data:",
     "worker-src 'self' blob:",
-    "upgrade-insecure-requests",
   ].join("; ");
 }
 
