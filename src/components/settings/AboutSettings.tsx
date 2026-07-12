@@ -4,7 +4,7 @@ import { ExternalLink, GitBranch, Globe2, Package, Scale } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Logo } from "../ui/Icons";
 import { PRODUCT_COPYRIGHT, PRODUCT_NAME } from "@/lib/product";
-import { version } from '../../../package.json'
+import { version } from "../../../package.json";
 
 const PROJECT_NAME = PRODUCT_NAME;
 const PROJECT_VERSION = version;

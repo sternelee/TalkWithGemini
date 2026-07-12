@@ -171,7 +171,7 @@ export function prepareOpenAIResponsesInput(messages: Message[]) {
     if (msg.content) {
       result.push({
         role: "assistant",
-        content: [{ type: "input_text", text: msg.content }],
+        content: [{ type: "output_text", text: msg.content }],
       });
     }
 

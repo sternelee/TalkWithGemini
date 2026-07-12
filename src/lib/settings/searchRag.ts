@@ -174,14 +174,7 @@ export const getSearchCompatibility = ({
   }
 
   if (searchProvider === "firecrawl") {
-    return searchConfig?.baseUrl?.trim() || hasSearchApiKey(searchConfig)
-      ? { enabled: true, mode: "external", provider: searchProvider }
-      : {
-          enabled: false,
-          mode: "unavailable",
-          provider: searchProvider,
-          reason: "missing_search_api_key",
-        };
+    return { enabled: true, mode: "external", provider: searchProvider };
   }
 
   return hasSearchApiKey(searchConfig)

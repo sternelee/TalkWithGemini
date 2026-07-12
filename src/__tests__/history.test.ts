@@ -35,4 +35,32 @@ describe("history converters", () => {
       "Use sqlite for local storage.",
     );
   });
+
+  it("uses Responses input text for users and output text for assistants", () => {
+    const input = prepareOpenAIResponsesInput([
+      {
+        id: "user_1",
+        role: "user",
+        content: "hello test",
+        timestamp: 1,
+      },
+      {
+        id: "assistant_1",
+        role: "model",
+        content: "Hello! Test received.",
+        timestamp: 2,
+      },
+    ]);
+
+    expect(input).toEqual([
+      {
+        role: "user",
+        content: [{ type: "input_text", text: "hello test" }],
+      },
+      {
+        role: "assistant",
+        content: [{ type: "output_text", text: "Hello! Test received." }],
+      },
+    ]);
+  });
 });

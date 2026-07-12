@@ -68,22 +68,23 @@ describe("search compatibility", () => {
     });
   });
 
-  it("requires a key for hosted Firecrawl but allows configured self-hosted Firecrawl", () => {
+  it("allows Firecrawl search without a key while accepting an optional key", () => {
     expect(
       getSearchCompatibility({
         searchProvider: "firecrawl",
         searchConfig: { apiKey: "" },
         modelProviderType: "OpenAI",
       }),
-    ).toMatchObject({
-      enabled: false,
-      reason: "missing_search_api_key",
+    ).toEqual({
+      enabled: true,
+      mode: "external",
+      provider: "firecrawl",
     });
 
     expect(
       getSearchCompatibility({
         searchProvider: "firecrawl",
-        searchConfig: { apiKey: "", baseUrl: "https://firecrawl.example" },
+        searchConfig: { apiKey: "firecrawl-key" },
         modelProviderType: "OpenAI",
       }),
     ).toEqual({
