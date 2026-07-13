@@ -1,5 +1,5 @@
-import type { Attachment, RAGConfig } from "../../types";
-import { parseDocumentFile } from "../../services/api/docParseService";
+import type { Attachment, RAGConfig } from "@/types";
+import { parseDocumentFile } from "@/services/api/docParseService";
 import { resolveDocumentParseToken } from "../security/localSecretResolvers";
 import { logDevError } from "./devLogger";
 

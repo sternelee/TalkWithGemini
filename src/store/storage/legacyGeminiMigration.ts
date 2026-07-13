@@ -7,11 +7,11 @@ import type {
   Message,
   ModelProvider,
   Session,
-} from "../../types";
-import { DEFAULT_CHAT_CONFIG } from "../../config/defaults";
-import { normalizeProviderModelId } from "../../lib/providers/models";
-import { normalizeChatConfig } from "../../lib/settings/appConfig";
-import { normalizeSession } from "../../lib/chat/entities";
+} from "@/types";
+import { DEFAULT_CHAT_CONFIG } from "@/config/defaults";
+import { normalizeProviderModelId } from "@/lib/providers/models";
+import { normalizeChatConfig } from "@/lib/settings/appConfig";
+import { normalizeSession } from "@/lib/chat/entities";
 import { normalizeMessages } from "./migrations";
 
 type BrowserStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;

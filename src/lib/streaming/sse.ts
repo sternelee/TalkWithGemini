@@ -2,7 +2,7 @@
  * 统一的 SSE 流式响应处理
  */
 
-import type { Attachment, ToolCall } from "../../types";
+import type { Attachment, ToolCall } from "@/types";
 import { toPublicErrorPayload } from "../errors";
 
 export type SSEMessage =

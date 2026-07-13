@@ -1,4 +1,4 @@
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
 import { callMcpTool, type McpAuthConfig } from "./client";
 
 export interface ExecuteMcpToolRequestOptions {

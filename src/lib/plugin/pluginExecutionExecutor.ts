@@ -13,7 +13,7 @@ import {
   normalizeProviderBaseUrl,
   validateOutboundUrl,
 } from "../security/urlPolicy";
-import type { Plugin, PluginFunction } from "../../types";
+import type { Plugin, PluginFunction } from "@/types";
 import {
   AGNES_IMAGE_PLUGIN_ID,
   AGNES_VIDEO_PLUGIN_ID,

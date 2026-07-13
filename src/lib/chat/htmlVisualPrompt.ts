@@ -1,4 +1,4 @@
-import { API_INPUT_LIMITS } from "../../config/limits";
+import { API_INPUT_LIMITS } from "@/config/limits";
 import { clampChatInputText } from "../utils/chatInput";
 
 export const HTML_VISUAL_PROMPT_MARKER = "<html-visual>";

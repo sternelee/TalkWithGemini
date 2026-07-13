@@ -1,5 +1,5 @@
-import type { Message, Session, SessionMessageTree } from "../../types";
-import { normalizeMessages } from "../../store/storage/migrations";
+import type { Message, Session, SessionMessageTree } from "@/types";
+import { normalizeMessages } from "@/store/storage/migrations";
 import {
   getActiveMessagePath,
   isSessionMessageTree,

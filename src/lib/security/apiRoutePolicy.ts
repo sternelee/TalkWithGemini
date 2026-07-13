@@ -86,6 +86,16 @@ const API_ROUTE_POLICIES: readonly ApiRoutePolicy[] = [
     },
   },
   {
+    pattern: /^\/api\/media\/image-proxy$/,
+    requestProofMethods: ["POST"],
+    rateLimitMethods: ["POST"],
+    rateLimit: {
+      routeFamily: "/api/media/image-proxy",
+      windowMs: 60_000,
+      maxRequests: 60,
+    },
+  },
+  {
     pattern: /^\/api\/doc-parse(?:\/|$)/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,

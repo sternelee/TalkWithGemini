@@ -1,9 +1,9 @@
 import localforage from "localforage";
-import { RAG_LIMITS } from "../../config/limits";
-import type { Collection, RAGConfig } from "../../types";
+import { RAG_LIMITS } from "@/config/limits";
+import type { Collection, RAGConfig } from "@/types";
 import { buildKnowledgeVectorIds } from "../utils/knowledgeVectors";
-import { appDb, STORAGE_KEYS } from "../../store/storage/storageConfig";
-import { deleteOPFSDirectory } from "../../utils/opfs";
+import { appDb, STORAGE_KEYS } from "@/store/storage/storageConfig";
+import { deleteOPFSDirectory } from "@/utils/opfs";
 import { encryptSecret, fetchWithByokRetry } from "../byok/client";
 import { signedApiFetch } from "../api/client";
 import { BYOK_CONTEXTS } from "../byok/shared";

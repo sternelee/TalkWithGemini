@@ -8,7 +8,7 @@ import {
   getAttachmentPayloadBytes,
   getAttachmentsPayloadChars,
   getRuntimeMaxAttachmentFileBytes,
-} from "../../config/limits";
+} from "@/config/limits";
 import { getRemoteAttachmentUrlError } from "../security/remoteAttachment";
 import { getPluginExecutionArgsError } from "../plugin/execution";
 import { BYOK_ALG } from "../byok/shared";
@@ -473,6 +473,12 @@ export const SearchRequestSchema = z
       .transform((config) => omitPlainSecretField(config, "apiKey"))
       .optional(),
     maxResult: z.coerce.number().int().min(1).max(10).optional(),
+  })
+  .strict();
+
+export const MessageImageProxyRequestSchema = z
+  .object({
+    url: z.string().max(2_048).url(),
   })
   .strict();
 

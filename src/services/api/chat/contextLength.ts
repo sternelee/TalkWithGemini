@@ -1,4 +1,4 @@
-import type { Attachment, Message } from "../../../types";
+import type { Attachment, Message } from "@/types";
 
 export function getMessagesContextLength(messages: Message[]): number {
   return messages.reduce((sum, message) => {

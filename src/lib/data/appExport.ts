@@ -2,8 +2,8 @@ import {
   appDb,
   STORAGE_KEYS,
   STORAGE_VERSION,
-} from "../../store/storage/storageConfig";
-import { flushSessionMessageWrites } from "../../store/sessionMessagePersistence";
+} from "@/store/storage/storageConfig";
+import { flushSessionMessageWrites } from "@/store/sessionMessagePersistence";
 
 export const APP_EXPORT_VERSION = 2;
 

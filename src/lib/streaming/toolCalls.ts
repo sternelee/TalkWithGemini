@@ -1,5 +1,5 @@
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
-import type { ToolCall } from "../../types";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
+import type { ToolCall } from "@/types";
 import {
   getPluginExecutionArgsError,
   getPluginExecutionFunctionNameError,

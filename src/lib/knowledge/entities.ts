@@ -1,10 +1,6 @@
 import { v7 as uuidv7 } from "uuid";
-import { KNOWLEDGE_LIMITS } from "../../config/limits";
-import type {
-  Collection,
-  KnowledgeFile,
-  KnowledgeFileStatus,
-} from "../../types";
+import { KNOWLEDGE_LIMITS } from "@/config/limits";
+import type { Collection, KnowledgeFile, KnowledgeFileStatus } from "@/types";
 
 const VALID_FILE_STATUSES = new Set<KnowledgeFileStatus>([
   "uploading",

@@ -5,7 +5,7 @@ import {
   EncryptedSecretEnvelope,
 } from "./shared";
 import { arrayBufferToBytes, bytesToBase64Url } from "./encoding";
-import type { ModelProvider, SearchServiceConfig } from "../../types";
+import type { ModelProvider, SearchServiceConfig } from "@/types";
 import { SERVER_DEFAULT_PROVIDER_ID } from "../defaultConfig/shared";
 import {
   resolveProviderApiKey,

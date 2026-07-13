@@ -1,4 +1,4 @@
-import { MARKDOWN_FILE_LIMITS } from "../../config/limits";
+import { MARKDOWN_FILE_LIMITS } from "@/config/limits";
 
 export interface MarkdownGeneratedFile {
   name: string;

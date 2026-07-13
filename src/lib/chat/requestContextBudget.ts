@@ -1,4 +1,4 @@
-import type { Attachment, Message, ToolCall } from "../../types";
+import type { Attachment, Message, ToolCall } from "@/types";
 import { allocateContextBudget } from "./contextBudget";
 
 const CHARS_PER_TOKEN = 4;

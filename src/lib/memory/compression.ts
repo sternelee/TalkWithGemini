@@ -1,4 +1,4 @@
-import type { Message, Session } from "../../types";
+import type { Message, Session } from "@/types";
 import { normalizeCompressedContentWithMemoryIds } from "../utils/contextCompression";
 
 export function getSuppressedMemoryIds(

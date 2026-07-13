@@ -1,5 +1,5 @@
-import { IMAGE_GENERATION_LIMITS } from "../../config/limits";
-import type { ModelMetadata } from "../../types";
+import { IMAGE_GENERATION_LIMITS } from "@/config/limits";
+import type { ModelMetadata } from "@/types";
 import {
   parseModelString,
   supportsImageGeneration,

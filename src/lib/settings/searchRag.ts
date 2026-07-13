@@ -1,11 +1,11 @@
-import { RAG_LIMITS, SEARCH_CONFIG_LIMITS } from "../../config/limits";
+import { RAG_LIMITS, SEARCH_CONFIG_LIMITS } from "@/config/limits";
 import type {
   DocumentParseProvider,
   ProviderType,
   RAGConfig,
   SearchProviderID,
   SearchServiceConfig,
-} from "../../types";
+} from "@/types";
 import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import { hasSearchApiKey } from "../security/localSecretResolvers";
 import { isGoogleProviderType } from "../providers/providerTypes";

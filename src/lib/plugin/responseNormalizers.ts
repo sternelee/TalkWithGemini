@@ -1,4 +1,4 @@
-import type { Plugin } from "../../types";
+import type { Plugin } from "@/types";
 
 export const AGNES_IMAGE_PLUGIN_ID = "agnes-image-generation";
 export const AGNES_VIDEO_PLUGIN_ID = "agnes-video-generation";

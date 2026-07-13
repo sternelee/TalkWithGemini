@@ -1,10 +1,5 @@
-import type {
-  Attachment,
-  Session,
-  SessionConfig,
-  Workspace,
-} from "../../types";
-import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "../../config/limits";
+import type { Attachment, Session, SessionConfig, Workspace } from "@/types";
+import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
 import { normalizeCompressedContentWithMemoryIds } from "../utils/contextCompression";

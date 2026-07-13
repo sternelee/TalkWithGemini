@@ -1,8 +1,5 @@
-import type { ModelProvider, ProviderType } from "../../types";
-import {
-  PROVIDER_CONFIG_LIMITS,
-  PROVIDER_MODEL_LIMITS,
-} from "../../config/limits";
+import type { ModelProvider, ProviderType } from "@/types";
+import { PROVIDER_CONFIG_LIMITS, PROVIDER_MODEL_LIMITS } from "@/config/limits";
 import { normalizeProviderModelId } from "./models";
 import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import {

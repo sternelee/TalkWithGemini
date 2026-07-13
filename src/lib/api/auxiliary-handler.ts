@@ -3,8 +3,8 @@
  * 用于标题生成、相关问题、RAG 查询等
  */
 
-import type { Message } from "../../types";
-import { API_INPUT_LIMITS, AUXILIARY_OUTPUT_LIMITS } from "../../config/limits";
+import type { Message } from "@/types";
+import { API_INPUT_LIMITS, AUXILIARY_OUTPUT_LIMITS } from "@/config/limits";
 import { handleSimpleGeneration } from "./chat-handler";
 import { ProviderConfig } from "../providers/base";
 import { normalizeSessionTitle } from "../chat/entities";

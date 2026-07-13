@@ -1,6 +1,6 @@
 import { v7 as uuidv7 } from "uuid";
-import type { Attachment } from "../../types";
-import { ATTACHMENT_LIMITS } from "../../config/limits";
+import type { Attachment } from "@/types";
+import { ATTACHMENT_LIMITS } from "@/config/limits";
 import { getRemoteAttachmentUrlError } from "../security/remoteAttachment";
 import { ensureImageDisplayCache } from "./imageDisplayCache";
 

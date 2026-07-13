@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
 import { assertOutboundUrlAllowed } from "../security/safeFetch";
 import { getSafeUrlPolicy, validateOutboundUrl } from "../security/urlPolicy";
 

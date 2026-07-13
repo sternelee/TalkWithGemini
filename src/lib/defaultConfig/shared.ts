@@ -6,7 +6,7 @@ import type {
   ServerDefaultVoiceProvider,
   SystemSettings,
   VoiceSettings,
-} from "../../types";
+} from "@/types";
 
 export const SERVER_DEFAULT_PROVIDER_ID = "SERVER_DEFAULT";
 export const SERVER_DEFAULT_SEARCH_PROVIDER_ID = "default";

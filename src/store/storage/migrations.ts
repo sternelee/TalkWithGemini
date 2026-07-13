@@ -1,5 +1,5 @@
 import { Message, MessageOutputBlock, ToolCall } from "@/types";
-import { normalizeSearchSettings } from "../../lib/settings/searchRag";
+import { normalizeSearchSettings } from "@/lib/settings/searchRag";
 
 function normalizeStringList(value: unknown, maxItems: number): string[] {
   if (!Array.isArray(value)) return [];

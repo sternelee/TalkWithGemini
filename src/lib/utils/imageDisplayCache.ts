@@ -1,10 +1,10 @@
-import type { Attachment, Message, MessageOutputBlock } from "../../types";
+import type { Attachment, Message, MessageOutputBlock } from "@/types";
 import {
   deleteFromOPFS,
   saveToOPFS,
   resolveOPFSBlob,
   isOPFSUrl,
-} from "../../utils/opfs";
+} from "@/utils/opfs";
 import { base64ToBytes, bytesToArrayBuffer, bytesToBase64 } from "./binary";
 import { logDevError } from "./devLogger";
 

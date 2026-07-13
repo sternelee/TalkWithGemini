@@ -1,6 +1,6 @@
 import { isLocalhostName, isPrivateIpAddress } from "./urlPolicy";
 import { getRemoteAttachmentUrlError } from "./remoteAttachment";
-import { CLIENT_URL_LIMITS } from "../../config/limits";
+import { CLIENT_URL_LIMITS } from "@/config/limits";
 
 const LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
 const SAFE_DATA_IMAGE_RE = /^data:image\/(?:png|jpe?g|gif|webp);base64,/i;

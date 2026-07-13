@@ -1,4 +1,4 @@
-import type { ImageSource, Source } from "../../types";
+import type { ImageSource, Source } from "@/types";
 import { safeFetchJson } from "../security/safeFetch";
 import {
   getSearchProviderPolicy,

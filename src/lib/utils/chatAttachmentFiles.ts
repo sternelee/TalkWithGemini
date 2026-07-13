@@ -1,4 +1,4 @@
-import { ATTACHMENT_LIMITS, formatBytes } from "../../config/limits";
+import { ATTACHMENT_LIMITS, formatBytes } from "@/config/limits";
 
 export interface ChatAttachmentFileCandidate {
   name: string;

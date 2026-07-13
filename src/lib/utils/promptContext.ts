@@ -1,4 +1,4 @@
-import { PROMPT_CONTEXT_LIMITS } from "../../config/limits";
+import { PROMPT_CONTEXT_LIMITS } from "@/config/limits";
 
 const TRUNCATION_NOTICE = "\n[Content truncated to fit prompt context limits.]";
 

@@ -25,7 +25,7 @@ import {
 } from "@/lib/utils/diagramSvg";
 import { copyTextToClipboard } from "@/lib/utils/clipboard";
 import type { ExportMindMapToSVGOptions } from "@xiangfa/mindmap";
-import Tooltip from "../../ui/Tooltip";
+import Tooltip from "@/components/ui/Tooltip";
 
 export type DiagramTheme = "light" | "dark";
 

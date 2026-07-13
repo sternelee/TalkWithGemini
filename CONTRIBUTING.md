@@ -26,6 +26,7 @@ Settings.
 Run the checks before opening a pull request:
 
 ```bash
+pnpm check:imports
 pnpm format:check
 pnpm lint
 pnpm typecheck

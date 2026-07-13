@@ -7,15 +7,15 @@ import {
   PluginExecutionRequestSchema,
   ToolExecutionSchema,
 } from "@/lib/api/schemas";
-import { BYOK_CONTEXTS } from "../../../../lib/byok/shared";
-import { executeMcpToolRequest } from "../../../../lib/mcp/executor";
-import { isPluginAuthRequired } from "../../../../lib/plugin/config";
-import { executePluginFunctionRequest } from "../../../../lib/plugin/pluginExecutionExecutor";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
+import { executeMcpToolRequest } from "@/lib/mcp/executor";
+import { isPluginAuthRequired } from "@/lib/plugin/config";
+import { executePluginFunctionRequest } from "@/lib/plugin/pluginExecutionExecutor";
 import {
   getServerPlugin,
   registerServerPlugin,
-} from "../../../../lib/plugin/serverRegistry";
-import { getDeploymentMode } from "../../../../lib/security/deployment";
+} from "@/lib/plugin/serverRegistry";
+import { getDeploymentMode } from "@/lib/security/deployment";
 import { decryptOptionalSecret } from "@/lib/byok/server";
 import { safeFetchText } from "@/lib/security/safeFetch";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";

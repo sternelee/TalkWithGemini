@@ -1,5 +1,5 @@
-import type { ImageSource, Source } from "../../types";
-import { SEARCH_RESULT_LIMITS } from "../../config/limits";
+import type { ImageSource, Source } from "@/types";
+import { SEARCH_RESULT_LIMITS } from "@/config/limits";
 import { getSafeExternalHref, getSafeWebHref } from "../security/clientUrl";
 import { getRemoteAttachmentUrlError } from "../security/remoteAttachment";
 

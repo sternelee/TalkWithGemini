@@ -4,6 +4,7 @@
 
 ## Test Plan
 
+- [ ] `pnpm check:imports`
 - [ ] `pnpm format:check`
 - [ ] `pnpm hygiene:artifacts`
 - [ ] `pnpm lint`

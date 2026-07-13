@@ -1,5 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
-import type { Attachment } from "../../types";
+import type { Attachment } from "@/types";
 
 export const KNOWLEDGE_COLLECTION_MIME = "application/vnd.neo-chat.collection";
 export const KNOWLEDGE_FILE_MIME = "application/vnd.neo-chat.knowledge-file";

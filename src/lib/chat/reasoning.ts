@@ -1,4 +1,4 @@
-import type { ModelMetadata, ReasoningMode } from "../../types";
+import type { ModelMetadata, ReasoningMode } from "@/types";
 
 export const REASONING_MODES: readonly ReasoningMode[] = [
   "off",

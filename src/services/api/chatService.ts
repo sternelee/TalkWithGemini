@@ -20,22 +20,22 @@ import {
 import {
   isGoogleProviderType,
   isOpenAIProviderType,
-} from "../../lib/providers/providerTypes";
+} from "@/lib/providers/providerTypes";
 import { normalizeSessionTitle } from "@/lib/chat/entities";
 import { appendContextToChatInput } from "@/lib/utils/chatInput";
-import { cacheGeneratedImageAttachments } from "../../lib/utils/generatedImages";
+import { cacheGeneratedImageAttachments } from "@/lib/utils/generatedImages";
 import {
   stripAttachmentsDisplayCacheForModel,
   stripMessagesDisplayCacheForModel,
-} from "../../lib/utils/imageDisplayCache";
-import { appendDiagramRequestInstructions } from "../../lib/chat/diagramPrompt";
-import { appendHtmlVisualRequestInstructions } from "../../lib/chat/htmlVisualPrompt";
+} from "@/lib/utils/imageDisplayCache";
+import { appendDiagramRequestInstructions } from "@/lib/chat/diagramPrompt";
+import { appendHtmlVisualRequestInstructions } from "@/lib/chat/htmlVisualPrompt";
 import {
   getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
 } from "@/lib/settings/searchRag";
-import { createMessageOutputBlockBuilder } from "../../lib/chat/messageOutputBlocks";
-import { resolveImageGenerationOptions } from "../../lib/chat/imageGenerationOptions";
+import { createMessageOutputBlockBuilder } from "@/lib/chat/messageOutputBlocks";
+import { resolveImageGenerationOptions } from "@/lib/chat/imageGenerationOptions";
 import {
   buildCompressionSource,
   createContextCompressionSummaryPrompt,
@@ -48,15 +48,15 @@ import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
   signedApiFetch,
-} from "../../lib/api/client";
+} from "@/lib/api/client";
 import {
   buildProviderRuntimeConfig,
   fetchWithByokRetry,
-} from "../../lib/byok/client";
+} from "@/lib/byok/client";
 import {
   parseMemoryDreamToolCall,
   parseMemoryRecordToolCall,
-} from "../../lib/memory/entities";
+} from "@/lib/memory/entities";
 import {
   createMemoryDreamPrompt,
   createMemoryExtractionPrompt,
@@ -64,9 +64,9 @@ import {
   MEMORY_DREAM_TOOL_NAME,
   MEMORY_RECORD_TOOL,
   MEMORY_RECORD_TOOL_NAME,
-} from "../../lib/memory/tools";
-import { logDevError, logDevWarn } from "../../lib/utils/devLogger";
-import { MEMORY_LIMITS, PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+} from "@/lib/memory/tools";
+import { logDevError, logDevWarn } from "@/lib/utils/devLogger";
+import { MEMORY_LIMITS, PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
 import {
   addInternalMemoryTools,
   executeMemorySearchTool,
@@ -80,8 +80,8 @@ import {
 import { resolveModelMetadata } from "./chat/modelSelection";
 import { compactPluginImageResultForHistory } from "./chat/pluginImageResults";
 import type { ChatToolDefinition } from "./chat/types";
-import { mapWithConcurrency } from "../../lib/utils/concurrency";
-import { boundHistoryForRequest } from "../../lib/chat/requestContextBudget";
+import { mapWithConcurrency } from "@/lib/utils/concurrency";
+import { boundHistoryForRequest } from "@/lib/chat/requestContextBudget";
 
 type ChatUsagePayload = { usage?: unknown; usageMetadata?: unknown };
 

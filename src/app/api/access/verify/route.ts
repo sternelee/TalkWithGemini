@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createApiErrorResponse,
   readJsonRequestBody,
-} from "../../../../lib/api/middleware";
+} from "@/lib/api/middleware";
 import {
   ACCESS_ATTEMPTS_COOKIE,
   ACCESS_ERROR_CODES,
@@ -21,8 +21,8 @@ import {
   getRateLimitBucket,
   incrementRateLimitBucket,
   resetRateLimitBucket,
-} from "../../../../lib/security/rateLimitStore";
-import { getRateLimitClientIp } from "../../../../lib/security/requestGuards";
+} from "@/lib/security/rateLimitStore";
+import { getRateLimitClientIp } from "@/lib/security/requestGuards";
 
 const cookieOptions = {
   httpOnly: true,

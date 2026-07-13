@@ -173,6 +173,26 @@ describe("url policy and provider runtime helpers", () => {
     expect(result.hostname).toBe("localhost");
   });
 
+  it("applies deployment network policy to image proxy targets", () => {
+    process.env.DEPLOYMENT_MODE = "hosted";
+    delete process.env.ALLOW_LOCAL_NETWORK_PROXY;
+
+    expect(() =>
+      validateOutboundUrl(
+        "https://127.0.0.1/image.png",
+        getSafeUrlPolicy("image"),
+      ),
+    ).toThrow(/Private network|Localhost/i);
+
+    process.env.ALLOW_LOCAL_NETWORK_PROXY = "true";
+    expect(
+      validateOutboundUrl(
+        "https://127.0.0.1/image.png",
+        getSafeUrlPolicy("image"),
+      ).hostname,
+    ).toBe("127.0.0.1");
+  });
+
   it("blocks local provider proxying in hosted mode with a public error code", () => {
     process.env.DEPLOYMENT_MODE = "hosted";
     delete process.env.ALLOW_LOCAL_NETWORK_PROXY;

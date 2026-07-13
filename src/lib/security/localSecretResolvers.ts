@@ -4,7 +4,7 @@ import type {
   RAGConfig,
   SearchServiceConfig,
   VoiceSettings,
-} from "../../types";
+} from "@/types";
 import {
   decryptLocalSecret,
   hasLocalSecret,

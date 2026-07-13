@@ -1,5 +1,5 @@
-import { CONTEXT_COMPRESSION_LIMITS } from "../../config/limits";
-import type { Message } from "../../types";
+import { CONTEXT_COMPRESSION_LIMITS } from "@/config/limits";
+import type { Message } from "@/types";
 import { escapePromptContextText } from "./promptContext";
 
 const TRUNCATED_SOURCE_NOTICE =

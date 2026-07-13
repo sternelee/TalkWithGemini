@@ -1,4 +1,4 @@
-import { formatBytes, KNOWLEDGE_LIMITS } from "../../config/limits";
+import { formatBytes, KNOWLEDGE_LIMITS } from "@/config/limits";
 
 export interface KnowledgeFileCandidate {
   name: string;

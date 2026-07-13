@@ -31,18 +31,18 @@ import {
 import {
   getOPFSReconciliationPlan,
   type OPFSReconciliationPlan,
-} from "../../utils/opfsReconcile";
+} from "@/utils/opfsReconcile";
 import {
   getAppDbStorage,
   STORAGE_KEYS,
   STORAGE_VERSION,
 } from "../storage/storageConfig";
 import { withResolvedObjectUrl } from "@/lib/utils/objectUrlLifecycle";
-import { logDevError, logDevWarn } from "../../lib/utils/devLogger";
+import { logDevError, logDevWarn } from "@/lib/utils/devLogger";
 import {
   hasRagVectorStore,
   resolveDocumentParseToken,
-} from "../../lib/security/localSecretResolvers";
+} from "@/lib/security/localSecretResolvers";
 
 interface KnowledgeState {
   _hasHydrated: boolean;

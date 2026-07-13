@@ -17,11 +17,11 @@ import {
   normalizeModelProviders,
 } from "@/lib/providers/config";
 import { OPENAI_COMPATIBLE_PROVIDER_TYPE } from "@/lib/providers/providerTypes";
-import { logDevError } from "../../lib/utils/devLogger";
+import { logDevError } from "@/lib/utils/devLogger";
 import {
   migrateProviderLocalSecret,
   stripProviderPlainSecret,
-} from "../../lib/settings/localSecretMigration";
+} from "@/lib/settings/localSecretMigration";
 
 /**
  * Core Settings Store

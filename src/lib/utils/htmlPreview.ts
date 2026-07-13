@@ -1,4 +1,4 @@
-import { HTML_PREVIEW_LIMITS } from "../../config/limits";
+import { HTML_PREVIEW_LIMITS } from "@/config/limits";
 
 export const HTML_PREVIEW_TRUNCATION_NOTICE =
   '\n<div style="position:fixed;left:16px;right:16px;bottom:16px;padding:10px 12px;border:1px solid #f59e0b;background:#fffbeb;color:#92400e;font:13px system-ui,sans-serif;z-index:2147483647">Preview truncated to fit local rendering limits.</div>';

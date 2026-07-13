@@ -3,7 +3,7 @@
  */
 
 import { NextRequest } from "next/server";
-import { API_INPUT_LIMITS } from "../../config/limits";
+import { API_INPUT_LIMITS } from "@/config/limits";
 import {
   ApiError,
   handleApiError,

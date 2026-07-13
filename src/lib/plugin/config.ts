@@ -1,5 +1,5 @@
-import type { Plugin, PluginConfig } from "../../types";
-import { MARKET_LIMITS, PLUGIN_CONFIG_LIMITS } from "../../config/limits";
+import type { Plugin, PluginConfig } from "@/types";
+import { MARKET_LIMITS, PLUGIN_CONFIG_LIMITS } from "@/config/limits";
 import { isLocalEncryptedSecretEnvelope } from "../security/localSecrets";
 import { hasPluginAuthValue } from "../security/localSecretResolvers";
 import { getSafeUrlPolicy, validateOutboundUrl } from "../security/urlPolicy";

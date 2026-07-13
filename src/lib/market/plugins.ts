@@ -1,5 +1,5 @@
-import type { Plugin } from "../../types";
-import { MARKET_LIMITS } from "../../config/limits";
+import type { Plugin } from "@/types";
+import { MARKET_LIMITS } from "@/config/limits";
 
 const PLUGIN_ID_RE = /^[A-Za-z0-9._:-]+$/;
 const MCP_PLUGIN_ID_RE = /^[A-Za-z0-9._:/-]+$/;

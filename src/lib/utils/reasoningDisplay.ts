@@ -1,4 +1,4 @@
-import { REASONING_UI_LIMITS } from "../../config/limits";
+import { REASONING_UI_LIMITS } from "@/config/limits";
 
 const TRANSLATION_TRUNCATION_NOTICE =
   "\n\n[Reasoning truncated before translation.]";

@@ -1,4 +1,4 @@
-import { API_INPUT_LIMITS } from "../../config/limits";
+import { API_INPUT_LIMITS } from "@/config/limits";
 import { clampChatInputText } from "../utils/chatInput";
 
 export const DIAGRAM_PROMPT_MARKER = "<diagram-rendering>";

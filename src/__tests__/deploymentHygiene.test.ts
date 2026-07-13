@@ -26,10 +26,14 @@ describe("deployment hygiene", () => {
     expect(packageJson.scripts["hygiene:artifacts"]).toBe(
       "node scripts/check-artifacts.mjs",
     );
+    expect(packageJson.scripts["check:imports"]).toBe(
+      "node scripts/check-import-paths.mjs",
+    );
     expect(ci).toContain("pnpm build:worker");
     expect(ci).toContain("pnpm worker:size");
     expect(ci).not.toContain("pnpm worker:dry-run");
     expect(ci).toContain("pnpm hygiene:artifacts");
+    expect(ci).toContain("pnpm check:imports");
     expect(ci).toContain("pnpm audit --prod --audit-level moderate");
   });
 

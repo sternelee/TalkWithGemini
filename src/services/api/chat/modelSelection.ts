@@ -1,5 +1,5 @@
 import { getTaskModel, useSettingsStore } from "@/store/core/settingsStore";
-import type { ModelMetadata } from "../../../types";
+import type { ModelMetadata } from "@/types";
 import { parseModelString, supportsTextOutput } from "@/lib/utils/model";
 
 export function resolveModelMetadata(

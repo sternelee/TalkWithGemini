@@ -1,4 +1,4 @@
-import type { Message, Session } from "../../types";
+import type { Message, Session } from "@/types";
 
 export interface SessionPostGenerationSnapshot {
   id: string;

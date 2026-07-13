@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { createApiErrorResponse } from "@/lib/api/middleware";
-import { MARKET_LIMITS } from "../../../../config/limits";
+import { MARKET_LIMITS } from "@/config/limits";
 import {
   MCP_REGISTRY_BASE_URL,
   normalizeMcpRegistryServers,
-} from "../../../../lib/mcp/registry";
-import { safeFetchJson } from "../../../../lib/security/safeFetch";
-import { getSafeUrlPolicy } from "../../../../lib/security/urlPolicy";
-import { safeServerLogError } from "../../../../lib/utils/safeServerLog";
+} from "@/lib/mcp/registry";
+import { safeFetchJson } from "@/lib/security/safeFetch";
+import { getSafeUrlPolicy } from "@/lib/security/urlPolicy";
+import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
 const MCP_REGISTRY_UPSTREAM_LIMIT = 100;
 const MCP_REGISTRY_MAX_UPSTREAM_PAGES_PER_REQUEST = 10;

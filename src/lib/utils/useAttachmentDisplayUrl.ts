@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Attachment } from "../../types";
+import type { Attachment } from "@/types";
 import {
   ensureImageDisplayCache,
   getAttachmentOriginalDisplayUrl,

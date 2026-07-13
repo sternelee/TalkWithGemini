@@ -1,5 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
-import type { Attachment, Message, Source } from "../../types";
+import type { Attachment, Message, Source } from "@/types";
 import type { ModelInfo } from "@/services/api/chatService";
 import {
   isIndexedKnowledgeFileAttachment,
@@ -17,7 +17,7 @@ import {
   isKnowledgeFileAttachment,
 } from "../utils/knowledgeAttachments";
 import { parseModelString } from "../utils/model";
-import { resolveOPFSUrl } from "../../utils/opfs";
+import { resolveOPFSUrl } from "@/utils/opfs";
 import { appendContextToChatInput } from "../utils/chatInput";
 import { hasRagVectorStore } from "../security/localSecretResolvers";
 

@@ -1,5 +1,5 @@
-import type { ModelMetadata } from "../../types";
-import { MODEL_METADATA_LIMITS } from "../../config/limits";
+import type { ModelMetadata } from "@/types";
+import { MODEL_METADATA_LIMITS } from "@/config/limits";
 
 const INCLUDED_METADATA_PROVIDERS = new Set([
   "openai",

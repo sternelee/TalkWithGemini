@@ -1,15 +1,15 @@
 import { v7 as uuidv7 } from "uuid";
-import type { Attachment, Source } from "../../types";
-import { generateRAGSearchQueries } from "../../services/api/chatService";
-import { queryRAG } from "../../services/api/ragService";
-import { resolveOPFSUrl } from "../../utils/opfs";
+import type { Attachment, Source } from "@/types";
+import { generateRAGSearchQueries } from "@/services/api/chatService";
+import { queryRAG } from "@/services/api/ragService";
+import { resolveOPFSUrl } from "@/utils/opfs";
 import {
   appendPlainPromptContext,
   appendPromptContextFile,
   createPromptContextBudget,
   escapePromptContextText,
 } from "./promptContext";
-import { PROMPT_CONTEXT_LIMITS } from "../../config/limits";
+import { PROMPT_CONTEXT_LIMITS } from "@/config/limits";
 import { withResolvedObjectUrl } from "./objectUrlLifecycle";
 import { logDevError } from "./devLogger";
 import { hasRagVectorStore } from "../security/localSecretResolvers";

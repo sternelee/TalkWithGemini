@@ -5,7 +5,7 @@ import type {
   MessageOutputBlock,
   Source,
   ToolCall,
-} from "../../types";
+} from "@/types";
 
 export interface MessageOutputBlockBuilderOptions {
   createId?: () => string;

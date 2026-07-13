@@ -30,8 +30,8 @@ import { safeServerLogError } from "@/lib/utils/safeServerLog";
 import {
   getGeminiTranscriptionPrompt,
   getProviderTranscriptionLanguage,
-} from "../../../../lib/voice/language";
-import { bytesToBase64 } from "../../../../lib/utils/binary";
+} from "@/lib/voice/language";
+import { bytesToBase64 } from "@/lib/utils/binary";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 const MIMO_CHAT_COMPLETIONS_URL =

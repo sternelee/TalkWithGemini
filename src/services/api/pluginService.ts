@@ -1,21 +1,21 @@
 import { Plugin } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { encryptSecret } from "../../lib/byok/client";
-import { BYOK_CONTEXTS } from "../../lib/byok/shared";
+import { encryptSecret } from "@/lib/byok/client";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
   signedApiFetch,
-} from "../../lib/api/client";
-import { normalizeMarketPlugins } from "../../lib/market/plugins";
+} from "@/lib/api/client";
+import { normalizeMarketPlugins } from "@/lib/market/plugins";
 import {
   MCP_REGISTRY_BASE_URL,
   normalizeMcpRegistryServers,
-} from "../../lib/mcp/registry";
-import { DEFAULT_MCP_SERVER_LOGO_URL } from "../../lib/mcp/defaults";
-import { logDevError, logDevInfo, logDevWarn } from "../../lib/utils/devLogger";
-import { CACHE_CONFIG } from "../../config/api";
-import { MARKET_LIMITS } from "../../config/limits";
+} from "@/lib/mcp/registry";
+import { DEFAULT_MCP_SERVER_LOGO_URL } from "@/lib/mcp/defaults";
+import { logDevError, logDevInfo, logDevWarn } from "@/lib/utils/devLogger";
+import { CACHE_CONFIG } from "@/config/api";
+import { MARKET_LIMITS } from "@/config/limits";
 
 let pluginListRequest: Promise<Plugin[]> | null = null;
 let mcpServerListRequest: Promise<Plugin[]> | null = null;

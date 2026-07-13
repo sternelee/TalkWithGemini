@@ -5,6 +5,7 @@ const {
   deleteFromOPFSMock,
   deleteFromRAGMock,
   getSettingsStateMock,
+  getSafeOPFSPathMock,
   listOPFSDirectoryMock,
   saveToOPFSMock,
   upsertToRAGMock,
@@ -14,6 +15,9 @@ const {
   deleteFromOPFSMock: vi.fn(() => Promise.resolve()),
   deleteFromRAGMock: vi.fn(() => Promise.resolve(true)),
   getSettingsStateMock: vi.fn(),
+  getSafeOPFSPathMock: vi.fn((url: string) =>
+    url.startsWith("opfs://") ? url.slice("opfs://".length) : null,
+  ),
   listOPFSDirectoryMock: vi.fn((): Promise<string[]> => Promise.resolve([])),
   saveToOPFSMock: vi.fn(() => Promise.resolve("opfs://saved/file.txt")),
   upsertToRAGMock: vi.fn(() => Promise.resolve(true)),
@@ -23,6 +27,7 @@ const {
 
 vi.mock("@/utils/opfs", () => ({
   deleteFromOPFS: deleteFromOPFSMock,
+  getSafeOPFSPath: getSafeOPFSPathMock,
   listOPFSDirectory: listOPFSDirectoryMock,
   resolveOPFSUrl: vi.fn(() => Promise.resolve("blob:opfs-file")),
   saveToOPFS: saveToOPFSMock,

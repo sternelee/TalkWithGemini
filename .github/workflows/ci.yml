@@ -37,6 +37,9 @@ jobs:
       - name: Artifact Hygiene
         run: pnpm hygiene:artifacts
 
+      - name: Import Path Check
+        run: pnpm check:imports
+
       - name: Lint
         run: pnpm lint
 

@@ -1,6 +1,6 @@
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
 import type { EncryptedSecretEnvelope } from "../byok/shared";
-import type { Plugin, PluginFunction } from "../../types";
+import type { Plugin, PluginFunction } from "@/types";
 
 export interface PluginExecutionAuthConfig {
   type?: "bearer" | "apiKey" | "none" | "oauth2";

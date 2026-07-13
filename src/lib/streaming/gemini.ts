@@ -9,12 +9,12 @@ import {
   type GenerateContentParameters,
   type GenerateContentConfig,
 } from "@google/genai";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
 import { SSEMessage } from "./sse";
 import { finalizeStreamedToolCall } from "./toolCalls";
 import { normalizeGeneratedImageAttachment } from "../utils/generatedImages";
 import { normalizeSearchSources } from "../search/results";
-import type { ReasoningMode } from "../../types";
+import type { ReasoningMode } from "@/types";
 import {
   isExplicitReasoningEffort,
   isReasoningEnabled,

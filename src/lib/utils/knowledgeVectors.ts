@@ -1,4 +1,4 @@
-import { SimpleRecursiveSplitter } from "../../utils/textSplitter";
+import { SimpleRecursiveSplitter } from "@/utils/textSplitter";
 
 export interface KnowledgeVectorItem {
   id: string;

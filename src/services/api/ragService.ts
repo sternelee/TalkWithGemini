@@ -1,19 +1,19 @@
 import { useSettingsStore } from "@/store/core/settingsStore";
-import type { Source } from "../../types";
-import { RAG_LIMITS } from "../../config/limits";
+import type { Source } from "@/types";
+import { RAG_LIMITS } from "@/config/limits";
 import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
   signedApiFetch,
-} from "../../lib/api/client";
-import { normalizeSearchSources } from "../../lib/search/results";
-import { BYOK_CONTEXTS } from "../../lib/byok/shared";
-import { encryptSecret, fetchWithByokRetry } from "../../lib/byok/client";
-import { logDevError } from "../../lib/utils/devLogger";
+} from "@/lib/api/client";
+import { normalizeSearchSources } from "@/lib/search/results";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
+import { encryptSecret, fetchWithByokRetry } from "@/lib/byok/client";
+import { logDevError } from "@/lib/utils/devLogger";
 import {
   hasRagVectorStore,
   resolveRagToken,
-} from "../../lib/security/localSecretResolvers";
+} from "@/lib/security/localSecretResolvers";
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];

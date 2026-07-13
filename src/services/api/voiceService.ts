@@ -14,20 +14,20 @@ import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
   signedApiFetch,
-} from "../../lib/api/client";
+} from "@/lib/api/client";
 import {
   buildProviderRuntimeConfig,
   encryptSecret,
   fetchWithByokRetry,
-} from "../../lib/byok/client";
-import { BYOK_CONTEXTS } from "../../lib/byok/shared";
+} from "@/lib/byok/client";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import {
   hasElevenLabsApiKey,
   hasMimoApiKey,
   resolveElevenLabsApiKey,
   resolveMimoApiKey,
-} from "../../lib/security/localSecretResolvers";
-import { getBrowserVoiceLanguage } from "../../lib/voice/language";
+} from "@/lib/security/localSecretResolvers";
+import { getBrowserVoiceLanguage } from "@/lib/voice/language";
 
 const getProviderForModel = async (modelString: string) => {
   const { providers } = useCoreSettingsStore.getState();

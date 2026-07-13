@@ -1,12 +1,9 @@
-import {
-  CHAT_CONFIG_LIMITS,
-  SYSTEM_SETTINGS_LIMITS,
-} from "../../config/limits";
+import { CHAT_CONFIG_LIMITS, SYSTEM_SETTINGS_LIMITS } from "@/config/limits";
 import {
   DEFAULT_CHAT_CONFIG,
   DEFAULT_SYSTEM_SETTINGS,
-} from "../../config/defaults";
-import type { ChatConfig, SystemSettings } from "../../types";
+} from "@/config/defaults";
+import type { ChatConfig, SystemSettings } from "@/types";
 import { normalizeReasoningMode, isReasoningEnabled } from "../chat/reasoning";
 
 function clampInteger(

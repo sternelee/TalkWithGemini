@@ -4,8 +4,8 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { MessageParam, Tool } from "@anthropic-ai/sdk/resources/messages";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
-import type { ReasoningMode } from "../../types";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
+import type { ReasoningMode } from "@/types";
 import {
   isExplicitReasoningEffort,
   isReasoningEnabled,

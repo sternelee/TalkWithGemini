@@ -1,5 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
-import type { Message, MessageTreeNode, SessionMessageTree } from "../../types";
+import type { Message, MessageTreeNode, SessionMessageTree } from "@/types";
 
 export interface MessageBranchInfo {
   index: number;

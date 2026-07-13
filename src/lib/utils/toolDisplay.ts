@@ -1,4 +1,4 @@
-import { TOOL_DISPLAY_LIMITS } from "../../config/limits";
+import { TOOL_DISPLAY_LIMITS } from "@/config/limits";
 
 export interface ToolDisplayValue {
   text: string;

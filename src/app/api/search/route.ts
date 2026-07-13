@@ -13,7 +13,7 @@ import { safeFetchJson } from "@/lib/security/safeFetch";
 import {
   runSearchProvider,
   SearchProviderError,
-} from "../../../lib/search/providerAdapters";
+} from "@/lib/search/providerAdapters";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptOptionalSecret } from "@/lib/byok/server";
 import { getDefaultSearchRuntimeConfig } from "@/lib/defaultConfig/server";

@@ -1,15 +1,15 @@
 import {
   searchMemoryRecords,
   shouldExposeMemorySearchTool,
-} from "../../../lib/memory/entities";
+} from "@/lib/memory/entities";
 import {
   formatMemoryToolResult,
   MEMORY_SEARCH_TOOL,
   MEMORY_SEARCH_TOOL_NAME,
-} from "../../../lib/memory/tools";
+} from "@/lib/memory/tools";
 import { useMemoryStore } from "@/store/core/memoryStore";
 
-import { MEMORY_LIMITS } from "../../../config/limits";
+import { MEMORY_LIMITS } from "@/config/limits";
 import type { ChatToolDefinition } from "./types";
 
 function coerceToolDefinition(tool: unknown): ChatToolDefinition {

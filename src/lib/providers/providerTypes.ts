@@ -1,4 +1,4 @@
-import type { ProviderType } from "../../types";
+import type { ProviderType } from "@/types";
 
 export const OPENAI_PROVIDER_TYPE = "OpenAI" as const;
 export const OPENAI_COMPATIBLE_PROVIDER_TYPE = "OpenAI Compatible" as const;

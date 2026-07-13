@@ -123,8 +123,11 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("forceExpandCodeBlocks");
     expect(messageItem).toContain("MessageOutputRenderer");
     expect(messageItem).toContain("proxyMessageExportImages");
-    expect(messageItem).toContain("https://serveproxy.com/?url=");
-    expect(messageItem).toContain("encodeURIComponent");
+    expect(messageItem).toContain("MESSAGE_IMAGE_PROXY_PATH");
+    expect(messageItem).toContain("signedApiFetch");
+    expect(messageItem).toContain("URL.createObjectURL");
+    expect(messageItem).toContain("URL.revokeObjectURL");
+    expect(messageItem).not.toContain("serveproxy.com");
     expect(messageItem).toContain("waitForMessageExportImages");
     expect(messageItem).toContain("DropdownMenuSub");
     expect(messageItem).toContain("DropdownMenuSubTrigger");

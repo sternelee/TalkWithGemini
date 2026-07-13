@@ -2,7 +2,7 @@
  * 附件处理工具
  */
 
-import type { Attachment } from "../../types";
+import type { Attachment } from "@/types";
 import {
   appendPromptContextFile,
   createPromptContextBudget,

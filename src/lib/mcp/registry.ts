@@ -1,5 +1,5 @@
-import { MARKET_LIMITS, PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
-import type { Plugin, PluginFunction } from "../../types";
+import { MARKET_LIMITS, PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
+import type { Plugin, PluginFunction } from "@/types";
 import { DEFAULT_MCP_SERVER_LOGO_URL } from "./defaults";
 
 export const MCP_REGISTRY_BASE_URL =

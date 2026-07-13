@@ -1,4 +1,4 @@
-import { API_INPUT_LIMITS } from "../../config/limits";
+import { API_INPUT_LIMITS } from "@/config/limits";
 
 export const CHAT_INPUT_TRUNCATION_NOTICE =
   "\n[Additional context truncated to fit model request limits.]";

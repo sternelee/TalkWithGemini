@@ -10,7 +10,7 @@ import { getSafeUrlPolicy } from "@/lib/security/urlPolicy";
 import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptSecretEnvelope } from "@/lib/byok/server";
 import { getDefaultRagRuntimeConfig } from "@/lib/defaultConfig/server";
-import { resolveRagNamespace } from "../../../../lib/api/ragNamespace";
+import { resolveRagNamespace } from "@/lib/api/ragNamespace";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 
 const RAGDeleteSchema = z

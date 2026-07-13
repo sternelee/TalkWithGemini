@@ -1,4 +1,4 @@
-import { DOWNLOAD_LIMITS } from "../../config/limits";
+import { DOWNLOAD_LIMITS } from "@/config/limits";
 
 const RESERVED_WINDOWS_NAMES = new Set([
   "con",

@@ -1,4 +1,4 @@
-import type { Message } from "../../types";
+import type { Message } from "@/types";
 
 export function estimateTextTokens(text: string): number {
   if (!text) return 0;

@@ -1,22 +1,22 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { MEMORY_LIMITS } from "../../config/limits";
+import { MEMORY_LIMITS } from "@/config/limits";
 import {
   normalizeMemoryRecord,
   normalizeMemoryRecords,
   searchMemoryRecords,
-} from "../../lib/memory/entities";
+} from "@/lib/memory/entities";
 import type {
   MemoryDreamStatus,
   MemoryRecord,
   MemorySettings,
-} from "../../lib/memory/types";
+} from "@/lib/memory/types";
 import {
   STORAGE_KEYS,
   STORAGE_VERSION,
   getAppDbStorage,
 } from "../storage/storageConfig";
-import { logDevError } from "../../lib/utils/devLogger";
+import { logDevError } from "@/lib/utils/devLogger";
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   enabled: true,

@@ -1,5 +1,5 @@
-import type { LobeAgent } from "../../types";
-import { MARKET_LIMITS } from "../../config/limits";
+import type { LobeAgent } from "@/types";
+import { MARKET_LIMITS } from "@/config/limits";
 
 const AGENT_IDENTIFIER_RE = /^[A-Za-z0-9._-]+$/;
 

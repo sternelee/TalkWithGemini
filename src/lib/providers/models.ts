@@ -1,5 +1,5 @@
-import { PROVIDER_MODEL_LIMITS } from "../../config/limits";
-import type { ProviderType } from "../../types";
+import { PROVIDER_MODEL_LIMITS } from "@/config/limits";
+import type { ProviderType } from "@/types";
 import { isGoogleProviderType } from "./providerTypes";
 
 export function normalizeProviderModelId(value: unknown): string | null {

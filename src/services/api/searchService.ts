@@ -1,15 +1,15 @@
 import { Source, ImageSource } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { readJsonResponseOrThrow, signedApiFetch } from "../../lib/api/client";
+import { readJsonResponseOrThrow, signedApiFetch } from "@/lib/api/client";
 import {
   normalizeImageSources,
   normalizeSearchSources,
-} from "../../lib/search/results";
+} from "@/lib/search/results";
 import {
   buildSearchRuntimeConfig,
   fetchWithByokRetry,
-} from "../../lib/byok/client";
-import { logDevError } from "../../lib/utils/devLogger";
+} from "@/lib/byok/client";
+import { logDevError } from "@/lib/utils/devLogger";
 
 export interface SearchOptions {
   query: string;

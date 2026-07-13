@@ -18,20 +18,20 @@ import {
   STORAGE_VERSION,
 } from "../storage/storageConfig";
 import { normalizeMessage, normalizeMessages } from "../storage/migrations";
-import { normalizeChatConfig } from "../../lib/settings/appConfig";
+import { normalizeChatConfig } from "@/lib/settings/appConfig";
 import {
   normalizeSession,
   normalizeSessionConfig,
   normalizeSessionTitle,
   normalizeWorkspace,
-} from "../../lib/chat/entities";
-import { DEFAULT_CHAT_CONFIG } from "../../config/defaults";
+} from "@/lib/chat/entities";
+import { DEFAULT_CHAT_CONFIG } from "@/config/defaults";
 import {
   isReasoningEnabled,
   normalizeReasoningMode,
-} from "../../lib/chat/reasoning";
+} from "@/lib/chat/reasoning";
 import { deleteFromOPFS } from "@/utils/opfs";
-import { logDevError } from "../../lib/utils/devLogger";
+import { logDevError } from "@/lib/utils/devLogger";
 import {
   appendMessageToActivePath,
   cloneMessageTreeWithNewIds,
@@ -46,13 +46,13 @@ import {
   removeMessageSubtree,
   switchMessageBranch,
   updateMessageInTree,
-} from "../../lib/chat/messageTree";
+} from "@/lib/chat/messageTree";
 import {
   getAttachmentUrls,
   getMessageAttachmentUrls,
   getReferencedWorkspaceFileUrls,
   getRemovedWorkspaceFileUrls,
-} from "../../lib/chat/attachmentReferences";
+} from "@/lib/chat/attachmentReferences";
 import {
   enqueueSessionMessageWrite,
   waitForSessionMessageWrites,

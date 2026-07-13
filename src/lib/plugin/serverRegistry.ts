@@ -1,5 +1,5 @@
-import { BUILT_IN_PLUGINS } from "../../config/plugins";
-import type { Plugin } from "../../types";
+import { BUILT_IN_PLUGINS } from "@/config/plugins";
+import type { Plugin } from "@/types";
 import { getDeploymentMode } from "../security/deployment";
 import { safeFetchSharedStoreJson } from "../security/sharedStoreFetch";
 

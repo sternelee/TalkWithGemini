@@ -1,4 +1,4 @@
-import type { DefaultModels, ModelProvider } from "../../types";
+import type { DefaultModels, ModelProvider } from "@/types";
 
 function getAvailableModelIds(providers: ModelProvider[]): Set<string> {
   return new Set(

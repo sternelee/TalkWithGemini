@@ -11,14 +11,14 @@ import { convertOpenApiSpecToPlugin } from "@/lib/plugin/openapi";
 import { registerServerPlugin } from "@/lib/plugin/serverRegistry";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 import type { Plugin } from "@/types";
-import { decryptOptionalSecret } from "../../../../lib/byok/server";
-import { BYOK_CONTEXTS } from "../../../../lib/byok/shared";
+import { decryptOptionalSecret } from "@/lib/byok/server";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import {
   MCP_REGISTRY_BASE_URL,
   normalizeMcpRegistryServer,
   normalizeMcpToolFunctions,
-} from "../../../../lib/mcp/registry";
-import { isPluginAuthRequired } from "../../../../lib/plugin/config";
+} from "@/lib/mcp/registry";
+import { isPluginAuthRequired } from "@/lib/plugin/config";
 
 function isRegistryMcpMarketplacePlugin(plugin: Plugin): boolean {
   if (plugin.source !== "mcp" || !plugin.id.startsWith("mcp:")) return false;

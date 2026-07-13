@@ -3,7 +3,7 @@
  */
 
 import OpenAI from "openai";
-import { PLUGIN_EXECUTION_LIMITS } from "../../config/limits";
+import { PLUGIN_EXECUTION_LIMITS } from "@/config/limits";
 import { SSEMessage } from "./sse";
 import {
   appendOpenAIToolCallDelta,
@@ -12,7 +12,7 @@ import {
   finalizeStreamedToolCall,
 } from "./toolCalls";
 import { normalizeSearchSources } from "../search/results";
-import type { ReasoningMode } from "../../types";
+import type { ReasoningMode } from "@/types";
 import {
   isExplicitReasoningEffort,
   isReasoningEnabled,

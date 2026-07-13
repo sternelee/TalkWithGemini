@@ -1,4 +1,4 @@
-import type { PluginFunction, PluginFunctionRisk } from "../../types";
+import type { PluginFunction, PluginFunctionRisk } from "@/types";
 
 export function getPluginFunctionRisk(
   functionDef: Pick<PluginFunction, "method" | "risk">,

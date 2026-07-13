@@ -1,5 +1,5 @@
 import { v7 as uuidv7 } from "uuid";
-import { MEMORY_LIMITS } from "../../config/limits";
+import { MEMORY_LIMITS } from "@/config/limits";
 import type { MemoryRecord, MemorySource, MemoryType } from "./types";
 
 const MEMORY_TYPES = new Set<MemoryType>([

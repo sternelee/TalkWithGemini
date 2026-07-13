@@ -10,7 +10,7 @@ import type {
   Session,
   SystemPersonality,
   Workspace,
-} from "../../types";
+} from "@/types";
 import type { SkillCatalogEntry } from "../skills/types";
 import {
   isPluginAuthRequired,

@@ -1,16 +1,16 @@
 import { LobeAgent } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import { readJsonResponseOrThrow, signedApiFetch } from "../../lib/api/client";
+import { readJsonResponseOrThrow, signedApiFetch } from "@/lib/api/client";
 import {
   normalizeAgentDetail,
   normalizeMarketAgents,
-} from "../../lib/market/agents";
+} from "@/lib/market/agents";
 import {
   normalizeAgentMarketLocale,
   type AgentMarketLocale,
-} from "../../lib/market/agentLocale";
-import { logDevError, logDevInfo, logDevWarn } from "../../lib/utils/devLogger";
-import { CACHE_CONFIG } from "../../config/api";
+} from "@/lib/market/agentLocale";
+import { logDevError, logDevInfo, logDevWarn } from "@/lib/utils/devLogger";
+import { CACHE_CONFIG } from "@/config/api";
 
 const CACHE_DURATION = CACHE_CONFIG.agents;
 

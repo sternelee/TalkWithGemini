@@ -31,11 +31,11 @@ import {
   base64ToBytes,
   bytesToArrayBuffer,
   createPcmWavBytes,
-} from "../../../../lib/utils/binary";
+} from "@/lib/utils/binary";
 import {
   DEFAULT_ELEVENLABS_TTS_MODEL,
   isElevenLabsTTSModel,
-} from "../../../../lib/utils/voiceModels";
+} from "@/lib/utils/voiceModels";
 
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1";
 const MIMO_CHAT_COMPLETIONS_URL =

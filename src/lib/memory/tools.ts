@@ -1,4 +1,4 @@
-import { MEMORY_LIMITS } from "../../config/limits";
+import { MEMORY_LIMITS } from "@/config/limits";
 import type { MemoryRecord } from "./types";
 
 export const MEMORY_SEARCH_TOOL_NAME = "memory_search";

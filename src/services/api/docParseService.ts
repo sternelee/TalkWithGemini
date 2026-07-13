@@ -2,11 +2,11 @@ import {
   getResponseErrorMessage,
   readJsonResponseOrThrow,
   signedApiFetch,
-} from "../../lib/api/client";
-import { encryptSecret, fetchWithByokRetry } from "../../lib/byok/client";
-import { BYOK_CONTEXTS } from "../../lib/byok/shared";
-import { logDevError } from "../../lib/utils/devLogger";
-import type { DocumentParseProvider } from "../../types";
+} from "@/lib/api/client";
+import { encryptSecret, fetchWithByokRetry } from "@/lib/byok/client";
+import { BYOK_CONTEXTS } from "@/lib/byok/shared";
+import { logDevError } from "@/lib/utils/devLogger";
+import type { DocumentParseProvider } from "@/types";
 
 type DocumentParseStartResponse =
   | { markdown?: string }

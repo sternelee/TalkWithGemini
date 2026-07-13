@@ -1,4 +1,4 @@
-import type { ImageSource, Message, Source } from "../../types";
+import type { ImageSource, Message, Source } from "@/types";
 
 export interface SearchDecision {
   shouldSearch: boolean;

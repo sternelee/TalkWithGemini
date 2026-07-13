@@ -1,5 +1,5 @@
 import type { ChatConfig } from "./types";
-import type { ModelMetadata } from "../../types";
+import type { ModelMetadata } from "@/types";
 import { parseModelString } from "../utils/model";
 import { isReasoningEnabled, resolveReasoningModeForModel } from "./reasoning";
 

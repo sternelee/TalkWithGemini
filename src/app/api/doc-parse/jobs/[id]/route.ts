@@ -4,7 +4,7 @@ import {
   getDocumentParseJob,
   isDocumentParseJobSecretValid,
   pollDocumentParseJob,
-} from "../../../../../lib/api/docParseJobs";
+} from "@/lib/api/docParseJobs";
 import { createApiErrorResponse } from "@/lib/api/middleware";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 

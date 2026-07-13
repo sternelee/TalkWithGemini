@@ -1,6 +1,6 @@
 import type { EncryptedSecretEnvelope } from "../byok/shared";
 import type { ServerDefaultProviderSource } from "../defaultConfig/shared";
-import type { ProviderType } from "../../types";
+import type { ProviderType } from "@/types";
 import { HostedProxyBlockedError } from "../errors";
 import {
   getOutboundPolicyProfile,
@@ -25,6 +25,7 @@ export type OutboundContext =
   | "voice"
   | "agent"
   | "metadata"
+  | "image"
   | "sharedStore";
 
 export interface SafeUrlPolicy {
@@ -286,6 +287,7 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
     case "provider":
     case "rag":
     case "search":
+    case "image":
       return {
         context,
         allowedProtocols: localNetworkProxyAllowed

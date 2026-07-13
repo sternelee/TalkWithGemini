@@ -1,4 +1,4 @@
-import type { Source } from "../../types";
+import type { Source } from "@/types";
 
 export function createCitationHref(index: number): string {
   return `#citation-${index}`;

@@ -4,19 +4,19 @@ import type {
   Message,
   ModelMetadata,
   Source,
-} from "../../../types";
+} from "@/types";
 import {
   allocateContextBudget,
   trimTextToEstimatedTokens,
-} from "../../../lib/chat/contextBudget";
-import { appendContextToChatInput } from "../../../lib/utils/chatInput";
-import { logDevWarn } from "../../../lib/utils/devLogger";
+} from "@/lib/chat/contextBudget";
+import { appendContextToChatInput } from "@/lib/utils/chatInput";
+import { logDevWarn } from "@/lib/utils/devLogger";
 import {
   buildSearchContextForPrompt,
   createSearchDecisionPrompt,
   parseSearchDecisionResult,
   type SearchDecision,
-} from "../../../lib/search/decision";
+} from "@/lib/search/decision";
 
 import { createSearchProvider } from "../searchService";
 import {

@@ -15,7 +15,7 @@ import { BYOK_CONTEXTS } from "@/lib/byok/shared";
 import { decryptSecretEnvelope } from "@/lib/byok/server";
 import { getDefaultDocumentParseToken } from "@/lib/defaultConfig/server";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
-import { createDocumentParseJob } from "../../../lib/api/docParseJobs";
+import { createDocumentParseJob } from "@/lib/api/docParseJobs";
 
 export async function POST(request: NextRequest) {
   try {

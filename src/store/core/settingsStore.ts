@@ -39,41 +39,41 @@ import {
   normalizeModelMetadata,
   normalizeModelMetadataMap,
 } from "@/lib/providers/metadata";
-import { logDevError } from "../../lib/utils/devLogger";
+import { logDevError } from "@/lib/utils/devLogger";
 import {
   normalizeRAGConfig,
   normalizeSearchConfig,
   normalizeSearchProvider,
   normalizeSearchSettings,
-} from "../../lib/settings/searchRag";
-import { getDefaultModelSelectValue } from "../../lib/utils/defaultModels";
-import { readJsonResponseOrThrow } from "../../lib/api/client";
+} from "@/lib/settings/searchRag";
+import { getDefaultModelSelectValue } from "@/lib/utils/defaultModels";
+import { readJsonResponseOrThrow } from "@/lib/api/client";
 import {
   isPluginAuthRequired,
   normalizeActivePluginIds,
   normalizePluginConfig,
   normalizePluginConfigs,
-} from "../../lib/plugin/config";
+} from "@/lib/plugin/config";
 import {
   normalizeCustomSkills,
   normalizeSkillCatalog,
   normalizeTextSkill,
-} from "../../lib/skills";
-import { normalizeSystemSettings } from "../../lib/settings/appConfig";
+} from "@/lib/skills";
+import { normalizeSystemSettings } from "@/lib/settings/appConfig";
 import {
   clearBrowserAppData,
   clearBrowserAppDataSources,
   type BrowserAppDataSource,
-} from "../../lib/data/clearAppData";
+} from "@/lib/data/clearAppData";
 import {
   createBrowserAppExportPayload,
   type AppExportPayload,
-} from "../../lib/data/appExport";
+} from "@/lib/data/appExport";
 import {
   hasDocumentParseCredential,
   hasRagToken,
   hasPluginAuthValue,
-} from "../../lib/security/localSecretResolvers";
+} from "@/lib/security/localSecretResolvers";
 import {
   migratePluginConfigLocalSecrets,
   migrateRAGLocalSecrets,
@@ -83,7 +83,7 @@ import {
   stripRAGPlainSecrets,
   stripSearchPlainSecrets,
   stripVoicePlainSecrets,
-} from "../../lib/settings/localSecretMigration";
+} from "@/lib/settings/localSecretMigration";
 
 interface SettingsState {
   _hasHydrated: boolean;

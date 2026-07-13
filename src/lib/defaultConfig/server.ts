@@ -5,8 +5,8 @@ import {
   SEARCH_CONFIG_LIMITS,
   SYSTEM_SETTINGS_LIMITS,
   getRuntimeMaxAttachmentFileBytes,
-} from "../../config/limits";
-import { DEFAULT_SYSTEM_SETTINGS } from "../../config/defaults";
+} from "@/config/limits";
+import { DEFAULT_SYSTEM_SETTINGS } from "@/config/defaults";
 import { normalizeProviderModelId } from "../providers/models";
 import { normalizeSystemSettings } from "../settings/appConfig";
 import type {
@@ -19,7 +19,7 @@ import type {
   ServerDefaultVoiceProvider,
   SystemSettings,
   VoiceSettings,
-} from "../../types";
+} from "@/types";
 import {
   PublicServerConfig,
   PublicDeploymentStoreState,

@@ -1,4 +1,4 @@
-import { IMAGE_PREVIEW_LIMITS } from "../../config/limits";
+import { IMAGE_PREVIEW_LIMITS } from "@/config/limits";
 import { getSafeMarkdownImageSrc } from "../security/clientUrl";
 
 export interface PreviewImageInput {

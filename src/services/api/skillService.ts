@@ -20,10 +20,10 @@ import {
   recallSkillCandidates,
   resolveSkillDataLocale,
   selectSkillsForMessage,
-} from "../../lib/skills";
-import { readJsonResponseOrThrow } from "../../lib/api/client";
-import { logDevWarn } from "../../lib/utils/devLogger";
-import { CACHE_CONFIG } from "../../config/api";
+} from "@/lib/skills";
+import { readJsonResponseOrThrow } from "@/lib/api/client";
+import { logDevWarn } from "@/lib/utils/devLogger";
+import { CACHE_CONFIG } from "@/config/api";
 import { streamGenerateToolCall } from "./chatService";
 
 const catalogRequests = new Map<string, Promise<SkillCatalog>>();

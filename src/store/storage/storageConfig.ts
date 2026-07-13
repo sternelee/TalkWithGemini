@@ -4,7 +4,7 @@ import {
   ensureLegacyGeminiCoreSettingsMigration,
   ensureLegacyGeminiNextChatMigration,
 } from "./legacyGeminiMigration";
-import { logDevError } from "../../lib/utils/devLogger";
+import { logDevError } from "@/lib/utils/devLogger";
 
 /**
  * Storage Configuration
