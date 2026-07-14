@@ -55,6 +55,7 @@
   "downloadMarkdown": "Markdown",
   "downloadPdf": "PDF",
   "downloadImage": "画像",
+  "downloadInProgress": "ダウンロード中…",
   "downloadImageFailed": "画像を書き出せませんでした。もう一度お試しください。",
   "confirmDelete": "削除を確認",
   "delete": "削除",

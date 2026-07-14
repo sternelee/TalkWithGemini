@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   getSessionPluginPresetSyncKey,
+  shouldDisableSearchToggle,
   shouldApplySessionPluginPreset,
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
   shouldSyncSessionPlugins,
 } from "../lib/app/startupEffects";
+import { getSearchCompatibility } from "../lib/settings/searchRag";
 
 describe("app startup effects", () => {
   it("waits for settings hydration before running settings writes", () => {
@@ -77,6 +79,53 @@ describe("app startup effects", () => {
         settingsHydrated: true,
         coreHydrated: true,
         serverModelBootstrapReady: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not clear restored search during transient model startup", () => {
+    const keylessFirecrawl = getSearchCompatibility({
+      searchProvider: "firecrawl",
+      searchConfig: { apiKey: "" },
+      modelProviderType: "OpenAI",
+    });
+
+    expect(
+      shouldDisableSearchToggle({
+        chatHydrated: true,
+        settingsHydrated: true,
+        coreHydrated: true,
+        serverModelBootstrapReady: true,
+        useSearch: true,
+        searchCompatibility: keylessFirecrawl,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldDisableSearchToggle({
+        chatHydrated: true,
+        settingsHydrated: true,
+        coreHydrated: true,
+        serverModelBootstrapReady: true,
+        useSearch: true,
+        searchCompatibility: {
+          enabled: false,
+          reason: "missing_model_provider",
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldDisableSearchToggle({
+        chatHydrated: true,
+        settingsHydrated: true,
+        coreHydrated: true,
+        serverModelBootstrapReady: true,
+        useSearch: true,
+        searchCompatibility: {
+          enabled: false,
+          reason: "missing_search_api_key",
+        },
       }),
     ).toBe(true);
   });

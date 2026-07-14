@@ -1,3 +1,5 @@
+import type { SearchCompatibilityResult } from "../settings/searchRag";
+
 export function shouldRunSettingsStartupEffects(
   settingsHydrated: boolean,
 ): boolean {
@@ -52,5 +54,33 @@ export function shouldResolveSelectedModelAfterBootstrap({
     settingsHydrated &&
     coreHydrated &&
     serverModelBootstrapReady
+  );
+}
+
+export function shouldDisableSearchToggle({
+  chatHydrated,
+  settingsHydrated,
+  coreHydrated,
+  serverModelBootstrapReady,
+  useSearch,
+  searchCompatibility,
+}: {
+  chatHydrated: boolean;
+  settingsHydrated: boolean;
+  coreHydrated: boolean;
+  serverModelBootstrapReady: boolean;
+  useSearch: boolean;
+  searchCompatibility: Pick<SearchCompatibilityResult, "enabled" | "reason">;
+}): boolean {
+  return (
+    shouldResolveSelectedModelAfterBootstrap({
+      chatHydrated,
+      settingsHydrated,
+      coreHydrated,
+      serverModelBootstrapReady,
+    }) &&
+    useSearch &&
+    !searchCompatibility.enabled &&
+    searchCompatibility.reason !== "missing_model_provider"
   );
 }

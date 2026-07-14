@@ -27,6 +27,8 @@ interface MessageOutputRendererProps {
   onFileClick?: (file: MarkdownGeneratedFile) => void;
   forcedTheme?: MarkdownRendererProps["forcedTheme"];
   forceExpandCodeBlocks?: boolean;
+  hideReasoning?: boolean;
+  hideToolCalls?: boolean;
   onImageCached?: (image: Attachment) => void;
 }
 
@@ -132,6 +134,8 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
   onFileClick,
   forcedTheme,
   forceExpandCodeBlocks,
+  hideReasoning = false,
+  hideToolCalls = false,
   onImageCached,
 }) => {
   const t = useTranslations("Message");
@@ -164,6 +168,7 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
               />
             );
           case "reasoning":
+            if (hideReasoning) return null;
             return (
               <ReasoningBlock
                 key={block.id}
@@ -198,6 +203,7 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
               />
             );
           case "tool_group": {
+            if (hideToolCalls) return null;
             const memoryToolCalls = block.toolCalls.filter((toolCall) =>
               isMemorySearchTool(toolCall.name),
             );

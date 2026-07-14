@@ -69,6 +69,7 @@ import {
 } from "@/lib/api/client";
 import {
   getSessionPluginPresetSyncKey,
+  shouldDisableSearchToggle,
   shouldApplySessionPluginPreset,
   shouldResolveSelectedModelAfterBootstrap,
   shouldRunSettingsStartupEffects,
@@ -331,10 +332,31 @@ const ChatApp = () => {
 
   // Fetch Metadata & Ensure Plugins on mount
   useEffect(() => {
-    if (chatConfig.useSearch && !currentSearchCompatibility.enabled) {
+    if (
+      !shouldDisableSearchToggle({
+        chatHydrated: chatHasHydrated,
+        settingsHydrated: _hasHydrated,
+        coreHydrated: coreHasHydrated,
+        serverModelBootstrapReady,
+        useSearch: chatConfig.useSearch,
+        searchCompatibility: currentSearchCompatibility,
+      })
+    ) {
+      return;
+    }
+
+    if (!currentSearchCompatibility.enabled) {
       setChatConfig({ useSearch: false });
     }
-  }, [chatConfig.useSearch, currentSearchCompatibility.enabled, setChatConfig]);
+  }, [
+    chatConfig.useSearch,
+    chatHasHydrated,
+    _hasHydrated,
+    coreHasHydrated,
+    currentSearchCompatibility,
+    serverModelBootstrapReady,
+    setChatConfig,
+  ]);
 
   useEffect(() => {
     if (!shouldRunSettingsStartupEffects(_hasHydrated)) return;

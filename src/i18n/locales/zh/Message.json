@@ -55,6 +55,7 @@
   "downloadMarkdown": "Markdown",
   "downloadPdf": "PDF",
   "downloadImage": "图片",
+  "downloadInProgress": "下载中…",
   "downloadImageFailed": "图片导出失败，请重试。",
   "confirmDelete": "确认删除",
   "delete": "删除",
