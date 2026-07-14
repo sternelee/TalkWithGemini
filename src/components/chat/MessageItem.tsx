@@ -241,7 +241,6 @@ const proxyMessageExportImages = async (
   root: HTMLElement,
   signal: AbortSignal,
 ) => {
-  let didProxy = false;
   const objectUrls: string[] = [];
   const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
 
@@ -264,8 +263,8 @@ const proxyMessageExportImages = async (
 
       const objectUrl = URL.createObjectURL(await response.blob());
       objectUrls.push(objectUrl);
+      image.srcset = "";
       image.src = objectUrl;
-      didProxy = true;
     }
   } catch (error) {
     objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
@@ -273,7 +272,6 @@ const proxyMessageExportImages = async (
   }
 
   return {
-    didProxy,
     cleanup: () => {
       objectUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
     },
@@ -588,7 +586,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
     const exportRootToPng = async (root: HTMLElement) => {
       const backgroundColor = getImageExportBackgroundColor(root);
       return toPng(root, {
-        cacheBust: true,
+        cacheBust: false,
         backgroundColor,
         width: imageExportJob.width,
         canvasWidth: imageExportJob.width,
@@ -607,32 +605,18 @@ const MessageItem: React.FC<MessageItemProps> = ({
       }
 
       try {
+        const proxyResult = await proxyMessageExportImages(
+          root,
+          proxyController.signal,
+        );
+        cleanupProxiedImages = proxyResult.cleanup;
         await waitForMessageExportImages(root);
         const dataUrl = await exportRootToPng(root);
         if (!cancelled) downloadImageDataUrl(dataUrl);
-      } catch (firstError) {
-        if (cancelled) return;
-
-        try {
-          const proxyResult = await proxyMessageExportImages(
-            root,
-            proxyController.signal,
-          );
-          cleanupProxiedImages = proxyResult.cleanup;
-          if (!proxyResult.didProxy) {
-            logMessageItemError("Failed to export message image", firstError);
-            setImageExportError(t("downloadImageFailed"));
-            return;
-          }
-
-          await waitForMessageExportImages(root);
-          const dataUrl = await exportRootToPng(root);
-          if (!cancelled) downloadImageDataUrl(dataUrl);
-        } catch (retryError) {
-          if (!cancelled) {
-            logMessageItemError("Failed to export message image", retryError);
-            setImageExportError(t("downloadImageFailed"));
-          }
+      } catch (error) {
+        if (!cancelled) {
+          logMessageItemError("Failed to export message image", error);
+          setImageExportError(t("downloadImageFailed"));
         }
       } finally {
         cleanupProxiedImages();

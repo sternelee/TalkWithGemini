@@ -37,6 +37,7 @@ export interface SafeUrlPolicy {
   allowLocalHttp?: boolean;
   allowedHosts?: string[];
   maxRedirects?: number;
+  requireDnsResolution?: boolean;
   profile?: OutboundPolicyProfile;
   hostedProxyBlocked?: boolean;
 }
@@ -296,6 +297,8 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
         allowLocalhost: localNetworkProxyAllowed,
         allowPrivateNetwork: localNetworkProxyAllowed,
         allowLocalHttp: localNetworkProxyAllowed,
+        requireDnsResolution:
+          profile.mode === "hosted" && !localNetworkProxyAllowed,
         hostedProxyBlocked:
           profile.mode === "hosted" && !localNetworkProxyAllowed,
         profile,

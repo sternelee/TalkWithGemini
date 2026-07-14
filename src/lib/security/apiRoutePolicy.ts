@@ -46,6 +46,15 @@ const API_ROUTE_POLICIES: readonly ApiRoutePolicy[] = [
     },
   },
   {
+    pattern: /^\/api\/request-proof\/session$/,
+    rateLimitMethods: ["GET"],
+    rateLimit: {
+      routeFamily: "/api/request-proof/session",
+      windowMs: 60_000,
+      maxRequests: 30,
+    },
+  },
+  {
     pattern: /^\/api\/chat(?:\/|$)/,
     requestProofMethods: ALL_METHODS,
     rateLimitMethods: MUTATING_METHODS,
@@ -92,7 +101,7 @@ const API_ROUTE_POLICIES: readonly ApiRoutePolicy[] = [
     rateLimit: {
       routeFamily: "/api/media/image-proxy",
       windowMs: 60_000,
-      maxRequests: 60,
+      maxRequests: 30,
     },
   },
   {

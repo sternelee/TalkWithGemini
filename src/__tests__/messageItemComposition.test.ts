@@ -115,6 +115,8 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("backgroundColor");
     expect(messageItem).toContain("getImageExportBackgroundColor");
     expect(messageItem).toContain("getMessageImageExportWidth");
+    expect(messageItem).toContain("cacheBust: false");
+    expect(messageItem).not.toContain("cacheBust: true");
     expect(messageItem).toContain("visibleMessageContentRef");
     expect(messageItem).toContain("width: imageExportJob.width");
     expect(messageItem).toContain("canvasWidth: imageExportJob.width");
@@ -129,6 +131,17 @@ describe("MessageItem composition", () => {
     expect(messageItem).toContain("URL.revokeObjectURL");
     expect(messageItem).not.toContain("serveproxy.com");
     expect(messageItem).toContain("waitForMessageExportImages");
+    const runExportStart = messageItem.indexOf(
+      "const runExport = async () => {",
+    );
+    const runExportEnd = messageItem.indexOf(
+      "firstFrame = requestAnimationFrame",
+      runExportStart,
+    );
+    const runExport = messageItem.slice(runExportStart, runExportEnd);
+    expect(runExport.indexOf("await proxyMessageExportImages")).toBeLessThan(
+      runExport.indexOf("await exportRootToPng"),
+    );
     expect(messageItem).toContain("DropdownMenuSub");
     expect(messageItem).toContain("DropdownMenuSubTrigger");
     expect(messageItem).toContain("DropdownMenuSubContent");

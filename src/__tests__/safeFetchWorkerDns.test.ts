@@ -27,6 +27,7 @@ function mockWorkerDns({
 
 describe("safeFetch Worker DNS compatibility", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     vi.doUnmock("node:dns/promises");
     vi.resetModules();
@@ -69,6 +70,30 @@ describe("safeFetch Worker DNS compatibility", () => {
         { policy: getSafeUrlPolicy("plugin") },
       ),
     ).rejects.toThrow(/Private network/i);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for hosted image requests when DNS validation is unavailable", async () => {
+    vi.resetModules();
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.doMock("node:dns/promises", () => ({
+      lookup: undefined,
+      resolve4: undefined,
+      resolve6: undefined,
+    }));
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const { safeFetch } = await import("../lib/security/safeFetch");
+
+    await expect(
+      safeFetch(
+        "https://example.com/image.png",
+        { method: "GET" },
+        { policy: getSafeUrlPolicy("image") },
+      ),
+    ).rejects.toMatchObject({
+      code: "HOSTED_PROXY_BLOCKED",
+    });
 
     expect(fetchMock).not.toHaveBeenCalled();
   });

@@ -80,25 +80,51 @@ describe("request guard rate limiting", () => {
     expect(response?.status).toBe(429);
   });
 
-  it("uses a signed proof session for hosted quotas without trusted IP headers", async () => {
-    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
-    vi.stubEnv("BYOK_PRIVATE_KEY_PEM", "stable-test-key");
-    setRateLimitStoreForTesting(new MemoryRateLimitStore());
-    const proofSession = await createRequestProofSession();
-    const headers = {
-      cookie: `${API_PROOF_SESSION_COOKIE}=${proofSession.cookieValue}`,
-    };
-
+  it("bounds proof-session creation when client identity is unavailable", async () => {
     for (let i = 0; i < 30; i += 1) {
       await expect(
         enforceRateLimit(
-          new NextRequest("https://neo.test/api/agents/a", { headers }),
+          new NextRequest("https://neo.test/api/request-proof/session"),
         ),
       ).resolves.toBeNull();
     }
 
     const response = await enforceRateLimit(
-      new NextRequest("https://neo.test/api/agents/b", { headers }),
+      new NextRequest("https://neo.test/api/request-proof/session"),
+    );
+
+    expect(response?.status).toBe(429);
+    expect(response?.headers.get("retry-after")).toBeTruthy();
+  });
+
+  it("shares one hosted quota when trusted client IP headers are unavailable", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("BYOK_PRIVATE_KEY_PEM", "stable-test-key");
+    setRateLimitStoreForTesting(new MemoryRateLimitStore());
+    const firstProofSession = await createRequestProofSession();
+    const secondProofSession = await createRequestProofSession();
+    const proofHeaders = [firstProofSession, secondProofSession].map(
+      (session) => ({
+        cookie: `${API_PROOF_SESSION_COOKIE}=${session.cookieValue}`,
+      }),
+    );
+
+    for (let i = 0; i < 30; i += 1) {
+      await expect(
+        enforceRateLimit(
+          new NextRequest("https://neo.test/api/media/image-proxy", {
+            method: "POST",
+            headers: proofHeaders[i % proofHeaders.length],
+          }),
+        ),
+      ).resolves.toBeNull();
+    }
+
+    const response = await enforceRateLimit(
+      new NextRequest("https://neo.test/api/media/image-proxy", {
+        method: "POST",
+        headers: proofHeaders[1],
+      }),
     );
 
     expect(response?.status).toBe(429);

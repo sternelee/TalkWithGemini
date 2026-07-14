@@ -251,6 +251,11 @@ async function assertResolvedAddressAllowed(
 
   const addresses = await lookupWithAbort(normalizedHostname, signal);
   if (!addresses) {
+    if (policy.requireDnsResolution) {
+      throw new HostedProxyBlockedError(
+        "DNS validation is unavailable for this outbound request",
+      );
+    }
     if (
       url.protocol === "http:" &&
       policy.allowLocalHttp &&

@@ -136,7 +136,10 @@ export async function enforceRateLimit(
 
   const clientIp = getRateLimitClientIp(request);
   const useDeploymentBucket =
-    clientIp === "unknown" && rule.routeFamily === "/api/access/verify";
+    clientIp === "unknown" &&
+    (getDeploymentMode() === "hosted" ||
+      rule.routeFamily === "/api/access/verify" ||
+      rule.routeFamily === "/api/request-proof/session");
   const proofIdentity =
     clientIp === "unknown" && !useDeploymentBucket
       ? await getRequestProofRateLimitIdentity(request, now)
