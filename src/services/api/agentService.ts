@@ -11,6 +11,10 @@ import {
 } from "@/lib/market/agentLocale";
 import { logDevError, logDevInfo, logDevWarn } from "@/lib/utils/devLogger";
 import { CACHE_CONFIG } from "@/config/api";
+import {
+  toMarketLoadError,
+  type MarketLoadResult,
+} from "@/lib/market/loadResult";
 
 const CACHE_DURATION = CACHE_CONFIG.agents;
 
@@ -19,125 +23,147 @@ type AgentListResponse = {
   unavailable?: boolean;
 };
 
-const agentListRequests = new Map<AgentMarketLocale, Promise<LobeAgent[]>>();
+const agentListRequests = new Map<
+  AgentMarketLocale,
+  Promise<MarketLoadResult<LobeAgent[]>>
+>();
+
+function getAgentCacheSnapshot(locale: AgentMarketLocale): {
+  agents: LobeAgent[];
+  fetchedAt: number;
+  fresh: boolean;
+} | null {
+  const { marketAgents, marketAgentsTimestamp, marketAgentsLocale } =
+    useSettingsStore.getState();
+
+  if (
+    !Array.isArray(marketAgents) ||
+    !marketAgentsTimestamp ||
+    marketAgentsLocale !== locale
+  ) {
+    return null;
+  }
+
+  return {
+    agents: normalizeMarketAgents(marketAgents),
+    fetchedAt: marketAgentsTimestamp,
+    fresh: Date.now() - marketAgentsTimestamp < CACHE_DURATION,
+  };
+}
 
 export const getCachedAgentsForLocale = (
   requestedLocale: string = "en",
 ): LobeAgent[] => {
   const locale = normalizeAgentMarketLocale(requestedLocale);
-  const { marketAgents, marketAgentsTimestamp, marketAgentsLocale } =
-    useSettingsStore.getState();
-
-  if (
-    !marketAgents ||
-    marketAgents.length === 0 ||
-    !marketAgentsTimestamp ||
-    marketAgentsLocale !== locale
-  ) {
-    return [];
-  }
-
-  if (Date.now() - marketAgentsTimestamp >= CACHE_DURATION) {
-    return [];
-  }
-
-  return normalizeMarketAgents(marketAgents);
+  const cache = getAgentCacheSnapshot(locale);
+  return cache?.fresh ? cache.agents : [];
 };
 
-export const getAgents = async (
+export const getAgentsResult = async (
   forceRefresh: boolean = false,
   requestedLocale: string = "en",
-): Promise<LobeAgent[]> => {
+): Promise<MarketLoadResult<LobeAgent[]>> => {
   const locale = normalizeAgentMarketLocale(requestedLocale);
-  const {
-    marketAgents,
-    marketAgentsTimestamp,
-    marketAgentsLocale,
-    setMarketAgents,
-  } = useSettingsStore.getState();
-  const now = Date.now();
-  const getStaleAgents = () =>
-    marketAgentsLocale === locale && marketAgents && marketAgents.length > 0
-      ? normalizeMarketAgents(marketAgents)
-      : [];
+  const { setMarketAgents } = useSettingsStore.getState();
+  const cache = getAgentCacheSnapshot(locale);
 
-  const cachedAgents = getCachedAgentsForLocale(locale);
-  if (!forceRefresh && cachedAgents.length > 0) {
+  if (!forceRefresh && cache?.fresh) {
     logDevInfo("Using cached agents data");
-    return cachedAgents;
-  }
-
-  // Check cache validity (skip if force refresh)
-  if (
-    !forceRefresh &&
-    marketAgents &&
-    marketAgents.length > 0 &&
-    marketAgentsTimestamp &&
-    marketAgentsLocale === locale
-  ) {
-    if (now - marketAgentsTimestamp < CACHE_DURATION) {
-      logDevInfo("Using cached agents data");
-      return normalizeMarketAgents(marketAgents);
-    }
+    return {
+      data: cache.agents,
+      status: "cache",
+      source: `agents:${locale}:cache`,
+      fetchedAt: cache.fetchedAt,
+    };
   }
 
   const inFlightRequest = agentListRequests.get(locale);
   if (!forceRefresh && inFlightRequest) {
     logDevInfo("Reusing in-flight agents request");
-    try {
-      return await inFlightRequest;
-    } catch (error) {
-      logDevError("Error fetching agents:", error);
-      const staleAgents = getStaleAgents();
-      if (staleAgents.length > 0) {
-        logDevWarn("Using stale cache due to fetch error");
-      }
-      return staleAgents;
-    }
+    return inFlightRequest;
   }
 
   const request = (async () => {
-    logDevInfo("Fetching agents from API...");
-    const response = await signedApiFetch(`/api/agents?locale=${locale}`);
-    if (!response.ok) throw new Error("Failed to fetch agents");
+    try {
+      logDevInfo("Fetching agents from API...");
+      const response = await signedApiFetch(`/api/agents?locale=${locale}`);
+      if (!response.ok) throw new Error("Failed to fetch agents");
 
-    const data = await readJsonResponseOrThrow<AgentListResponse>(
-      response,
-      "Failed to fetch agents",
-    );
-    if (data.unavailable) {
-      const staleAgents = getStaleAgents();
-      if (staleAgents.length > 0) {
-        logDevWarn("Using stale cache because agent registry is unavailable");
+      const data = await readJsonResponseOrThrow<AgentListResponse>(
+        response,
+        "Failed to fetch agents",
+      );
+      if (data.unavailable) {
+        const error = toMarketLoadError(
+          new Error("Assistant registry is unavailable"),
+          "Assistant registry is unavailable",
+        );
+        if (cache) {
+          logDevWarn("Using stale cache because agent registry is unavailable");
+          return {
+            data: cache.agents,
+            status: "stale",
+            source: `agents:${locale}:cache`,
+            fetchedAt: cache.fetchedAt,
+            error,
+          } satisfies MarketLoadResult<LobeAgent[]>;
+        }
+        return {
+          data: [],
+          status: "error",
+          source: `agents:${locale}:api`,
+          error,
+        } satisfies MarketLoadResult<LobeAgent[]>;
       }
-      return staleAgents;
+
+      const agents: LobeAgent[] = normalizeMarketAgents(data.agents);
+      const fetchedAt = Date.now();
+      setMarketAgents(agents, locale);
+      logDevInfo(`Cached ${agents.length} agents`);
+      return {
+        data: agents,
+        status: "fresh",
+        source: `agents:${locale}:api`,
+        fetchedAt,
+      } satisfies MarketLoadResult<LobeAgent[]>;
+    } catch (error) {
+      logDevError("Error fetching agents:", error);
+      const marketError = toMarketLoadError(error, "Failed to fetch agents");
+      if (cache) {
+        logDevWarn("Using stale cache due to fetch error");
+        return {
+          data: cache.agents,
+          status: "stale",
+          source: `agents:${locale}:cache`,
+          fetchedAt: cache.fetchedAt,
+          error: marketError,
+        } satisfies MarketLoadResult<LobeAgent[]>;
+      }
+      return {
+        data: [],
+        status: "error",
+        source: `agents:${locale}:api`,
+        error: marketError,
+      } satisfies MarketLoadResult<LobeAgent[]>;
     }
-
-    const agents: LobeAgent[] = normalizeMarketAgents(data.agents);
-
-    setMarketAgents(agents, locale);
-    logDevInfo(`Cached ${agents.length} agents`);
-    return agents;
   })();
 
   agentListRequests.set(locale, request);
 
   try {
     return await request;
-  } catch (error) {
-    logDevError("Error fetching agents:", error);
-    // Return stale cache if available
-    const staleAgents = getStaleAgents();
-    if (staleAgents.length > 0) {
-      logDevWarn("Using stale cache due to fetch error");
-    }
-    return staleAgents;
   } finally {
     if (agentListRequests.get(locale) === request) {
       agentListRequests.delete(locale);
     }
   }
 };
+
+export const getAgents = async (
+  forceRefresh: boolean = false,
+  requestedLocale: string = "en",
+): Promise<LobeAgent[]> =>
+  (await getAgentsResult(forceRefresh, requestedLocale)).data;
 
 export const clearAgentsCache = (): void => {
   const { setMarketAgents } = useSettingsStore.getState();

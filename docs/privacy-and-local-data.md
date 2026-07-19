@@ -12,7 +12,7 @@ Neo Chat uses several browser storage layers:
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `localStorage`                  | Core settings, provider records, selected models, and provider API key envelopes.                                                                                           |
 | IndexedDB through `localforage` | Chat metadata, messages, app settings, installed plugins, installed/custom skills, skill catalog and definition caches, assistants, knowledge metadata, and local memories. |
-| OPFS                            | Uploaded chat files, workspace files, knowledge-base source files, and image display-cache copies for user-sent or model-generated images.                                  |
+| OPFS                            | Uploaded chat/workspace files, knowledge originals and extracted text, and image display-cache copies for user-sent or model-generated images.                              |
 
 Clearing browser data can remove local chats, settings, plugin configuration,
 assistant records, memories, and uploaded files.
@@ -23,10 +23,43 @@ image output blocks are included in the exported conversation payload. PNG/PDF
 message exports render the visible output blocks, while full app export
 preserves every stored session message tree, including trees not referenced by
 the current chat metadata. If any message tree cannot be read, the export fails
-instead of returning partial data. Full app export is a metadata JSON export:
-it preserves `opfs://` references as stored, but does not read, copy, or
-validate OPFS blobs. Missing OPFS files do not block the export, and runtime
-`blob:` URLs are not included.
+instead of returning partial data. The current full-app backup is export version
+3 and records storage schema version 5. It creates a ZIP with `manifest.json`,
+`data.json`, and every referenced app-owned OPFS blob that can be read. The
+manifest records file size, MIME type, and SHA-256; missing files are listed
+explicitly. Runtime `blob:` URLs, remote caches, external RAG vectors, plaintext
+credentials, browser-local encrypted credential envelopes, and local master
+keys are not included.
+
+Restore validates ZIP paths, duplicate entries, extraction limits, sizes, and
+SHA-256 before replacing data. Files are written to new OPFS paths first, and a
+small restore journal plus IndexedDB snapshot protects the replacement through
+the next application boot. The restored data remains pending while the five
+persisted stores hydrate, the current session is loaded, and every stored
+message tree is structurally validated. Only then are the rollback snapshot and
+superseded OPFS files removed. A hydration error, validation error, or page
+interruption during that verification boot restores the previous data on the
+next startup. Restore never merges profiles: it replaces local app data, clears
+RAG index references, and requires credentials to be entered again. After a
+successful restore, System Settings keeps a credential checklist for providers,
+search, RAG/document parsing, voice, and plugin/MCP auth until the user
+acknowledges it. Legacy v2 JSON exports can restore metadata, but their
+referenced OPFS files are marked unavailable because those exports did not
+contain file blobs.
+
+ZIP import uses a bounded synchronous decompression step in the browser. To
+keep peak memory predictable, backups are limited to 128 MiB compressed, 256
+MiB uncompressed, 64 MiB per file, and 32 MiB per JSON entry. Reading is
+streamed into a preallocated buffer and can be cancelled; cancellation is also
+checked before and after decompression and hashing. The decompression call
+itself cannot be interrupted once it starts, which is why the import limits are
+deliberately conservative. Restore becomes intentionally non-cancellable only
+after the validated data replacement phase begins.
+
+Global search is also local-only. Its index exists in memory for the current app
+lifetime and contains only each chat's active branch, workspace metadata,
+knowledge text, and the existing memory fields. It is not uploaded, persisted,
+or used for telemetry, and it excludes reasoning, tool payloads, and secrets.
 
 Image attachments keep their original `data` or remote `url` as the canonical
 message data. OPFS image copies are display caches mapped from that original

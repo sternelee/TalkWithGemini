@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   output: "standalone",
   reactCompiler: true,
+  allowedDevOrigins: ["127.0.0.1"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },

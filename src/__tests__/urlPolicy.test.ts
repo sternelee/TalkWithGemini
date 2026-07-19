@@ -9,7 +9,6 @@ import {
   normalizeProviderBaseUrl,
   validateOutboundUrl,
 } from "../lib/security/urlPolicy";
-import { toPublicErrorPayload } from "../lib/errors";
 
 vi.mock("server-only", () => ({}));
 
@@ -95,51 +94,36 @@ describe("url policy and provider runtime helpers", () => {
     expect(getProviderApiKey({ type: "OpenAI Compatible" })).toBe("");
   });
 
-  it("blocks unsafe plugin URLs by default", () => {
-    expect(() =>
-      validateOutboundUrl(
-        "http://example.com/openapi.json",
-        getSafeUrlPolicy("plugin"),
-      ),
-    ).toThrow(/Protocol|HTTP/i);
-    expect(() =>
-      validateOutboundUrl(
-        "https://127.0.0.1/openapi.json",
-        getSafeUrlPolicy("plugin"),
-      ),
-    ).toThrow(/Private network|Localhost/i);
+  it("allows user-configured HTTP private targets in local and hosted modes", () => {
+    for (const mode of ["local", "hosted"]) {
+      process.env.DEPLOYMENT_MODE = mode;
+      delete process.env.ALLOW_LOCAL_NETWORK_PROXY;
+
+      for (const context of [
+        "provider",
+        "search",
+        "rag",
+        "pluginManifest",
+        "plugin",
+        "mcp",
+      ] as const) {
+        expect(
+          validateOutboundUrl(
+            "http://127.0.0.1:8080/endpoint",
+            getSafeUrlPolicy(context),
+          ).hostname,
+          `${mode}:${context}`,
+        ).toBe("127.0.0.1");
+      }
+    }
   });
 
-  it("allows HTTPS MCP servers on local networks without allowing plain HTTP", () => {
-    expect(
-      validateOutboundUrl("https://192.168.1.10/mcp", getSafeUrlPolicy("mcp"))
-        .hostname,
-    ).toBe("192.168.1.10");
-
-    expect(() =>
-      validateOutboundUrl("http://192.168.1.10/mcp", getSafeUrlPolicy("mcp")),
-    ).toThrow(/Protocol|HTTP/i);
-  });
-
-  it("blocks local MCP proxying in hosted mode unless explicitly enabled", () => {
+  it("allows HTTP MCP servers on private networks in hosted mode", () => {
     process.env.DEPLOYMENT_MODE = "hosted";
     delete process.env.ALLOW_LOCAL_NETWORK_PROXY;
 
-    let thrown: unknown;
-    try {
-      validateOutboundUrl("https://192.168.1.10/mcp", getSafeUrlPolicy("mcp"));
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(toPublicErrorPayload(thrown)).toMatchObject({
-      code: "HOSTED_PROXY_BLOCKED",
-      statusCode: 403,
-    });
-
-    process.env.ALLOW_LOCAL_NETWORK_PROXY = "true";
     expect(
-      validateOutboundUrl("https://192.168.1.10/mcp", getSafeUrlPolicy("mcp"))
+      validateOutboundUrl("http://192.168.1.10/mcp", getSafeUrlPolicy("mcp"))
         .hostname,
     ).toBe("192.168.1.10");
   });
@@ -165,6 +149,21 @@ describe("url policy and provider runtime helpers", () => {
     ).toThrow(/not trusted for voice/i);
   });
 
+  it("keeps fixed service contexts HTTPS-only", () => {
+    for (const [context, url] of [
+      ["docs", "http://api.cloud.llamaindex.ai/parse"],
+      ["voice", "http://api.elevenlabs.io/v1/voices"],
+      ["agent", "http://registry.npmmirror.com/agents.json"],
+      ["metadata", "http://basellm.github.io/models.json"],
+      ["sharedStore", "http://127.0.0.1:8787/pipeline"],
+    ] as const) {
+      expect(
+        () => validateOutboundUrl(url, getSafeUrlPolicy(context)),
+        context,
+      ).toThrow(/Protocol/i);
+    }
+  });
+
   it("allows explicitly self-hosted provider URLs", () => {
     const result = validateOutboundUrl(
       "http://localhost:11434/v1",
@@ -173,57 +172,43 @@ describe("url policy and provider runtime helpers", () => {
     expect(result.hostname).toBe("localhost");
   });
 
-  it("applies deployment network policy to image proxy targets", () => {
+  it("keeps image proxy targets HTTPS-only while allowing private addresses", () => {
     process.env.DEPLOYMENT_MODE = "hosted";
     delete process.env.ALLOW_LOCAL_NETWORK_PROXY;
 
-    expect(() =>
-      validateOutboundUrl(
-        "https://127.0.0.1/image.png",
-        getSafeUrlPolicy("image"),
-      ),
-    ).toThrow(/Private network|Localhost/i);
-
-    process.env.ALLOW_LOCAL_NETWORK_PROXY = "true";
     expect(
       validateOutboundUrl(
         "https://127.0.0.1/image.png",
         getSafeUrlPolicy("image"),
       ).hostname,
     ).toBe("127.0.0.1");
+
+    expect(() =>
+      validateOutboundUrl(
+        "http://127.0.0.1/image.png",
+        getSafeUrlPolicy("image"),
+      ),
+    ).toThrow(/Protocol/i);
+
+    process.env.ALLOW_LOCAL_NETWORK_PROXY = "true";
+    expect(
+      validateOutboundUrl(
+        "http://127.0.0.1/image.png",
+        getSafeUrlPolicy("image"),
+      ).hostname,
+    ).toBe("127.0.0.1");
   });
 
-  it("blocks local provider proxying in hosted mode with a public error code", () => {
+  it("allows local HTTP provider proxying in hosted mode without an opt-in", () => {
     process.env.DEPLOYMENT_MODE = "hosted";
     delete process.env.ALLOW_LOCAL_NETWORK_PROXY;
 
-    let thrown: unknown;
-    try {
+    expect(
       validateOutboundUrl(
         "http://localhost:11434/v1",
         getSafeUrlPolicy("provider"),
-      );
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(Error);
-    expect(toPublicErrorPayload(thrown)).toMatchObject({
-      code: "HOSTED_PROXY_BLOCKED",
-      statusCode: 403,
-    });
-  });
-
-  it("allows explicit local provider proxy opt-in in hosted mode", () => {
-    process.env.DEPLOYMENT_MODE = "hosted";
-    process.env.ALLOW_LOCAL_NETWORK_PROXY = "true";
-
-    const result = validateOutboundUrl(
-      "http://localhost:11434/v1",
-      getSafeUrlPolicy("provider"),
-    );
-
-    expect(result.hostname).toBe("localhost");
+      ).hostname,
+    ).toBe("localhost");
   });
 
   it("detects private IPv4-mapped IPv6 and CGNAT addresses", () => {
@@ -251,17 +236,19 @@ describe("url policy and provider runtime helpers", () => {
     );
   });
 
-  it("blocks redirects from trusted plugin URLs to private network targets", async () => {
+  it("allows redirects from plugin URLs to private network targets", async () => {
     const { safeFetch } = await import("../lib/security/safeFetch");
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(null, {
-        status: 302,
-        headers: {
-          location: "https://127.0.0.1/admin",
-        },
-      }),
-    );
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: {
+            location: "http://127.0.0.1/admin",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ ok: true }));
 
     await expect(
       safeFetch(
@@ -269,7 +256,35 @@ describe("url policy and provider runtime helpers", () => {
         { method: "GET" },
         { policy: getSafeUrlPolicy("plugin") },
       ),
-    ).rejects.toThrow(/Private network|Localhost/i);
+    ).resolves.toBeInstanceOf(Response);
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects HTTPS-to-HTTP redirects for fixed HTTPS-only targets", async () => {
+    const { safeFetch } = await import("../lib/security/safeFetch");
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: {
+          location: "http://93.184.216.34/registry.json",
+        },
+      }),
+    );
+
+    await expect(
+      safeFetch(
+        "https://93.184.216.34/registry.json",
+        { method: "GET" },
+        {
+          policy: {
+            context: "pluginManifest",
+            allowedProtocols: ["https:"],
+          },
+        },
+      ),
+    ).rejects.toThrow(/Protocol/i);
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });

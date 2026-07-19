@@ -9,12 +9,14 @@
   "errRetractMessage": "无法撤回该消息，对话已恢复。",
   "errEditUserMessage": "无法编辑该消息，请重试。",
   "errRenameChat": "无法重命名该对话，请重试。",
-  "skipToChat": "跳到对话区",
   "closeSidebar": "关闭侧边栏",
   "openSidebar": "打开侧边栏",
   "closeSidebarAria": "关闭侧边栏",
   "openSidebarAria": "打开侧边栏",
   "productName": "Neo Chat",
   "newChat": "新建对话",
-  "newChatAria": "新建对话"
+  "newChatAria": "新建对话",
+  "pendingToolAction": "有工具操作正在等待您的确认",
+  "reviewToolAction": "返回查看",
+  "denyToolAction": "拒绝"
 }

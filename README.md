@@ -20,9 +20,31 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6" />
 </p>
 
-Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, text-only Skills, OpenAPI-style plugin tools, remote streamable HTTP MCP servers, web search, knowledge-base RAG, local memory, voice, generated media, rich message rendering, citations, and editable artifacts into one clean workspace.
+Neo Chat is a self-hostable, local-first AI chat application built with Next.js, React, TypeScript, and Zustand. It brings multi-provider chat, assistant presets, text-only Skills, OpenAPI-style plugin tools, remote streamable HTTP MCP servers, web and local global search, knowledge-base RAG, versioned backup and restore, local memory, voice, generated media, rich message rendering, citations, and editable artifacts into one clean workspace.
 
-It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, skills, plugin configuration, memories, and files stay in the browser by default; server routes act as controlled proxies for model providers, search, RAG, document parsing, voice, plugin and MCP execution, and deployment health.
+It is designed for people who want the power of modern AI workspaces without giving up local data ownership. Chat history, workspace metadata, skills, plugin configuration, memories, search indexes, and files stay in the browser by default; server routes act as controlled proxies for model providers, web search, RAG, document parsing, voice, plugin and MCP execution, and deployment health.
+
+## v2.3.0 Highlights
+
+- Added a local global search center for active conversation branches,
+  attachments, workspaces, knowledge, and memories, with filters, incremental
+  indexing, direct navigation, and `Ctrl`/`Cmd` + `K` access.
+- Added version 3 ZIP backup and transactional restore for local app data and
+  referenced OPFS files, with integrity checks, rollback recovery, legacy
+  version 2 JSON compatibility, and deliberate credential exclusion.
+- Expanded knowledge-base recovery with preserved originals, editable extracted
+  content, separate storage/index states, and retry, reparse, reindex,
+  cancellation, reconciliation, and per-file concurrency protection.
+- Added optional destructive-tool approval with allow-once or deny decisions,
+  plus risk floors, argument redaction, stable function fingerprints,
+  non-destructive chat-scoped approvals, and fail-closed server validation for
+  plugin and MCP execution.
+- Made marketplace and deployment failures visible, unified effective search
+  capability, kept Firecrawl usable without an API key, and supported trusted
+  user-configured HTTP/private-network endpoints in self-hosted deployments.
+- Fixed OpenAI Responses multi-turn history, cross-origin image display/export,
+  model-message download progress, search-setting persistence, restore/clear
+  write races, and added import hygiene plus isolated Playwright E2E coverage.
 
 ## v2.2.0 Highlights
 
@@ -55,10 +77,12 @@ It is designed for people who want the power of modern AI workspaces without giv
 - Local-first sessions, branches, pinned chats, workspaces, workspace files, and assistant instructions.
 - Assistant presets from the LobeHub agent registry plus local custom assistants.
 - Text-only Skills with localized public catalogs, install/uninstall flows, local edits, custom skills, auto-selection, and workspace presets.
-- OpenAPI-based plugin tools plus remote streamable HTTP MCP servers, with per-plugin authentication and server-side execution through the same installed/active plugin controls.
+- OpenAPI-based plugin tools plus remote streamable HTTP MCP servers, with per-plugin authentication, server-side execution, transport-derived risk floors, and optional confirmation for destructive calls.
 - Built-in tools for web reading, weather, Unsplash search, Agnes/Google image processing, OpenAI-compatible image processing, OpenAI Responses image processing, and Agnes video generation. Agnes image processing supports image-to-image edits, and Agnes video generation supports public image URL to video plus plugin-level model IDs. Image processing plugins remain separate from native model image output.
 - Web search through Google native Google Search, OpenAI Web Search, or external providers such as Tavily, Firecrawl, Exa, Bocha, and SearXNG.
-- Knowledge-base RAG with OPFS file storage, Mineru/LlamaParse document parsing, and optional vector indexing.
+- Local global search across active chat branches, attachments, workspaces, knowledge, and memories, with source/date/role filters and direct result navigation.
+- Knowledge-base RAG with preserved original files, editable extracted content, Mineru/LlamaParse document parsing, optional vector indexing, and recovery actions for failed parsing or indexing.
+- Versioned ZIP backup and transactional restore for local metadata and referenced OPFS files, excluding credentials and external service data.
 - Local memory with optional memory search, background extraction, and dream consolidation.
 - Voice input and output through browser APIs, ElevenLabs, Mimo, or compatible configured providers.
 - Rich message rendering for Markdown, safe inline HTML visual blocks, GFM tables, math, code highlighting, Mermaid diagrams, mind maps, citations, reasoning, tool calls, images, audio, and artifacts.
@@ -220,7 +244,7 @@ Neo Chat is local-first by default:
 
 - Core settings, provider records, selected models, and provider API keys are stored in browser `localStorage`.
 - Chat metadata, messages, app settings, installed plugins, installed/custom skills, skill catalog caches, assistants, knowledge metadata, and local memories are stored in IndexedDB through `localforage`.
-- Uploaded chat, workspace, and knowledge files are stored in browser OPFS. User-sent and model-generated images also keep OPFS display-cache copies that render through runtime `blob:` URLs while preserving the original message data for model requests and export.
+- Uploaded chat and workspace files, knowledge originals and extracted text, and image display-cache copies are stored in browser OPFS. Runtime `blob:` URLs remain temporary; version 3 ZIP backups bundle referenced app-owned OPFS files while excluding credentials and remote service data.
 - User-entered secrets are encrypted in the browser as BYOK envelopes before being sent to API routes.
 
 Important server-side settings:
@@ -357,15 +381,17 @@ The app keeps durable user data in browser storage whenever possible. API routes
 - URL safety gates for proxied upstreams;
 - plugin execution through registered plugin IDs and function names;
 - deployment health reporting through `/api/health`;
-- hosted-mode checks for shared stores and local-network restrictions.
+- hosted-mode checks for shared stores and fixed-service network boundaries.
 
 ## Skills, Plugins, Search, RAG, and Voice
 
 Skills are text-only prompt-context modules. The app loads localized metadata catalogs from `public/data/skills`, fetches full skill definitions only when needed, and stores installed, edited, and custom skills locally. Active skills can be selected manually, inherited from workspace presets, or auto-selected for a message.
 
-Plugins are executable tools installed from OpenAPI manifests, built-in definitions, or remote streamable HTTP MCP servers discovered from the official MCP Registry. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. MCP v1 support is remote-only: stdio, npm, Docker, local process transports, and OAuth login flows are intentionally out of scope. MCP server URLs are HTTPS-only; local and self-hosted deployments may call localhost or private-network HTTPS endpoints for LAN MCP servers, while hosted deployments block those targets unless local-network proxying is explicitly enabled. Built-in image processing plugin results stay in the tool details and compact conversation history, so the model can decide whether and how to reference generated or edited images in its follow-up message. OpenAI-compatible Images API and OpenAI Responses image processing are separate plugins so their credentials and activation can be managed independently. Supported built-in media plugins expose plugin-level API Base URL and Model ID fields, optional image count parameters, Agnes image-to-image editing, and Agnes video generation from a public HTTPS image URL while keeping Agnes video as the explicit `create_video` / `get_video_result` two-step flow. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
+Plugins are executable tools installed from OpenAPI manifests, built-in definitions, or remote streamable HTTP MCP servers discovered from the official MCP Registry. Enabled plugin functions are exposed to compatible models as tools, then executed by the server-side plugin route. MCP v1 support is remote-only: stdio, npm, Docker, local process transports, and OAuth login flows are intentionally out of scope. User-configured MCP server URLs may use HTTP or HTTPS and may target localhost or private networks in either deployment mode; the official Registry remains HTTPS-only. Built-in image processing plugin results stay in the tool details and compact conversation history, so the model can decide whether and how to reference generated or edited images in its follow-up message. OpenAI-compatible Images API and OpenAI Responses image processing are separate plugins so their credentials and activation can be managed independently. Supported built-in media plugins expose plugin-level API Base URL and Model ID fields, optional image count parameters, Agnes image-to-image editing, and Agnes video generation from a public HTTPS image URL while keeping Agnes video as the explicit `create_video` / `get_video_result` two-step flow. Tool-call orchestration uses a high but bounded loop limit to avoid runaway recursive calls while still allowing multi-step tasks.
 
-Search can run through Google native Google Search, OpenAI Web Search, or external providers for other model families including Anthropic. Knowledge-base RAG stores source files in OPFS, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service.
+Search can run through Google native Google Search, OpenAI Web Search, or external providers for other model families including Anthropic. Firecrawl's public service works without an API key; a key only raises its request rate. The separate local global search center indexes active chat branches, attachments, workspaces, knowledge, and memories in browser memory and excludes reasoning, tool payloads, and credentials.
+
+Knowledge-base RAG preserves uploaded originals separately from editable or indexable extracted text, optionally parses documents with Mineru or LlamaParse, and can index chunks into an external vector service. Failed files can be retried, reparsed, reindexed, cancelled, or reconciled without discarding a usable original.
 
 Voice workflows support browser speech APIs and configured external providers. Set `DEFAULT_VOICE_PROVIDER` to `elevenlabs` or `mimo` to enable a server default; leaving it empty keeps browser-native speech as the default. Empty default model values disable the matching STT or TTS capability, and the UI can store user-specific secrets locally.
 
@@ -375,11 +401,11 @@ Deployment health is available from Settings and `/api/health`. It reports non-s
 
 Neo Chat is self-hosting friendly, not a turnkey public SaaS security boundary.
 
-- `DEPLOYMENT_MODE=local` allows local and private-network proxy targets for private deployments.
-- `DEPLOYMENT_MODE=hosted` blocks localhost, private-network, and plain-HTTP proxy targets unless explicitly overridden.
+- User-configured provider, search, RAG, plugin, and MCP targets may use HTTP and private-network addresses in either deployment mode.
+- Fixed registries and built-in service targets retain their HTTPS and host allowlists; HTTP media proxying remains controlled by `ALLOW_LOCAL_NETWORK_PROXY`.
 - BYOK envelopes prevent plain user-entered secrets from being sent in request bodies.
 - API schemas reject unknown high-risk fields and oversized payloads.
-- Plugin execution remains server-proxied and validated, but runtime tool calls no longer require a user confirmation modal.
+- Plugin execution remains server-proxied and validated. Tool calls run automatically by default; an optional System setting pauses only destructive calls for one-time approval or denial. Destructive approval is never persisted for the chat.
 - `ACCESS_PASSWORD` is a deployment gate, not an account system.
 
 Before exposing Neo Chat as a public multi-user service, add account authentication, tenant isolation, server-side secret storage, quotas, audit logs, abuse controls, and provider spend limits.
@@ -391,10 +417,13 @@ See [Reliability and Safety Model](docs/reliability-and-safety.md) for runtime b
 Quality checks:
 
 ```bash
+pnpm check:imports
 pnpm format:check
+pnpm hygiene:artifacts
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:e2e
 pnpm build
 pnpm audit --audit-level low
 ```
@@ -407,6 +436,9 @@ pnpm build            # Production build
 pnpm start            # Start production server
 pnpm format           # Format the repository with Prettier
 pnpm format:check     # Check repository formatting
+pnpm check:imports    # Reject disallowed long relative imports
+pnpm hygiene:artifacts # Check generated artifact hygiene
+pnpm test:e2e         # Run isolated Playwright smoke tests on port 3100
 pnpm build:worker     # Build for Cloudflare Workers
 pnpm worker:size      # Check Worker gzip size budget
 pnpm worker:dry-run   # Validate Worker deploy without publishing
@@ -424,6 +456,7 @@ src/lib/              Server/client domain helpers and safety gates
 src/services/         Provider, search, voice, RAG, and plugin service clients
 src/store/            Zustand stores and persistence migrations
 src/__tests__/        Vitest coverage for utilities, routes, and workflows
+e2e/                  Playwright browser smoke tests
 docs/                 Deployment and reliability notes
 ```
 

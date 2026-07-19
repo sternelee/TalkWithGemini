@@ -42,6 +42,7 @@ async function resolveTrustedMcpPlugin(plugin: Plugin): Promise<Plugin> {
     {
       policy: {
         ...getSafeUrlPolicy("pluginManifest"),
+        allowedProtocols: ["https:"],
         allowedHosts: ["registry.modelcontextprotocol.io"],
       },
       timeoutMs: 20_000,

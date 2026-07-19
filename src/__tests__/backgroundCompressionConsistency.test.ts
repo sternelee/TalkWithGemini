@@ -43,6 +43,10 @@ vi.mock("@/lib/utils/chatInput", () => ({
 
 vi.mock("@/lib/settings/searchRag", () => ({
   getSearchCompatibility: vi.fn(() => ({ enabled: true, mode: "none" })),
+  resolveEffectiveSearchCapability: vi.fn(() => ({
+    enabled: true,
+    mode: "none",
+  })),
   getSearchCompatibilityErrorMessage: vi.fn(() => "Search is unavailable"),
 }));
 

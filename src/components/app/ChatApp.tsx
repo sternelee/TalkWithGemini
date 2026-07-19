@@ -18,7 +18,13 @@ import {
   fetchWithByokRetry,
 } from "@/lib/byok/client";
 import { getAgentDetail } from "@/services/api/agentService";
-import { Message, Attachment, LobeAgent, SessionMessageTree } from "@/types";
+import {
+  Message,
+  Attachment,
+  LobeAgent,
+  SessionMessageTree,
+  ToolCall,
+} from "@/types";
 import { useChatStore } from "@/store/core/chatStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { appDb } from "@/store/storage/storageConfig";
@@ -43,6 +49,7 @@ import {
   useChatPanelNavigation,
   useChatShellState,
   useChatThemeEffects,
+  useToolConfirmationController,
   useWelcomeChatState,
   useWorkspaceAttachmentHydration,
 } from "@/features/chat";
@@ -75,7 +82,7 @@ import {
   shouldRunSettingsStartupEffects,
 } from "@/lib/app/startupEffects";
 import { buildSearchUpdate } from "@/lib/chat/searchUpdate";
-import { getSearchCompatibility } from "@/lib/settings/searchRag";
+import { resolveEffectiveSearchCapability } from "@/lib/settings/searchRag";
 
 const logChatAppError = logDevError;
 const EMPTY_MESSAGES: Message[] = [];
@@ -102,6 +109,7 @@ const ChatApp = () => {
       updateSessionInstruction,
       updateSessionCompression,
       updateSessionMemoryContext,
+      updateSessionConfig,
       toggleSessionPin,
       duplicateSession,
       addMessage,
@@ -247,6 +255,41 @@ const ChatApp = () => {
   const messages = activeMessages ?? EMPTY_MESSAGES; // Use activeMessages from store
   const currentSessionConfig = currentSession?.config;
   const currentSessionWorkspaceId = currentSession?.workspaceId;
+  const handleToolApprovalsChange = useCallback(
+    (
+      toolApprovals: NonNullable<typeof currentSessionConfig>["toolApprovals"],
+    ) => {
+      if (!currentSessionId) return;
+      updateSessionConfig(currentSessionId, { toolApprovals });
+    },
+    [currentSessionId, updateSessionConfig],
+  );
+  const {
+    controller: toolConfirmationController,
+    pendingRequests: pendingToolConfirmations,
+    decide: decideToolConfirmation,
+  } = useToolConfirmationController({
+    sessionId: currentSessionId,
+    approvals: currentSessionConfig?.toolApprovals ?? [],
+    onApprovalsChange: handleToolApprovalsChange,
+  });
+  const revokeToolSessionApproval = useCallback(
+    (toolCall: ToolCall) => {
+      if (!currentSessionId || !toolCall.pluginId) return;
+      const toolApprovals = (currentSessionConfig?.toolApprovals ?? []).filter(
+        (approval) =>
+          approval.pluginId !== toolCall.pluginId ||
+          approval.functionFingerprint !== toolCall.functionFingerprint ||
+          approval.risk !== toolCall.risk,
+      );
+      updateSessionConfig(currentSessionId, { toolApprovals });
+    },
+    [
+      currentSessionConfig?.toolApprovals,
+      currentSessionId,
+      updateSessionConfig,
+    ],
+  );
   const selectedProvider = useMemo(() => {
     const { providerId } = parseModelString(selectedModel);
     return providerId
@@ -258,12 +301,13 @@ const ChatApp = () => {
       search.provider === "google"
         ? undefined
         : search.configs[search.provider];
-    return getSearchCompatibility({
+    return resolveEffectiveSearchCapability({
       searchProvider: search.provider,
       searchConfig,
       modelProviderType: selectedProvider?.type,
+      selectedModel,
     });
-  }, [search.configs, search.provider, selectedProvider?.type]);
+  }, [search.configs, search.provider, selectedModel, selectedProvider?.type]);
   useChatThemeEffects(theme, system.fontSize);
 
   // Logic for Assistant List Animation
@@ -985,6 +1029,7 @@ const ChatApp = () => {
             outputBlocks,
           );
         },
+        toolConfirmationController,
       );
 
       if (!isGenerationRunActive(generation)) return;
@@ -1379,6 +1424,7 @@ const ChatApp = () => {
             outputBlocks,
           );
         },
+        toolConfirmationController,
       );
 
       if (!isGenerationRunActive(generation)) return;
@@ -1698,6 +1744,7 @@ const ChatApp = () => {
             outputBlocks,
           );
         },
+        toolConfirmationController,
       );
 
       if (!isGenerationRunActive(generation) || !modelMessageId) return;
@@ -1933,6 +1980,9 @@ const ChatApp = () => {
       handleStopGeneration={handleStopGeneration}
       setModel={setModel}
       onToggleSearch={() => setChatConfig({ useSearch: !chatConfig.useSearch })}
+      pendingToolConfirmations={pendingToolConfirmations}
+      onToolConfirmationDecision={decideToolConfirmation}
+      onRevokeToolSessionApproval={revokeToolSessionApproval}
     />
   );
 };

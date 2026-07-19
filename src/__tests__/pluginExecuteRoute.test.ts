@@ -291,7 +291,15 @@ describe("plugin execute route", () => {
     });
   });
 
-  it("rejects Jina reader requests for blocked nested target URLs", async () => {
+  it("allows Jina reader requests for private HTTP target URLs", async () => {
+    safeFetchTextMock.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      text: JSON.stringify({
+        code: 200,
+        data: { content: "# Local service" },
+      }),
+    });
+
     const { POST } = await import("../app/api/plugins/execute/route");
     const response = await POST(
       createRequest({
@@ -301,11 +309,12 @@ describe("plugin execute route", () => {
       }) as any,
     );
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: "Jina reader URL is not allowed",
-    });
-    expect(safeFetchTextMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(safeFetchTextMock).toHaveBeenCalledWith(
+      "https://r.jina.ai/http%3A%2F%2Flocalhost%3A3000%2Fadmin",
+      expect.objectContaining({ method: "GET" }),
+      expect.any(Object),
+    );
   });
 
   it("normalizes Agnes image generation results", async () => {
@@ -846,8 +855,14 @@ describe("plugin execute route", () => {
     });
   });
 
-  it("rejects unsafe OpenAI-compatible endpoint overrides", async () => {
+  it("allows private HTTP OpenAI-compatible endpoint overrides", async () => {
     decryptOptionalSecretMock.mockResolvedValue("compat-secret");
+    safeFetchTextMock.mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      text: JSON.stringify({
+        data: [{ url: "http://localhost:11434/generated.png" }],
+      }),
+    });
 
     const { POST } = await import("../app/api/plugins/execute/route");
     const response = await POST(
@@ -866,11 +881,12 @@ describe("plugin execute route", () => {
       }) as any,
     );
 
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: "Plugin endpoint URL is not allowed",
-    });
-    expect(safeFetchTextMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(safeFetchTextMock).toHaveBeenCalledWith(
+      "http://localhost:11434/v1/images/generations",
+      expect.objectContaining({ method: "POST" }),
+      expect.any(Object),
+    );
   });
 
   it("creates Agnes text-to-video tasks with configured model defaults", async () => {

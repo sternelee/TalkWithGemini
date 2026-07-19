@@ -75,12 +75,12 @@ describe("plugin config normalization", () => {
     });
   });
 
-  it("drops unsafe plugin endpoint overrides", () => {
+  it("preserves HTTP plugin endpoint overrides", () => {
     expect(
       normalizePluginConfig({
         baseUrl: "http://localhost:3000/v1",
       }).baseUrl,
-    ).toBeUndefined();
+    ).toBe("http://localhost:3000/v1");
   });
 
   it("normalizes plugin model defaults", () => {

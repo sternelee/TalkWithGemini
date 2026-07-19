@@ -1,6 +1,13 @@
 import React from "react";
 import { Globe, Server, Zap } from "lucide-react";
 import { useTranslations } from "next-intl";
+import {
+  getSearchProviderLabel,
+  resolveEffectiveSearchCapability,
+} from "@/lib/settings/searchRag";
+import { parseModelString } from "@/lib/utils/model";
+import { useChatStore } from "@/store/core/chatStore";
+import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useSettingsStore } from "@/store/core/settingsStore";
 import { SearchProviderItem } from "./SettingsUI";
 import { SEARCH_CONFIG_LIMITS } from "@/config/limits";
@@ -17,6 +24,8 @@ const BOCHA_KEY_URL = "https://open.bochaai.com/";
 
 const SearchSettings = () => {
   const t = useTranslations("Search");
+  const selectedModel = useChatStore((state) => state.selectedModel);
+  const providers = useCoreSettingsStore((state) => state.providers);
   const {
     search,
     serverConfig,
@@ -24,6 +33,40 @@ const SearchSettings = () => {
     updateSearchConfig,
     setSearchResultsLimit,
   } = useSettingsStore();
+  const { providerId: selectedProviderId } = parseModelString(selectedModel);
+  const selectedProvider = selectedProviderId
+    ? providers.find((provider) => provider.id === selectedProviderId)
+    : providers.find((provider) => provider.enabled);
+  const compatibility = resolveEffectiveSearchCapability({
+    searchProvider: search.provider,
+    searchConfig:
+      search.provider === "google"
+        ? undefined
+        : search.configs[search.provider],
+    modelProviderType: selectedProvider?.type,
+    selectedModel,
+  });
+  const providerLabel = getSearchProviderLabel(search.provider);
+  const capabilityMessage = compatibility.enabled
+    ? compatibility.source === "model_builtin"
+      ? t("capabilityModel", { provider: providerLabel })
+      : compatibility.source === "server_default"
+        ? t("capabilityServer")
+        : compatibility.source === "public_service"
+          ? t("capabilityPublicService")
+          : compatibility.source === "self_hosted"
+            ? t("capabilitySelfHosted", { provider: providerLabel })
+            : t("capabilityClient", { provider: providerLabel })
+    : compatibility.reason === "missing_model_provider"
+      ? t("capabilityMissingModel")
+      : compatibility.reason === "missing_server_default"
+        ? t("capabilityMissingServer")
+        : compatibility.reason === "model_builtin_search_unsupported" ||
+            compatibility.reason === "google_requires_gemini"
+          ? t("capabilityUnsupportedModel")
+          : compatibility.reason === "missing_search_base_url"
+            ? t("capabilityMissingBaseUrl", { provider: providerLabel })
+            : t("capabilityMissingKey", { provider: providerLabel });
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -32,6 +75,17 @@ const SearchSettings = () => {
           <h3 className="text-lg font-semibold text-gray-800 dark:text-foreground">
             {t("title")}
           </h3>
+        </div>
+
+        <div
+          role="status"
+          className={`rounded-lg border px-3 py-2 text-xs leading-5 ${
+            compatibility.enabled
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100"
+              : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100"
+          }`}
+        >
+          {capabilityMessage}
         </div>
 
         <div className="grid grid-cols-1 gap-3">

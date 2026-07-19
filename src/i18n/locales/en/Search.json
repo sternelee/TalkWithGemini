@@ -5,5 +5,15 @@
   "modelBuiltIn": "Model Built-in",
   "modelBuiltInDesc": "Use the active model's built-in search: Google Search for Google models, OpenAI Web Search for OpenAI Responses models. OpenAI-compatible and Anthropic models should use an external search provider.",
   "searxngDesc": "Self-hosted privacy-respecting metasearch engine",
+  "capabilityModel": "Ready: the selected model can use {provider} built-in search.",
+  "capabilityServer": "Ready: the server default search service is available.",
+  "capabilityClient": "Ready: a saved {provider} credential is available.",
+  "capabilityPublicService": "Ready: Firecrawl works without an API key. Add one for higher request limits.",
+  "capabilitySelfHosted": "Ready: a self-hosted {provider} endpoint is configured.",
+  "capabilityMissingModel": "Select a model provider before using search.",
+  "capabilityMissingServer": "Default search is not configured on this deployment.",
+  "capabilityUnsupportedModel": "The selected model cannot use built-in search. Choose an external provider.",
+  "capabilityMissingBaseUrl": "{provider} requires a base URL.",
+  "capabilityMissingKey": "{provider} requires an API key.",
   "resultLimit": "Result Limit"
 }

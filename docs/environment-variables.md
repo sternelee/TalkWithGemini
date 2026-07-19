@@ -60,16 +60,23 @@ pnpm byok:generate
 
 ## Deployment Safety
 
-| Variable                          | Purpose                                                                                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DEPLOYMENT_MODE`                 | `local` allows local/private proxy targets; `hosted` blocks them by default and expects shared stores.                                      |
-| `ALLOW_INSECURE_LOCAL_PRODUCTION` | Explicitly allows production `local` mode without `ACCESS_PASSWORD`. Use only for private deployments that are not exposed to the internet. |
-| `ALLOW_LOCAL_NETWORK_PROXY`       | Explicit override for local/private-network proxy access. Keep disabled for hosted internet deployments.                                    |
-| `TRUST_PROXY_HEADERS`             | Trust forwarded proxy headers only when the hosting platform strips spoofed values.                                                         |
+| Variable                          | Purpose                                                                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEPLOYMENT_MODE`                 | Selects local or hosted deployment safeguards and shared-store expectations. It does not block user-configured HTTP or private-network targets.                                             |
+| `ALLOW_INSECURE_LOCAL_PRODUCTION` | Explicitly allows production `local` mode without `ACCESS_PASSWORD`. Use only for private deployments that are not exposed to the internet.                                                 |
+| `ALLOW_LOCAL_NETWORK_PROXY`       | Allows HTTP on deployment-gated media/image proxy surfaces. Private addresses themselves are no longer blocked; provider, search, RAG, plugin, and MCP policies do not depend on this flag. |
+| `TRUST_PROXY_HEADERS`             | Trust forwarded proxy headers only when the hosting platform strips spoofed values.                                                                                                         |
 
 `TRUST_PROXY_HEADERS` affects request identity used by deployment diagnostics
 and rate limiting. Leave it `false` unless Neo Chat is behind a trusted proxy
 that removes client-supplied forwarded headers.
+
+User-configured provider, search, RAG, plugin manifest/execution, and MCP URLs
+may use HTTP and may resolve to localhost or private-network addresses in both
+deployment modes. Fixed registries and built-in service endpoints remain
+HTTPS-only. On a public deployment, accept these user-configured URLs only from
+trusted administrators because they expand the server's SSRF surface and HTTP
+does not protect credentials or responses in transit.
 
 ## Shared Stores
 

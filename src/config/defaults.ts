@@ -69,6 +69,7 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   historyKeepCount: 4, // 保留最近 4 轮
   enableCodeCollapse: false,
   enableHtmlVisualPrompt: true,
+  enableDestructiveToolConfirmation: true,
   fontSize: "medium",
 } as const satisfies SystemSettings;
 

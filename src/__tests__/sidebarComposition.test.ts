@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Sidebar composition", () => {
-  it("keeps search/filter UI in a dedicated component", () => {
+  it("keeps the search trigger in a dedicated component with shared navigation styling", () => {
     const sidebar = readFileSync(
       resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
       "utf8",
@@ -19,23 +19,36 @@ describe("Sidebar composition", () => {
     expect(sidebar).toContain("expandedWorkspaceSessionLists");
     expect(sidebar).toContain("expandedRootSessionLists");
     expect(sidebar).not.toContain("const [expandedRootSessionList,");
-    expect(sidebar).toContain("isSearchingChats");
+    expect(sidebar).not.toContain("isSearchingChats");
     expect(sidebar).toContain("renderShowAllButton");
     expect(sidebar).toContain("PanelLeftOpen");
     expect(sidebar).toContain("PanelLeftClose");
     expect(sidebar).not.toContain('name="sidebar-chat-search"');
-    expect(sidebarSearch).toContain('name="sidebar-chat-search"');
-    expect(sidebarSearch).toContain("onCollapsedSearchClick");
+    expect(sidebarSearch).not.toContain('name="sidebar-chat-search"');
+    expect(sidebarSearch).toContain("onOpenGlobalSearch");
+    expect(sidebarSearch).toContain("isGlobalSearchOpen");
+    expect(sidebarSearch).toContain("aria-current={isGlobalSearchOpen");
+    expect(sidebarSearch).toContain('t("globalSearch")');
+    const navigationItemClasses =
+      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium";
+    expect(sidebar).toContain(navigationItemClasses);
+    expect(sidebarSearch).toContain(navigationItemClasses);
+    expect(sidebarSearch).toContain(
+      'isOpen ? "w-full" : "w-10 justify-center px-0"',
+    );
+    expect(sidebarSearch).not.toContain("<kbd");
+    expect(sidebarSearch).not.toContain("⌘/Ctrl K");
   });
 
-  it("defaults workspace chat lists to collapsed while search expands matches", () => {
+  it("defaults workspace chat lists to collapsed without search-only expansion", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/components/layout/Sidebar.tsx"),
       "utf8",
     );
 
     expect(source).toContain("newExpanded[w.id] = false");
-    expect(source).toContain("isSearchingChats || expandedSections[ws.id]");
+    expect(source).toContain("const isExpanded = expandedSections[ws.id]");
+    expect(source).not.toContain("isSearchingChats");
     expect(source).not.toContain("newExpanded[w.id] = true");
   });
 

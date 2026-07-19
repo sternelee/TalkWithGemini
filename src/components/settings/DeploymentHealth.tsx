@@ -4,31 +4,38 @@ import {
   AlertTriangle,
   CheckCircle2,
   CircleDashed,
+  Info,
+  RefreshCw,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { SERVER_DEFAULT_PROVIDER_ID } from "@/lib/defaultConfig/shared";
 import { readJsonResponseOrThrow } from "@/lib/api/client";
+import {
+  getSearchProviderLabel,
+  resolveEffectiveSearchCapability,
+} from "@/lib/settings/searchRag";
+import {
+  serviceHealthStateToDisplay,
+  strongestDeploymentHealthState,
+  type DeploymentHealthState,
+} from "@/lib/services/healthPresentation";
+import { parseModelString } from "@/lib/utils/model";
+import { useChatStore } from "@/store/core/chatStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useSettingsStore } from "@/store/core/settingsStore";
-import type {
-  ServiceHealthServiceKey,
-  ServiceHealthState,
-  ServiceHealthStatus,
-} from "@/types";
-
-type HealthState = "ok" | "warning" | "blocked" | "missing";
+import type { ServiceHealthServiceKey, ServiceHealthStatus } from "@/types";
 
 interface HealthItem {
   key: string;
   label: string;
   detail: string;
-  state: HealthState;
+  state: DeploymentHealthState;
 }
 
 const stateStyles: Record<
-  HealthState,
+  DeploymentHealthState,
   { Icon: typeof CheckCircle2; className: string; dotClassName: string }
 > = {
   ok: {
@@ -36,6 +43,18 @@ const stateStyles: Record<
     className:
       "border-emerald-200 bg-emerald-50/80 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-100",
     dotClassName: "bg-emerald-500",
+  },
+  info: {
+    Icon: Info,
+    className:
+      "border-blue-200 bg-blue-50/80 text-blue-800 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-100",
+    dotClassName: "bg-blue-500",
+  },
+  unknown: {
+    Icon: CircleDashed,
+    className:
+      "border-gray-200 bg-gray-50/80 text-gray-700 dark:border-border dark:bg-card/70 dark:text-muted-foreground",
+    dotClassName: "bg-gray-400",
   },
   warning: {
     Icon: AlertTriangle,
@@ -57,39 +76,23 @@ const stateStyles: Record<
   },
 };
 
-function storeState(value?: "memory" | "shared" | "missing"): HealthState {
+function storeState(
+  value?: "memory" | "shared" | "missing",
+): DeploymentHealthState {
   if (value === "shared") return "ok";
   if (value === "missing") return "blocked";
   return "warning";
-}
-
-function runtimeToHealthState(status?: ServiceHealthState): HealthState | null {
-  if (!status) return null;
-  if (status === "available") return "ok";
-  if (status === "policy_blocked" || status === "upstream_failed") {
-    return "blocked";
-  }
-  if (status === "missing_key" || status === "unconfigured") return "missing";
-  return "warning";
-}
-
-const healthSeverity: Record<HealthState, number> = {
-  ok: 0,
-  missing: 1,
-  warning: 2,
-  blocked: 3,
-};
-
-function strongestHealthState(states: HealthState[]): HealthState {
-  return states.reduce((strongest, state) =>
-    healthSeverity[state] > healthSeverity[strongest] ? state : strongest,
-  );
 }
 
 const DeploymentHealth: React.FC = () => {
   const t = useTranslations("DeploymentHealth");
   const [runtimeHealth, setRuntimeHealth] =
     useState<ServiceHealthStatus | null>(null);
+  const [runtimeFetchState, setRuntimeFetchState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [retryKey, setRetryKey] = useState(0);
+  const selectedModel = useChatStore((state) => state.selectedModel);
   const { providers, defaultModels } = useCoreSettingsStore();
   const { serverConfig, search, rag, voice, installedPlugins } =
     useSettingsStore();
@@ -109,8 +112,29 @@ const DeploymentHealth: React.FC = () => {
           Boolean(provider.apiKey?.trim())),
     ) ||
     Object.values(defaultModels).some(Boolean);
-  const hasSearch =
-    Boolean(serverConfig?.search.available) || search.provider !== "google";
+  const { providerId: selectedProviderId } = parseModelString(selectedModel);
+  const selectedProvider = selectedProviderId
+    ? providers.find((provider) => provider.id === selectedProviderId)
+    : providers.find((provider) => provider.enabled);
+  const searchCompatibility = resolveEffectiveSearchCapability({
+    searchProvider: search.provider,
+    searchConfig:
+      search.provider === "google"
+        ? undefined
+        : search.configs[search.provider],
+    modelProviderType: selectedProvider?.type,
+    selectedModel,
+  });
+  const searchProviderLabel = getSearchProviderLabel(search.provider);
+  const searchDetail = searchCompatibility.enabled
+    ? searchCompatibility.source === "model_builtin"
+      ? t("searchReadyModel", { provider: searchProviderLabel })
+      : searchCompatibility.source === "server_default"
+        ? t("searchReadyServer")
+        : searchCompatibility.source === "self_hosted"
+          ? t("searchReadySelfHosted", { provider: searchProviderLabel })
+          : t("searchReadyClient", { provider: searchProviderLabel })
+    : t("searchMissing");
   const hasRag =
     Boolean(serverConfig?.rag.vectorStoreAvailable) ||
     Boolean(serverConfig?.rag.documentProcessingAvailable) ||
@@ -129,19 +153,21 @@ const DeploymentHealth: React.FC = () => {
     voice.ttsProvider !== "browser";
   const runtimeServices = runtimeHealth?.services;
   const runtimeState = (service: ServiceHealthServiceKey) =>
-    runtimeToHealthState(runtimeServices?.[service]?.status);
+    serviceHealthStateToDisplay(runtimeServices?.[service]?.status);
   const runtimeStoreState = runtimeServices
-    ? strongestHealthState(
+    ? strongestDeploymentHealthState(
         [
           runtimeState("rateLimitStore"),
           runtimeState("documentParseJobStore"),
           runtimeState("pluginRegistry"),
-        ].filter((state): state is HealthState => Boolean(state)),
+        ].filter((state): state is DeploymentHealthState => Boolean(state)),
       )
     : null;
 
   useEffect(() => {
     let cancelled = false;
+    setRuntimeHealth(null);
+    setRuntimeFetchState("loading");
 
     fetch("/api/health", { cache: "no-store" })
       .then((response) =>
@@ -151,16 +177,22 @@ const DeploymentHealth: React.FC = () => {
         ),
       )
       .then((health) => {
-        if (!cancelled) setRuntimeHealth(health);
+        if (!cancelled) {
+          setRuntimeHealth(health);
+          setRuntimeFetchState("ready");
+        }
       })
       .catch(() => {
-        if (!cancelled) setRuntimeHealth(null);
+        if (!cancelled) {
+          setRuntimeHealth(null);
+          setRuntimeFetchState("error");
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryKey]);
 
   const items: HealthItem[] = [
     {
@@ -249,8 +281,8 @@ const DeploymentHealth: React.FC = () => {
     {
       key: "search",
       label: t("search"),
-      state: hasSearch ? "ok" : runtimeState("search") || "missing",
-      detail: hasSearch ? t("searchReady") : t("searchMissing"),
+      state: searchCompatibility.enabled ? "ok" : "missing",
+      detail: searchDetail,
     },
     {
       key: "rag",
@@ -302,6 +334,24 @@ const DeploymentHealth: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {runtimeFetchState === "error" ? (
+        <div
+          role="status"
+          className={`flex items-center gap-3 rounded-lg border p-3 ${stateStyles.unknown.className}`}
+        >
+          <CircleDashed className="shrink-0" size={17} aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-sm">{t("runtimeUnknown")}</p>
+          <button
+            type="button"
+            onClick={() => setRetryKey((value) => value + 1)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-current/20 px-2.5 py-1.5 text-xs font-medium hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/5"
+          >
+            <RefreshCw size={13} aria-hidden="true" />
+            {t("retry")}
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-2">
         {items.map((item) => {

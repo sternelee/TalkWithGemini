@@ -32,6 +32,7 @@ const DEFAULT_SEARCH_RESULTS_LIMIT = 5;
 const DEFAULT_RAG_TOP_K = 10;
 const DEFAULT_RAG_CHUNK_SIZE = 512;
 const DEFAULT_SEARXNG_BASE_URL = "http://localhost:8080";
+const DEFAULT_FIRECRAWL_BASE_URL = "https://api.firecrawl.dev";
 const DEFAULT_SEARCH_PROVIDER: SearchProviderID = "firecrawl";
 const DEFAULT_DOCUMENT_PARSE_PROVIDER: DocumentParseProvider = "mineru";
 
@@ -42,15 +43,43 @@ export type SearchCompatibilityReason =
   | "missing_model_provider"
   | "google_requires_gemini"
   | "model_builtin_search_unsupported"
+  | "missing_server_default"
   | "missing_search_api_key"
   | "missing_search_base_url";
+
+export type SearchCapabilitySource =
+  | "model_builtin"
+  | "server_default"
+  | "client_api_key"
+  | "public_service"
+  | "self_hosted";
 
 export interface SearchCompatibilityResult {
   enabled: boolean;
   mode: SearchCompatibilityMode;
   provider: SearchProviderID;
   reason?: SearchCompatibilityReason;
+  source?: SearchCapabilitySource;
 }
+
+const isExplicitFirecrawlBaseUrl = (baseUrl: unknown): boolean => {
+  if (typeof baseUrl !== "string") return false;
+  const normalized = baseUrl.trim().replace(/\/+$/, "").toLowerCase();
+  if (!normalized || normalized === DEFAULT_FIRECRAWL_BASE_URL.toLowerCase()) {
+    return false;
+  }
+  return isValidHttpUrl(normalized);
+};
+
+const isValidHttpUrl = (value: unknown): boolean => {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 const clampInteger = (
   value: unknown,
@@ -108,15 +137,21 @@ export const getSearchProviderLabel = (provider: SearchProviderID): string => {
   }
 };
 
-export const getSearchCompatibility = ({
-  searchProvider,
-  searchConfig,
-  modelProviderType,
-}: {
+type SearchCapabilityBaseInput = {
   searchProvider: SearchProviderID;
   searchConfig?: SearchServiceConfig;
   modelProviderType?: ProviderType;
-}): SearchCompatibilityResult => {
+};
+
+type SearchCapabilityInput = SearchCapabilityBaseInput & {
+  selectedModel?: string;
+};
+
+const resolveSearchCapability = ({
+  searchProvider,
+  searchConfig,
+  modelProviderType,
+}: SearchCapabilityBaseInput): SearchCompatibilityResult => {
   if (!modelProviderType) {
     return {
       enabled: false,
@@ -132,14 +167,18 @@ export const getSearchCompatibility = ({
         enabled: true,
         mode: "gemini-google",
         provider: searchProvider,
+        source: "model_builtin",
       };
     }
 
     if (modelProviderType === "OpenAI") {
+      // The first-party OpenAI provider is routed through the Responses API in
+      // chat-handler; "OpenAI Compatible" uses Chat Completions and is denied.
       return {
         enabled: true,
         mode: "openai-web",
         provider: searchProvider,
+        source: "model_builtin",
       };
     }
 
@@ -153,18 +192,28 @@ export const getSearchCompatibility = ({
 
   if (searchProvider === "default") {
     return searchConfig?.serverAvailable
-      ? { enabled: true, mode: "external", provider: searchProvider }
+      ? {
+          enabled: true,
+          mode: "external",
+          provider: searchProvider,
+          source: "server_default",
+        }
       : {
           enabled: false,
           mode: "unavailable",
           provider: searchProvider,
-          reason: "missing_search_api_key",
+          reason: "missing_server_default",
         };
   }
 
   if (searchProvider === "searxng") {
-    return searchConfig?.baseUrl?.trim()
-      ? { enabled: true, mode: "external", provider: searchProvider }
+    return isValidHttpUrl(searchConfig?.baseUrl)
+      ? {
+          enabled: true,
+          mode: "external",
+          provider: searchProvider,
+          source: "self_hosted",
+        }
       : {
           enabled: false,
           mode: "unavailable",
@@ -174,18 +223,70 @@ export const getSearchCompatibility = ({
   }
 
   if (searchProvider === "firecrawl") {
-    return { enabled: true, mode: "external", provider: searchProvider };
-  }
+    if (isExplicitFirecrawlBaseUrl(searchConfig?.baseUrl)) {
+      return {
+        enabled: true,
+        mode: "external",
+        provider: searchProvider,
+        source: "self_hosted",
+      };
+    }
 
-  return hasSearchApiKey(searchConfig)
-    ? { enabled: true, mode: "external", provider: searchProvider }
-    : {
+    if (
+      searchConfig?.baseUrl?.trim() &&
+      !isValidHttpUrl(searchConfig.baseUrl)
+    ) {
+      return {
         enabled: false,
         mode: "unavailable",
         provider: searchProvider,
-        reason: "missing_search_api_key",
+        reason: "missing_search_base_url",
       };
+    }
+
+    return {
+      enabled: true,
+      mode: "external",
+      provider: searchProvider,
+      source: hasSearchApiKey(searchConfig)
+        ? "client_api_key"
+        : "public_service",
+    };
+  }
+
+  if (hasSearchApiKey(searchConfig)) {
+    return {
+      enabled: true,
+      mode: "external",
+      provider: searchProvider,
+      source: "client_api_key",
+    };
+  }
+
+  return {
+    enabled: false,
+    mode: "unavailable",
+    provider: searchProvider,
+    reason: "missing_search_api_key",
+  };
 };
+
+export const resolveEffectiveSearchCapability = (
+  input: SearchCapabilityInput,
+): SearchCompatibilityResult => {
+  if (!input.selectedModel?.trim()) {
+    return {
+      enabled: false,
+      mode: "unavailable",
+      provider: input.searchProvider,
+      reason: "missing_model_provider",
+    };
+  }
+  return resolveSearchCapability(input);
+};
+
+/** @deprecated Use resolveEffectiveSearchCapability at capability boundaries. */
+export const getSearchCompatibility = resolveSearchCapability;
 
 export const getSearchCompatibilityErrorMessage = (
   result: SearchCompatibilityResult,
@@ -197,6 +298,8 @@ export const getSearchCompatibilityErrorMessage = (
       return "Google Search is only available with Google models. Choose an external search provider for this model.";
     case "model_builtin_search_unsupported":
       return "Model built-in search is only available with Google or OpenAI Responses models. Choose an external search provider for this model.";
+    case "missing_server_default":
+      return "Default search is not configured on this deployment.";
     case "missing_search_api_key":
       return `${getSearchProviderLabel(result.provider)} search requires an API key.`;
     case "missing_search_base_url":

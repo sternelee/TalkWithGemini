@@ -58,7 +58,9 @@ describe("client URL safety helpers", () => {
       ),
     ).toBeNull();
     expect(getSafeMarkdownImageSrc("http://example.com/image.png")).toBeNull();
-    expect(getSafeMarkdownImageSrc("https://127.0.0.1/image.png")).toBeNull();
+    expect(getSafeMarkdownImageSrc("https://127.0.0.1/image.png")).toBe(
+      "https://127.0.0.1/image.png",
+    );
   });
 
   it("blocks oversized inline markdown image data URLs", () => {
@@ -78,7 +80,9 @@ describe("client URL safety helpers", () => {
     );
     expect(getSafeDisplayImageSrc("//example.com/logo.webp")).toBeNull();
     expect(getSafeDisplayImageSrc("http://example.com/logo.webp")).toBeNull();
-    expect(getSafeDisplayImageSrc("https://10.0.0.5/logo.webp")).toBeNull();
+    expect(getSafeDisplayImageSrc("https://10.0.0.5/logo.webp")).toBe(
+      "https://10.0.0.5/logo.webp",
+    );
     expect(
       getSafeDisplayImageSrc(
         "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+",

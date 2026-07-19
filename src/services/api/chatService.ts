@@ -5,13 +5,26 @@ import {
   Session,
   MessageOutputBlock,
   ToolCall,
+  ToolConfirmationController,
+  ToolConfirmationDecision,
+  ToolConfirmationRequest,
 } from "@/types";
 import { useSettingsStore, getTaskModel } from "@/store/core/settingsStore";
 import { useCoreSettingsStore } from "@/store/core/coreSettingsStore";
 import { useMemoryStore } from "@/store/core/memoryStore";
 import { v7 as uuidv7 } from "uuid";
 import { executePluginFunction } from "@/utils/pluginUtils";
-import { getEnabledPluginFunctions } from "@/lib/plugin/resolve";
+import {
+  getEnabledPluginFunctions,
+  resolveEnabledPluginFunction,
+} from "@/lib/plugin/resolve";
+import { getPluginFunctionRisk } from "@/lib/plugin/risk";
+import {
+  createPluginFunctionFingerprint,
+  normalizeToolConfirmationDecision,
+  redactSensitiveToolArgs,
+  requiresToolConfirmation,
+} from "@/lib/plugin/confirmation";
 import {
   parseModelString,
   supportsImageGeneration,
@@ -31,8 +44,8 @@ import {
 import { appendDiagramRequestInstructions } from "@/lib/chat/diagramPrompt";
 import { appendHtmlVisualRequestInstructions } from "@/lib/chat/htmlVisualPrompt";
 import {
-  getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
+  resolveEffectiveSearchCapability,
 } from "@/lib/settings/searchRag";
 import { createMessageOutputBlockBuilder } from "@/lib/chat/messageOutputBlocks";
 import { resolveImageGenerationOptions } from "@/lib/chat/imageGenerationOptions";
@@ -149,6 +162,75 @@ function createAbortError(signal?: AbortSignal): Error {
   const error = new Error("The operation was aborted");
   error.name = "AbortError";
   return error;
+}
+
+function waitForToolConfirmation(
+  controller: ToolConfirmationController,
+  request: ToolConfirmationRequest,
+  signal?: AbortSignal,
+) {
+  if (signal?.aborted) return Promise.reject(createAbortError(signal));
+
+  return new Promise<
+    Awaited<ReturnType<ToolConfirmationController["requestConfirmation"]>>
+  >((resolve, reject) => {
+    const onAbort = () => reject(createAbortError(signal));
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    Promise.resolve()
+      .then(() => controller.requestConfirmation(request, signal))
+      .then(
+        (decision) => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(decision);
+        },
+        (error) => {
+          signal?.removeEventListener("abort", onAbort);
+          reject(error);
+        },
+      );
+  });
+}
+
+function createRejectedToolCall(
+  toolCall: ToolCall,
+  code: string,
+  message: string,
+  recoverable: boolean,
+): ToolCall {
+  return {
+    ...toolCall,
+    status: "denied",
+    isError: true,
+    confirmation: {
+      required: true,
+      state: "denied",
+      decision: "deny",
+      decidedAt: Date.now(),
+    },
+    errorInfo: { code, message, recoverable },
+    result: { error: { code, message } },
+  };
+}
+
+function createConfirmationFailureToolCall(
+  toolCall: ToolCall,
+  code: string,
+  message: string,
+  state: "interrupted" | "error",
+): ToolCall {
+  return {
+    ...toolCall,
+    status: "error",
+    isError: true,
+    confirmation: {
+      required: true,
+      state,
+      decidedAt: Date.now(),
+    },
+    errorInfo: { code, message, recoverable: true },
+    result: { error: { code, message } },
+  };
 }
 
 function createChatStreamEventError(event: {
@@ -457,7 +539,7 @@ export interface ModelInfo {
 
 // Stream chat response from backend API
 export const streamChatResponse = async (
-  _sessionId: string, // Prefixed with _ to indicate intentionally unused
+  sessionId: string,
   model: string,
   history: Message[],
   newMessage: string,
@@ -480,7 +562,11 @@ export const streamChatResponse = async (
   activePlugins?: string[], // Add activePlugins parameter
   skillsContext?: string,
   onOutputBlocks?: (outputBlocks: MessageOutputBlock[]) => void,
+  toolConfirmationController?: ToolConfirmationController,
 ): Promise<string> => {
+  const enableDestructiveToolConfirmation =
+    useSettingsStore.getState().system?.enableDestructiveToolConfirmation ===
+    true;
   const { providerId, modelName } = parseModelString(model);
 
   const { providers } = useCoreSettingsStore.getState();
@@ -495,10 +581,11 @@ export const streamChatResponse = async (
   const { search } = useSettingsStore.getState();
   const searchConfig =
     search.provider === "google" ? undefined : search.configs[search.provider];
-  const searchCompatibility = getSearchCompatibility({
+  const searchCompatibility = resolveEffectiveSearchCapability({
     searchProvider: search.provider,
     searchConfig,
     modelProviderType: provider.type,
+    selectedModel: model,
   });
   const outputBlockBuilder = createMessageOutputBlockBuilder();
   const emitOutputBlocks = () => {
@@ -588,6 +675,7 @@ export const streamChatResponse = async (
     let requestConfig: Partial<ChatConfig> = { ...config };
     const maxToolRounds = PLUGIN_EXECUTION_LIMITS.maxToolRounds;
     let executedToolCallCount = 0;
+    const functionFingerprintCache = new Map<string, Promise<string>>();
 
     if (
       requestConfig.imageCount === undefined &&
@@ -996,7 +1084,187 @@ export const streamChatResponse = async (
       });
       executedToolCallCount += toolCallsToExecute.length;
 
-      toolCallsToExecute.forEach((toolCall) => {
+      const approvedToolCalls: ToolCall[] = [];
+      const nonExecutedToolCalls: ToolCall[] = [];
+
+      for (const toolCall of toolCallsToExecute) {
+        if (isInternalMemoryTool(toolCall.name)) {
+          const approvedToolCall: ToolCall = {
+            ...toolCall,
+            risk: "read",
+            confirmation: {
+              required: false,
+              state: "approved",
+              decision: "automatic",
+              decidedAt: Date.now(),
+            },
+          };
+          approvedToolCalls.push(approvedToolCall);
+          continue;
+        }
+
+        const resolved = resolveEnabledPluginFunction(
+          installedPlugins,
+          toolCall.name,
+          activePlugins,
+          pluginConfigs,
+        );
+        if (!resolved) {
+          const failed: ToolCall = {
+            ...toolCall,
+            status: "error",
+            isError: true,
+            errorInfo: {
+              code: "TOOL_FUNCTION_NOT_FOUND",
+              message: `Function ${toolCall.name} is no longer available.`,
+              recoverable: true,
+            },
+            result: {
+              error: {
+                code: "TOOL_FUNCTION_NOT_FOUND",
+                message: `Function ${toolCall.name} is no longer available.`,
+              },
+            },
+          };
+          outputBlockBuilder.updateToolCall(failed);
+          emitOutputBlocks();
+          upsertToolCall(failed);
+          nonExecutedToolCalls.push(failed);
+          continue;
+        }
+
+        const { plugin, functionDef } = resolved;
+        const risk = getPluginFunctionRisk(functionDef);
+        const fingerprintCacheKey = `${plugin.id}\u0000${functionDef.name}`;
+        let fingerprintPromise =
+          functionFingerprintCache.get(fingerprintCacheKey);
+        if (!fingerprintPromise) {
+          fingerprintPromise = createPluginFunctionFingerprint(
+            plugin,
+            functionDef,
+          );
+          functionFingerprintCache.set(fingerprintCacheKey, fingerprintPromise);
+        }
+        const functionFingerprint = await fingerprintPromise;
+        const identifiedToolCall: ToolCall = {
+          ...toolCall,
+          pluginId: plugin.id,
+          pluginTitle: plugin.title,
+          functionFingerprint,
+          risk,
+        };
+
+        if (
+          !requiresToolConfirmation(risk, enableDestructiveToolConfirmation)
+        ) {
+          const approvedToolCall: ToolCall = {
+            ...identifiedToolCall,
+            confirmation: {
+              required: false,
+              state: "approved",
+              decision: "automatic",
+              decidedAt: Date.now(),
+            },
+          };
+          approvedToolCalls.push(approvedToolCall);
+          continue;
+        }
+
+        const approvalCandidate = {
+          pluginId: plugin.id,
+          functionName: functionDef.name,
+          risk,
+          functionFingerprint,
+          sessionId,
+        };
+        let decision: ToolConfirmationDecision | undefined;
+
+        if (toolConfirmationController) {
+          const awaitingToolCall: ToolCall = {
+            ...identifiedToolCall,
+            status: "awaiting_confirmation",
+            confirmation: { required: true, state: "pending" },
+          };
+          outputBlockBuilder.updateToolCall(awaitingToolCall);
+          emitOutputBlocks();
+          upsertToolCall(awaitingToolCall);
+
+          try {
+            decision = normalizeToolConfirmationDecision(
+              await waitForToolConfirmation(
+                toolConfirmationController,
+                {
+                  ...approvalCandidate,
+                  approvedAt: Date.now(),
+                  toolCallId: toolCall.id,
+                  pluginTitle: plugin.title,
+                  args: redactSensitiveToolArgs(toolCall.args),
+                },
+                signal,
+              ),
+              risk,
+            );
+          } catch (confirmationError) {
+            const aborted = isAbortError(confirmationError, signal);
+            const rejected = createConfirmationFailureToolCall(
+              awaitingToolCall,
+              aborted ? "CONFIRMATION_INTERRUPTED" : "TOOL_CONFIRMATION_FAILED",
+              aborted
+                ? "Tool confirmation was interrupted before a decision."
+                : "Tool confirmation failed before a decision.",
+              aborted ? "interrupted" : "error",
+            );
+            outputBlockBuilder.updateToolCall(rejected);
+            emitOutputBlocks();
+            upsertToolCall(rejected);
+            if (aborted) throw createAbortError(signal);
+            nonExecutedToolCalls.push(rejected);
+            continue;
+          }
+        }
+
+        if (!decision) {
+          const failed = createConfirmationFailureToolCall(
+            identifiedToolCall,
+            "TOOL_CONFIRMATION_UNAVAILABLE",
+            "This tool call requires confirmation, but no confirmation controller is available.",
+            "error",
+          );
+          outputBlockBuilder.updateToolCall(failed);
+          emitOutputBlocks();
+          upsertToolCall(failed);
+          nonExecutedToolCalls.push(failed);
+          continue;
+        }
+
+        if (decision === "deny") {
+          const rejected = createRejectedToolCall(
+            identifiedToolCall,
+            "TOOL_CALL_DENIED",
+            "The user denied this tool call.",
+            false,
+          );
+          outputBlockBuilder.updateToolCall(rejected);
+          emitOutputBlocks();
+          upsertToolCall(rejected);
+          nonExecutedToolCalls.push(rejected);
+          continue;
+        }
+
+        const approvedAt = Date.now();
+        const approvedToolCall: ToolCall = {
+          ...identifiedToolCall,
+          confirmation: {
+            required: true,
+            state: "approved",
+            decision,
+            decidedAt: approvedAt,
+          },
+        };
+        approvedToolCalls.push(approvedToolCall);
+      }
+
+      approvedToolCalls.forEach((toolCall) => {
         const runningToolCall: ToolCall = { ...toolCall, status: "running" };
         outputBlockBuilder.updateToolCall(runningToolCall);
         emitOutputBlocks();
@@ -1004,7 +1272,7 @@ export const streamChatResponse = async (
       });
 
       const completedToolCalls = await mapWithConcurrency(
-        toolCallsToExecute,
+        approvedToolCalls,
         PLUGIN_EXECUTION_LIMITS.maxToolConcurrency,
         async (toolCall) => {
           try {
@@ -1014,8 +1282,17 @@ export const streamChatResponse = async (
                   toolCall.name,
                   toolCall.args,
                   toolCall.auth,
-                  activePlugins,
+                  toolCall.pluginId ? [toolCall.pluginId] : activePlugins,
                   signal,
+                  toolCall.pluginId &&
+                    toolCall.functionFingerprint &&
+                    toolCall.risk
+                    ? {
+                        pluginId: toolCall.pluginId,
+                        functionFingerprint: toolCall.functionFingerprint,
+                        risk: toolCall.risk,
+                      }
+                    : undefined,
                 );
             const isError =
               !!resultData &&
@@ -1052,8 +1329,17 @@ export const streamChatResponse = async (
           }
         },
       );
+      const completedById = new Map(
+        [...completedToolCalls, ...nonExecutedToolCalls].map((toolCall) => [
+          toolCall.id,
+          toolCall,
+        ]),
+      );
       const executedToolCalls = [
-        ...completedToolCalls,
+        ...toolCallsToExecute.flatMap((toolCall) => {
+          const completed = completedById.get(toolCall.id);
+          return completed ? [completed] : [];
+        }),
         ...budgetSkippedToolCalls,
       ];
 

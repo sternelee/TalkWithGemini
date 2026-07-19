@@ -1,27 +1,38 @@
 "use client";
-import React, { useId, useMemo, useState } from "react";
+import React, { useEffect, useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ToolCall } from "@/types";
+import type { ToolCall, ToolConfirmationDecision } from "@/types";
 import {
   ChevronDown,
   LoaderCircle,
   Wrench,
   CheckCircle2,
   AlertCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { Blocks } from "lucide-react";
 import {
   formatToolDisplayName,
   formatToolDisplayValue,
 } from "@/lib/utils/toolDisplay";
+import { redactSensitiveToolArgs } from "@/lib/plugin/confirmation";
 
 interface ToolCallBlockProps {
   toolCalls: ToolCall[];
+  onConfirmationDecision?: (
+    toolCallId: string,
+    decision: ToolConfirmationDecision,
+  ) => void;
+  onRevokeSessionApproval?: (toolCall: ToolCall) => void;
 }
 
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 
-const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
+const ToolCallBlock: React.FC<ToolCallBlockProps> = ({
+  toolCalls,
+  onConfirmationDecision,
+  onRevokeSessionApproval,
+}) => {
   const t = useTranslations("Content");
   const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
@@ -32,7 +43,9 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
       safeToolCalls.map((toolCall) => ({
         ...toolCall,
         displayName: formatToolDisplayName(toolCall.name),
-        argsDisplay: formatToolDisplayValue(toolCall.args),
+        argsDisplay: formatToolDisplayValue(
+          redactSensitiveToolArgs(toolCall.args),
+        ),
         resultDisplay:
           toolCall.result !== undefined
             ? formatToolDisplayValue(toolCall.result)
@@ -41,23 +54,55 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
     [safeToolCalls],
   );
 
+  const awaitingConfirmation = safeToolCalls.find(
+    (tc) => tc.status === "awaiting_confirmation",
+  );
+
+  useEffect(() => {
+    if (awaitingConfirmation) setIsExpanded(true);
+  }, [awaitingConfirmation]);
+
   if (safeToolCalls.length === 0) return null;
 
   const activeTool = safeToolCalls.find(
-    (tc) => tc.status === "pending" || tc.status === "running",
+    (tc) =>
+      tc.status === "pending" ||
+      tc.status === "awaiting_confirmation" ||
+      tc.status === "running",
   );
   const activeDisplayTool = displayToolCalls.find(
     (tc) => tc.id === activeTool?.id,
   );
-  const isLoading = !!activeTool;
+  const isLoading = !!activeTool && !awaitingConfirmation;
   const isError = safeToolCalls.some(
-    (tc) => tc.status === "error" || tc.status === "skipped" || tc.isError,
+    (tc) =>
+      tc.status === "error" ||
+      tc.status === "skipped" ||
+      tc.status === "denied" ||
+      tc.isError,
   );
 
   const displayTitle =
-    isLoading && activeDisplayTool
-      ? t("runningTool", { name: activeDisplayTool.displayName })
-      : t("usedTools", { count: safeToolCalls.length });
+    awaitingConfirmation && activeDisplayTool
+      ? t("confirmationRequired", { name: activeDisplayTool.displayName })
+      : isLoading && activeDisplayTool
+        ? t("runningTool", { name: activeDisplayTool.displayName })
+        : t("usedTools", { count: safeToolCalls.length });
+
+  const getRiskLabel = (risk: ToolCall["risk"]) => {
+    switch (risk) {
+      case "read":
+        return t("riskRead");
+      case "write":
+        return t("riskWrite");
+      case "destructive":
+        return t("riskDestructive");
+      case "external":
+        return t("riskExternal");
+      default:
+        return null;
+    }
+  };
 
   const TruncatedBadge = () => (
     <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-200">
@@ -76,9 +121,11 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 dark:text-muted-foreground hover:bg-gray-100/50 dark:hover:bg-accent/30 transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50"
       >
         <div
-          className={`p-1 rounded ${isLoading ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" : isError ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"}`}
+          className={`p-1 rounded ${awaitingConfirmation ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" : isLoading ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" : isError ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"}`}
         >
-          {isLoading ? (
+          {awaitingConfirmation ? (
+            <ShieldAlert size={12} aria-hidden="true" />
+          ) : isLoading ? (
             <LoaderCircle
               size={12}
               className="animate-spin"
@@ -116,9 +163,32 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
                       aria-hidden="true"
                     />
                     <span className="truncate">{tc.displayName}</span>
+                    {tc.risk ? (
+                      <span className="shrink-0 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-muted dark:text-muted-foreground">
+                        {getRiskLabel(tc.risk)}
+                      </span>
+                    ) : null}
+                    {tc.confirmation?.decision === "allow_once" ? (
+                      <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200">
+                        {t("approvedOnce")}
+                      </span>
+                    ) : tc.confirmation?.decision === "allow_session" ? (
+                      <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200">
+                        {t("approvedSession")}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-1">
-                    {tc.status === "pending" || tc.status === "running" ? (
+                    {tc.status === "awaiting_confirmation" ? (
+                      <span
+                        role="status"
+                        aria-live="polite"
+                        className="flex items-center gap-1 text-amber-600 dark:text-amber-400"
+                      >
+                        <ShieldAlert size={10} aria-hidden="true" />{" "}
+                        {t("statusAwaitingConfirmation")}
+                      </span>
+                    ) : tc.status === "pending" || tc.status === "running" ? (
                       <span
                         role="status"
                         aria-live="polite"
@@ -138,6 +208,21 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
                         <AlertCircle size={10} aria-hidden="true" />{" "}
                         {t("statusSkipped")}
                       </span>
+                    ) : tc.status === "denied" ? (
+                      <span className="text-amber-600 flex items-center gap-1 dark:text-amber-400">
+                        <AlertCircle size={10} aria-hidden="true" />{" "}
+                        {t("statusDenied")}
+                      </span>
+                    ) : tc.confirmation?.state === "interrupted" ? (
+                      <span className="text-amber-600 flex items-center gap-1 dark:text-amber-400">
+                        <AlertCircle size={10} aria-hidden="true" />{" "}
+                        {t("statusInterrupted")}
+                      </span>
+                    ) : tc.confirmation?.state === "error" ? (
+                      <span className="text-red-500 flex items-center gap-1">
+                        <AlertCircle size={10} aria-hidden="true" />{" "}
+                        {t("statusConfirmationFailed")}
+                      </span>
                     ) : tc.status === "error" || tc.isError ? (
                       <span className="text-red-500 flex items-center gap-1">
                         <AlertCircle size={10} aria-hidden="true" />{" "}
@@ -151,6 +236,62 @@ const ToolCallBlock: React.FC<ToolCallBlockProps> = ({ toolCalls }) => {
                     )}
                   </div>
                 </div>
+
+                {tc.status === "awaiting_confirmation" &&
+                onConfirmationDecision ? (
+                  <div
+                    role="alert"
+                    className="mb-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+                  >
+                    <p className="leading-relaxed">
+                      {t("confirmationPrompt", {
+                        plugin:
+                          tc.pluginTitle || tc.pluginId || t("toolPlugin"),
+                        risk: getRiskLabel(tc.risk) || t("riskExternal"),
+                      })}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onConfirmationDecision(tc.id, "allow_once")
+                        }
+                        className="rounded bg-amber-600 px-2.5 py-1 font-medium text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                      >
+                        {t("allowOnce")}
+                      </button>
+                      {tc.risk === "write" || tc.risk === "external" ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onConfirmationDecision(tc.id, "allow_session")
+                          }
+                          className="rounded border border-amber-400 bg-white px-2.5 py-1 font-medium text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:bg-transparent dark:text-amber-100 dark:hover:bg-amber-950/60"
+                        >
+                          {t("allowSession")}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => onConfirmationDecision(tc.id, "deny")}
+                        className="rounded border border-gray-300 bg-white px-2.5 py-1 font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-accent"
+                      >
+                        {t("denyTool")}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {tc.confirmation?.decision === "allow_session" &&
+                onRevokeSessionApproval ? (
+                  <button
+                    type="button"
+                    onClick={() => onRevokeSessionApproval(tc)}
+                    className="mb-2 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 dark:border-border dark:bg-card dark:text-foreground dark:hover:bg-accent"
+                  >
+                    {t("revokeSessionApproval")}
+                  </button>
+                ) : null}
 
                 <div className="mb-1 max-h-72 overflow-auto rounded bg-gray-100 p-2 font-mono text-gray-600 dark:bg-muted dark:text-foreground/85">
                   <span className="opacity-50 select-none">

@@ -87,6 +87,34 @@ export async function writeToOPFS(url: string, content: string): Promise<void> {
 }
 
 /**
+ * Writes binary content to an exact app-owned OPFS URL. This is used by
+ * validated backup restores, where persisted references must be rewritten to
+ * deterministic staging paths before any application state is replaced.
+ */
+export async function writeBlobToOPFS(
+  url: string,
+  content: Blob | Uint8Array,
+): Promise<void> {
+  const filePath = getSafeOPFSPath(url);
+  if (!filePath) throw new Error("Invalid OPFS URL");
+
+  if (content instanceof Blob && content.stream) {
+    await write(filePath, content.stream());
+    return;
+  }
+
+  const bytes =
+    content instanceof Blob
+      ? new Uint8Array(await content.arrayBuffer())
+      : content;
+  const buffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+  await write(filePath, buffer);
+}
+
+/**
  * Deletes an OPFS URL if it exists.
  */
 export async function deleteFromOPFS(url?: string): Promise<void> {

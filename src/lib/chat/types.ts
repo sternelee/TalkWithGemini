@@ -8,6 +8,8 @@ export interface Attachment {
   data?: string;
   url?: string;
   fileName: string;
+  localFileMissing?: boolean;
+  localFileError?: string;
   displayCache?: {
     opfsUrl: string;
     sourceKind: "data" | "url";
@@ -32,6 +34,9 @@ export interface MessageVersion {
 export interface ToolCall {
   id: string;
   name: string;
+  pluginId?: string;
+  pluginTitle?: string;
+  functionFingerprint?: string;
   args: any;
   status:
     | "pending"
@@ -46,7 +51,8 @@ export interface ToolCall {
   risk?: PluginFunctionRisk;
   confirmation?: {
     required: boolean;
-    state: "pending" | "approved" | "denied";
+    state: "pending" | "approved" | "denied" | "interrupted" | "error";
+    decision?: ToolConfirmationDecision | "automatic";
     decidedAt?: number;
   };
   errorInfo?: {
@@ -60,6 +66,36 @@ export interface ToolCall {
     key?: string;
     addTo?: "header" | "query";
   };
+}
+
+export type ToolConfirmationDecision = "allow_once" | "allow_session" | "deny";
+
+export interface ToolSessionApproval {
+  pluginId: string;
+  functionName: string;
+  risk: PluginFunctionRisk;
+  functionFingerprint: string;
+  approvedAt: number;
+}
+
+export interface ToolConfirmationRequest extends ToolSessionApproval {
+  toolCallId: string;
+  sessionId?: string;
+  pluginTitle: string;
+  args: unknown;
+}
+
+export interface ToolConfirmationController {
+  requestConfirmation: (
+    request: ToolConfirmationRequest,
+    signal?: AbortSignal,
+  ) => Promise<ToolConfirmationDecision>;
+  isSessionApproved?: (
+    approval: Omit<ToolSessionApproval, "approvedAt"> & { sessionId?: string },
+  ) => boolean;
+  grantSessionApproval?: (
+    approval: ToolSessionApproval & { sessionId?: string },
+  ) => void;
 }
 
 export type MessageOutputBlock =
@@ -261,6 +297,7 @@ export interface SessionConfig {
   reasoningMode?: ReasoningMode;
   activePlugins?: string[];
   activeSkills?: string[];
+  toolApprovals?: ToolSessionApproval[];
 }
 
 export interface Session {

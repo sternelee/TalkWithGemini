@@ -3,21 +3,6 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("chat shell accessibility", () => {
-  it("provides a skip link to the main chat region", () => {
-    const chatShell = readFileSync(
-      resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
-      "utf8",
-    );
-    const globals = readFileSync(
-      resolve(process.cwd(), "src/app/globals.css"),
-      "utf8",
-    );
-
-    expect(chatShell).toContain('href="#main-chat"');
-    expect(chatShell).toContain('id="main-chat"');
-    expect(globals).toContain(".skip-link");
-  });
-
   it("accounts for mobile safe areas in fixed app chrome", () => {
     const chatShell = readFileSync(
       resolve(process.cwd(), "src/components/app/ChatAppShell.tsx"),
@@ -195,7 +180,7 @@ describe("chat shell accessibility", () => {
     expect(messageInput).toContain('"(pointer: coarse), (max-width: 1023px)"');
     expect(messageInput).toContain("requiresExplicitSend");
     expect(messageInput).toContain(
-      '"inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"',
+      '"inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"',
     );
   });
 

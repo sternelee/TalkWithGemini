@@ -8,6 +8,8 @@
   "videoAttachment": "视频",
   "videoAttachmentAria": "视频附件 {fileName}",
   "documentAttachment": "文档",
+  "localFileMissing": "恢复后本地文件不可用",
+  "localFileMissingAria": "附件 {fileName} 的本地文件不可用",
   "openDocumentAttachment": "打开文档",
   "openDocumentAttachmentAria": "打开文档附件 {fileName}",
   "previewImageAria": "预览图片 {fileName}",

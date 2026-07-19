@@ -52,7 +52,7 @@ describe("market plugin normalization", () => {
     ).toBeNull();
   });
 
-  it("keeps MCP metadata HTTPS-only while allowing LAN endpoints", () => {
+  it("allows HTTP and HTTPS MCP metadata for LAN endpoints", () => {
     expect(
       normalizeMarketPlugin({
         id: "mcp:lan:1.0.0",
@@ -89,7 +89,12 @@ describe("market plugin normalization", () => {
           toolNameMap: {},
         },
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      source: "mcp",
+      mcp: {
+        serverUrl: "http://192.168.1.10/mcp",
+      },
+    });
   });
 
   it("keeps root-relative plugin logos for local default assets", () => {

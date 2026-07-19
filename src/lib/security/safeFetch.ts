@@ -9,7 +9,6 @@ export { ResponseTimeoutError } from "../errors";
 import {
   getSafeUrlPolicy,
   isLocalhostName,
-  isPrivateIpAddress,
   redactUrl,
   SafeUrlPolicy,
   validateOutboundUrl,
@@ -230,22 +229,10 @@ async function assertResolvedAddressAllowed(
   const normalizedHostname = normalizeHostname(hostname);
 
   if (isLocalhostName(normalizedHostname)) {
-    if (!policy.allowLocalhost) {
-      throw policy.hostedProxyBlocked
-        ? new HostedProxyBlockedError("Localhost outbound requests are blocked")
-        : new Error("Localhost outbound requests are blocked");
-    }
     return;
   }
 
   if (isIpLiteral(normalizedHostname)) {
-    if (isPrivateIpAddress(normalizedHostname) && !policy.allowPrivateNetwork) {
-      throw policy.hostedProxyBlocked
-        ? new HostedProxyBlockedError(
-            "Private network outbound requests are blocked",
-          )
-        : new Error("Private network outbound requests are blocked");
-    }
     return;
   }
 
@@ -256,41 +243,7 @@ async function assertResolvedAddressAllowed(
         "DNS validation is unavailable for this outbound request",
       );
     }
-    if (
-      url.protocol === "http:" &&
-      policy.allowLocalHttp &&
-      !policy.allowHttp
-    ) {
-      throw policy.hostedProxyBlocked
-        ? new HostedProxyBlockedError(
-            "Plain HTTP is only allowed for local/self-hosted URLs",
-          )
-        : new Error("Plain HTTP is only allowed for local/self-hosted URLs");
-    }
     return;
-  }
-
-  for (const address of addresses) {
-    if (isPrivateIpAddress(address.address) && !policy.allowPrivateNetwork) {
-      throw policy.hostedProxyBlocked
-        ? new HostedProxyBlockedError(
-            "Private network outbound requests are blocked",
-          )
-        : new Error("Private network outbound requests are blocked");
-    }
-  }
-
-  if (url.protocol === "http:" && policy.allowLocalHttp && !policy.allowHttp) {
-    const resolvesOnlyToPrivate = addresses.every((address) =>
-      isPrivateIpAddress(address.address),
-    );
-    if (!resolvesOnlyToPrivate) {
-      throw policy.hostedProxyBlocked
-        ? new HostedProxyBlockedError(
-            "Plain HTTP is only allowed for local/self-hosted URLs",
-          )
-        : new Error("Plain HTTP is only allowed for local/self-hosted URLs");
-    }
   }
 }
 

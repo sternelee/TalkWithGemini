@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AGNES_VIDEO_PLUGIN } from "../config/plugins";
 import { executePluginFunction } from "../utils/pluginUtils";
+import { createPluginFunctionFingerprint } from "../lib/plugin/confirmation";
+import { getPluginFunctionRisk } from "../lib/plugin/risk";
 import type { Plugin } from "../types";
 
 const mockStore = vi.hoisted(() => ({
@@ -104,6 +106,106 @@ describe("plugin execution utility", () => {
         "Function lookup is provided by multiple active plugins: test-plugin, duplicate-plugin.",
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the expected function definition has changed", async () => {
+    const confirmedFunction = plugin.functions[0];
+    const functionFingerprint = await createPluginFunctionFingerprint(
+      plugin,
+      confirmedFunction,
+    );
+    mockStore.state = {
+      installedPlugins: [
+        {
+          ...plugin,
+          functions: [{ ...confirmedFunction, path: "/changed" }],
+        },
+      ],
+      pluginConfigs: {},
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      executePluginFunction("lookup", {}, undefined, [plugin.id], undefined, {
+        pluginId: plugin.id,
+        functionFingerprint,
+        risk: getPluginFunctionRisk(confirmedFunction),
+      }),
+    ).resolves.toMatchObject({
+      error:
+        "Plugin function definition changed before execution. Review the updated tool before trying again.",
+      code: "TOOL_DEFINITION_CHANGED",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not bypass server confirmation checks after a primary 404", async () => {
+    const confirmedFunction = plugin.functions[0];
+    const functionFingerprint = await createPluginFunctionFingerprint(
+      plugin,
+      confirmedFunction,
+    );
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: "Plugin is not registered on the server.",
+          code: "PLUGIN_NOT_REGISTERED",
+        }),
+        { status: 404 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      executePluginFunction("lookup", {}, undefined, [plugin.id], undefined, {
+        pluginId: plugin.id,
+        functionFingerprint,
+        risk: getPluginFunctionRisk(confirmedFunction),
+      }),
+    ).resolves.toEqual({
+      error: "Plugin is not registered on the server.",
+      code: "PLUGIN_NOT_REGISTERED",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(
+      expect.objectContaining({
+        pluginId: plugin.id,
+        functionName: confirmedFunction.name,
+        expectedFingerprint: functionFingerprint,
+      }),
+    );
+  });
+
+  it("keeps the legacy 404 fallback for unconfirmed executions", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "Route not found" }), {
+          status: 404,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ result: { ok: true } })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(executePluginFunction("lookup", {})).resolves.toEqual({
+      ok: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual(
+      expect.objectContaining({
+        pluginId: plugin.id,
+        functionName: "lookup",
+      }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual(
+      expect.objectContaining({
+        plugin: expect.objectContaining({ id: plugin.id }),
+        functionDef: expect.objectContaining({ name: "lookup" }),
+      }),
+    );
   });
 
   it("passes saved plugin model defaults to backend execution", async () => {

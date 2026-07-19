@@ -41,7 +41,7 @@ const SETTINGS_TABS: Array<{
   { id: "about", labelKey: "tabAbout", Icon: Info },
 ];
 
-const renderTabContent = (activeTab: SettingsTabId) => {
+const renderTabContent = (activeTab: SettingsTabId, focusMemoryId?: string) => {
   switch (activeTab) {
     case "providers":
       return <ProviderSettings />;
@@ -54,7 +54,7 @@ const renderTabContent = (activeTab: SettingsTabId) => {
     case "voice":
       return <VoiceSettings />;
     case "memory":
-      return <MemorySettings />;
+      return <MemorySettings focusMemoryId={focusMemoryId} />;
     case "health":
       return <DeploymentHealth />;
     case "system":
@@ -68,12 +68,14 @@ interface SettingsPageProps {
   onClose?: () => void;
   activeTab?: SettingsTabId;
   onTabChange?: (tab: SettingsTabId) => void;
+  focusMemoryId?: string;
 }
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
   onClose,
   activeTab,
   onTabChange,
+  focusMemoryId,
 }) => {
   const t = useTranslations("SettingsPage");
   const [localActiveTab, setLocalActiveTab] =
@@ -156,11 +158,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <div className="flex w-full shrink-0 flex-row overflow-x-auto border-b border-border bg-background/80 md:w-60 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r">
+        <div className="flex w-full shrink-0 flex-row overflow-x-auto border-b border-border bg-background/80 md:w-60 md:flex-col md:overflow-y-auto md:scrollbar-gutter-both md:border-b-0 md:border-r">
           <div
             role="tablist"
             aria-label={t("sections")}
-            className="flex w-full flex-row gap-1 p-2 md:flex-col md:p-3"
+            className="flex w-full flex-row gap-1 p-2 md:flex-col"
           >
             {SETTINGS_TABS.map(({ id, labelKey, Icon }) => {
               const isSelected = resolvedActiveTab === id;
@@ -196,9 +198,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               id={`settings-panel-${resolvedActiveTab}`}
               role="tabpanel"
               aria-labelledby={`settings-tab-${resolvedActiveTab}`}
-              className="mx-auto w-full max-w-5xl px-4 py-5 md:px-8 md:py-6"
+              className="mx-auto w-full max-w-5xl px-3 py-5 md:px-6 md:py-6"
             >
-              {renderTabContent(resolvedActiveTab)}
+              {renderTabContent(resolvedActiveTab, focusMemoryId)}
             </div>
           </div>
         </div>

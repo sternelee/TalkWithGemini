@@ -136,6 +136,10 @@ describe("MCP plugin install route", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(safeFetchJsonMock.mock.calls[0]?.[2]?.policy).toMatchObject({
+      allowedProtocols: ["https:"],
+      allowedHosts: ["registry.modelcontextprotocol.io"],
+    });
     expect(listMcpToolsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         serverUrl: "https://mcp.example.com/mcp",

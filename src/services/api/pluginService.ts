@@ -16,10 +16,17 @@ import { DEFAULT_MCP_SERVER_LOGO_URL } from "@/lib/mcp/defaults";
 import { logDevError, logDevInfo, logDevWarn } from "@/lib/utils/devLogger";
 import { CACHE_CONFIG } from "@/config/api";
 import { MARKET_LIMITS } from "@/config/limits";
+import {
+  toMarketLoadError,
+  type MarketLoadResult,
+} from "@/lib/market/loadResult";
 
-let pluginListRequest: Promise<Plugin[]> | null = null;
-let mcpServerListRequest: Promise<Plugin[]> | null = null;
-const mcpServerPageRequests = new Map<string, Promise<McpServerPage>>();
+let pluginListRequest: Promise<MarketLoadResult<Plugin[]>> | null = null;
+let mcpServerListRequest: Promise<MarketLoadResult<Plugin[]>> | null = null;
+const mcpServerPageRequests = new Map<
+  string,
+  Promise<MarketLoadResult<McpServerPage>>
+>();
 const MCP_REGISTRY_UPSTREAM_LIMIT = 100;
 const MCP_REGISTRY_MAX_UPSTREAM_PAGES_PER_REQUEST = 10;
 
@@ -39,6 +46,39 @@ export interface McpServerPageOptions {
 export interface McpServerPage {
   plugins: Plugin[];
   nextCursor?: string;
+}
+
+function getPluginCacheSnapshot(): {
+  plugins: Plugin[];
+  fetchedAt: number;
+  fresh: boolean;
+} | null {
+  const { marketPlugins, marketPluginsTimestamp } = useSettingsStore.getState();
+  if (!Array.isArray(marketPlugins) || !marketPluginsTimestamp) return null;
+
+  return {
+    plugins: normalizeMarketPlugins(marketPlugins),
+    fetchedAt: marketPluginsTimestamp,
+    fresh: Date.now() - marketPluginsTimestamp < CACHE_CONFIG.plugins,
+  };
+}
+
+function getMcpCacheSnapshot(): {
+  plugins: Plugin[];
+  fetchedAt: number;
+  fresh: boolean;
+} | null {
+  const { marketMcpServers, marketMcpServersTimestamp } =
+    useSettingsStore.getState();
+  if (!Array.isArray(marketMcpServers) || !marketMcpServersTimestamp) {
+    return null;
+  }
+
+  return {
+    plugins: normalizeMarketPlugins(marketMcpServers),
+    fetchedAt: marketMcpServersTimestamp,
+    fresh: Date.now() - marketMcpServersTimestamp < CACHE_CONFIG.plugins,
+  };
 }
 
 function getMcpRegistryNextCursor(value: unknown): string {
@@ -103,11 +143,11 @@ function normalizeCustomMcpServerUrl(value: string): string {
   try {
     url = new URL(trimmed);
   } catch {
-    throw new Error("MCP server URL must be a valid HTTPS URL.");
+    throw new Error("MCP server URL must be a valid HTTP or HTTPS URL.");
   }
 
-  if (url.protocol !== "https:") {
-    throw new Error("MCP server URL must use HTTPS.");
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("MCP server URL must use HTTP or HTTPS.");
   }
 
   return url.toString();
@@ -151,104 +191,83 @@ function createCustomMcpPlugin(input: CustomMcpServerInstallInput): Plugin {
 }
 
 export const getCachedPlugins = (): Plugin[] => {
-  const { marketPlugins, marketPluginsTimestamp } = useSettingsStore.getState();
-
-  if (!marketPlugins || marketPlugins.length === 0 || !marketPluginsTimestamp) {
-    return [];
-  }
-
-  if (Date.now() - marketPluginsTimestamp >= CACHE_CONFIG.plugins) {
-    return [];
-  }
-
-  return normalizeMarketPlugins(marketPlugins);
+  const cache = getPluginCacheSnapshot();
+  return cache?.fresh ? cache.plugins : [];
 };
 
 export const getCachedMcpServers = (): Plugin[] => {
-  const { marketMcpServers, marketMcpServersTimestamp } =
-    useSettingsStore.getState();
-
-  if (
-    !marketMcpServers ||
-    marketMcpServers.length === 0 ||
-    !marketMcpServersTimestamp
-  ) {
-    return [];
-  }
-
-  if (Date.now() - marketMcpServersTimestamp >= CACHE_CONFIG.plugins) {
-    return [];
-  }
-
-  return normalizeMarketPlugins(marketMcpServers);
+  const cache = getMcpCacheSnapshot();
+  return cache?.fresh ? cache.plugins : [];
 };
 
-export const fetchApiGuruList = async (
+export const fetchApiGuruListResult = async (
   forceRefresh: boolean = false,
-): Promise<Plugin[]> => {
-  const { marketPlugins, marketPluginsTimestamp, setMarketPlugins } =
-    useSettingsStore.getState();
-  const now = Date.now();
-  const getFallbackPlugins = (error: unknown): Plugin[] => {
-    logDevError("Error fetching plugin list:", error);
-    // Return stale cache if available
-    if (marketPlugins && marketPlugins.length > 0) {
-      logDevWarn("Using stale cache due to fetch error");
-      return normalizeMarketPlugins(marketPlugins);
-    }
-    return [];
-  };
+): Promise<MarketLoadResult<Plugin[]>> => {
+  const { setMarketPlugins } = useSettingsStore.getState();
+  const cache = getPluginCacheSnapshot();
 
-  const cachedPlugins = getCachedPlugins();
-  if (!forceRefresh && cachedPlugins.length > 0) {
+  if (!forceRefresh && cache?.fresh) {
     logDevInfo("Using cached plugins data");
-    return cachedPlugins;
-  }
-
-  // Check cache validity (skip if force refresh)
-  if (
-    !forceRefresh &&
-    marketPlugins &&
-    marketPlugins.length > 0 &&
-    marketPluginsTimestamp
-  ) {
-    if (now - marketPluginsTimestamp < CACHE_CONFIG.plugins) {
-      logDevInfo("Using cached plugins data");
-      return normalizeMarketPlugins(marketPlugins);
-    }
+    return {
+      data: cache.plugins,
+      status: "cache",
+      source: "plugins:cache",
+      fetchedAt: cache.fetchedAt,
+    };
   }
 
   if (!forceRefresh && pluginListRequest) {
     logDevInfo("Reusing in-flight plugins request");
-    try {
-      return await pluginListRequest;
-    } catch (error) {
-      return getFallbackPlugins(error);
-    }
+    return pluginListRequest;
   }
 
   const request = (async () => {
-    logDevInfo("Fetching plugins from API...");
-    const response = await signedApiFetch("/api/plugins/list");
-    if (!response.ok) throw new Error("Failed to fetch plugins");
+    try {
+      logDevInfo("Fetching plugins from API...");
+      const response = await signedApiFetch("/api/plugins/list");
+      if (!response.ok) throw new Error("Failed to fetch plugins");
 
-    const data = await readJsonResponseOrThrow<{ plugins?: Plugin[] }>(
-      response,
-      "Failed to fetch plugins",
-    );
-    const plugins: Plugin[] = normalizeMarketPlugins(data.plugins);
+      const data = await readJsonResponseOrThrow<{ plugins?: Plugin[] }>(
+        response,
+        "Failed to fetch plugins",
+      );
+      const plugins: Plugin[] = normalizeMarketPlugins(data.plugins);
+      const fetchedAt = Date.now();
 
-    setMarketPlugins(plugins);
-    logDevInfo(`Cached ${plugins.length} plugins`);
-    return plugins;
+      setMarketPlugins(plugins);
+      logDevInfo(`Cached ${plugins.length} plugins`);
+      return {
+        data: plugins,
+        status: "fresh",
+        source: "plugins:api",
+        fetchedAt,
+      } satisfies MarketLoadResult<Plugin[]>;
+    } catch (error) {
+      logDevError("Error fetching plugin list:", error);
+      const marketError = toMarketLoadError(error, "Failed to fetch plugins");
+      if (cache) {
+        logDevWarn("Using stale cache due to fetch error");
+        return {
+          data: cache.plugins,
+          status: "stale",
+          source: "plugins:cache",
+          fetchedAt: cache.fetchedAt,
+          error: marketError,
+        } satisfies MarketLoadResult<Plugin[]>;
+      }
+      return {
+        data: [],
+        status: "error",
+        source: "plugins:api",
+        error: marketError,
+      } satisfies MarketLoadResult<Plugin[]>;
+    }
   })();
 
   pluginListRequest = request;
 
   try {
     return await request;
-  } catch (error) {
-    return getFallbackPlugins(error);
   } finally {
     if (pluginListRequest === request) {
       pluginListRequest = null;
@@ -256,73 +275,85 @@ export const fetchApiGuruList = async (
   }
 };
 
-export const fetchMcpServerList = async (
+export const fetchApiGuruList = async (
   forceRefresh: boolean = false,
-): Promise<Plugin[]> => {
-  const { marketMcpServers, marketMcpServersTimestamp, setMarketMcpServers } =
-    useSettingsStore.getState();
-  const now = Date.now();
-  const getFallbackServers = (error: unknown): Plugin[] => {
-    logDevError("Error fetching MCP server list:", error);
-    if (marketMcpServers && marketMcpServers.length > 0) {
-      logDevWarn("Using stale MCP cache due to fetch error");
-      return normalizeMarketPlugins(marketMcpServers);
-    }
-    return [];
-  };
+): Promise<Plugin[]> => (await fetchApiGuruListResult(forceRefresh)).data;
 
-  const cachedServers = getCachedMcpServers();
-  if (!forceRefresh && cachedServers.length > 0) {
+export const fetchMcpServerListResult = async (
+  forceRefresh: boolean = false,
+): Promise<MarketLoadResult<Plugin[]>> => {
+  const { setMarketMcpServers } = useSettingsStore.getState();
+  const cache = getMcpCacheSnapshot();
+
+  if (!forceRefresh && cache?.fresh) {
     logDevInfo("Using cached MCP server data");
-    return cachedServers;
-  }
-
-  if (
-    !forceRefresh &&
-    marketMcpServers &&
-    marketMcpServers.length > 0 &&
-    marketMcpServersTimestamp
-  ) {
-    if (now - marketMcpServersTimestamp < CACHE_CONFIG.plugins) {
-      logDevInfo("Using cached MCP server data");
-      return normalizeMarketPlugins(marketMcpServers);
-    }
+    return {
+      data: cache.plugins,
+      status: "cache",
+      source: "mcp:cache",
+      fetchedAt: cache.fetchedAt,
+    };
   }
 
   if (!forceRefresh && mcpServerListRequest) {
     logDevInfo("Reusing in-flight MCP server request");
-    try {
-      return await mcpServerListRequest;
-    } catch (error) {
-      return getFallbackServers(error);
-    }
+    return mcpServerListRequest;
   }
 
   const request = (async () => {
-    logDevInfo("Fetching MCP servers from registry...");
-    const page = await fetchMcpServerPageFromSources(
-      { forceRefresh: true, limit: MARKET_LIMITS.maxPlugins },
-      buildMcpServerPageUrl({ limit: MARKET_LIMITS.maxPlugins }),
-    );
-    const plugins = page.plugins;
+    try {
+      logDevInfo("Fetching MCP servers from registry...");
+      const pageResult = await fetchMcpServerPageFromSources(
+        { forceRefresh: true, limit: MARKET_LIMITS.maxPlugins },
+        buildMcpServerPageUrl({ limit: MARKET_LIMITS.maxPlugins }),
+      );
+      const plugins = pageResult.data.plugins;
 
-    setMarketMcpServers(plugins);
-    logDevInfo(`Cached ${plugins.length} MCP servers`);
-    return plugins;
+      setMarketMcpServers(plugins);
+      logDevInfo(`Cached ${plugins.length} MCP servers`);
+      return {
+        ...pageResult,
+        data: plugins,
+      } satisfies MarketLoadResult<Plugin[]>;
+    } catch (error) {
+      logDevError("Error fetching MCP server list:", error);
+      const marketError = toMarketLoadError(
+        error,
+        "Failed to fetch MCP servers",
+      );
+      if (cache) {
+        logDevWarn("Using stale MCP cache due to fetch error");
+        return {
+          data: cache.plugins,
+          status: "stale",
+          source: "mcp:cache",
+          fetchedAt: cache.fetchedAt,
+          error: marketError,
+        } satisfies MarketLoadResult<Plugin[]>;
+      }
+      return {
+        data: [],
+        status: "error",
+        source: "mcp:api",
+        error: marketError,
+      } satisfies MarketLoadResult<Plugin[]>;
+    }
   })();
 
   mcpServerListRequest = request;
 
   try {
     return await request;
-  } catch (error) {
-    return getFallbackServers(error);
   } finally {
     if (mcpServerListRequest === request) {
       mcpServerListRequest = null;
     }
   }
 };
+
+export const fetchMcpServerList = async (
+  forceRefresh: boolean = false,
+): Promise<Plugin[]> => (await fetchMcpServerListResult(forceRefresh)).data;
 
 function buildMcpServerPageUrl(options: McpServerPageOptions): string {
   const params = new URLSearchParams();
@@ -413,49 +444,85 @@ async function fetchMcpServerPageFromApi(
 async function fetchMcpServerPageFromSources(
   options: McpServerPageOptions,
   fallbackUrl: string,
-): Promise<McpServerPage> {
+): Promise<MarketLoadResult<McpServerPage>> {
   try {
     logDevInfo("Fetching MCP server page from API route...");
-    return await fetchMcpServerPageFromApi(fallbackUrl);
+    return {
+      data: await fetchMcpServerPageFromApi(fallbackUrl),
+      status: "fresh",
+      source: "mcp:api",
+      fetchedAt: Date.now(),
+    };
   } catch (error) {
     logDevWarn("Falling back to direct MCP registry fetch");
     logDevError("Error fetching MCP server page from API route:", error);
-    return fetchMcpRegistryServerPage(options);
+    return {
+      data: await fetchMcpRegistryServerPage(options),
+      status: "fallback",
+      source: "mcp:registry-direct",
+      fetchedAt: Date.now(),
+      error: toMarketLoadError(error, "MCP API route is unavailable"),
+    };
   }
 }
 
-export const fetchMcpServerPage = async (
+export const fetchMcpServerPageResult = async (
   options: McpServerPageOptions = {},
-): Promise<McpServerPage> => {
-  const { marketMcpServers, setMarketMcpServers } = useSettingsStore.getState();
+): Promise<MarketLoadResult<McpServerPage>> => {
+  const { setMarketMcpServers } = useSettingsStore.getState();
+  const cache = getMcpCacheSnapshot();
   const requestUrl = buildMcpServerPageUrl(options);
   const shouldCacheFirstPage =
     !options.cursor?.trim() && !options.search?.trim();
-  const getFallbackServers = (error: unknown): McpServerPage => {
+  const getFallbackServers = (
+    error: unknown,
+  ): MarketLoadResult<McpServerPage> => {
     logDevError("Error fetching MCP server page:", error);
-    if (shouldCacheFirstPage && marketMcpServers?.length > 0) {
+    const marketError = toMarketLoadError(error, "Failed to fetch MCP servers");
+    if (shouldCacheFirstPage && cache) {
       logDevWarn("Using stale MCP cache due to paged fetch error");
-      return { plugins: normalizeMarketPlugins(marketMcpServers) };
+      return {
+        data: { plugins: cache.plugins },
+        status: "stale",
+        source: "mcp:cache",
+        fetchedAt: cache.fetchedAt,
+        error: marketError,
+      };
     }
-    return { plugins: [] };
+    return {
+      data: { plugins: [] },
+      status: "error",
+      source: "mcp:api",
+      error: marketError,
+    };
   };
 
   if (!options.forceRefresh && mcpServerPageRequests.has(requestUrl)) {
-    try {
-      return await mcpServerPageRequests.get(requestUrl)!;
-    } catch (error) {
-      return getFallbackServers(error);
-    }
+    return mcpServerPageRequests.get(requestUrl)!;
+  }
+
+  if (!options.forceRefresh && shouldCacheFirstPage && cache?.fresh) {
+    logDevInfo("Using cached MCP server page data");
+    return {
+      data: { plugins: cache.plugins },
+      status: "cache",
+      source: "mcp:cache",
+      fetchedAt: cache.fetchedAt,
+    };
   }
 
   const request = (async () => {
-    const page = await fetchMcpServerPageFromSources(options, requestUrl);
+    try {
+      const result = await fetchMcpServerPageFromSources(options, requestUrl);
 
-    if (shouldCacheFirstPage) {
-      setMarketMcpServers(page.plugins);
+      if (shouldCacheFirstPage) {
+        setMarketMcpServers(result.data.plugins);
+      }
+
+      return result;
+    } catch (error) {
+      return getFallbackServers(error);
     }
-
-    return page;
   })();
 
   if (!options.forceRefresh) {
@@ -464,8 +531,6 @@ export const fetchMcpServerPage = async (
 
   try {
     return await request;
-  } catch (error) {
-    return getFallbackServers(error);
   } finally {
     if (mcpServerPageRequests.get(requestUrl) === request) {
       mcpServerPageRequests.delete(requestUrl);
@@ -473,10 +538,17 @@ export const fetchMcpServerPage = async (
   }
 };
 
+export const fetchMcpServerPage = async (
+  options: McpServerPageOptions = {},
+): Promise<McpServerPage> => (await fetchMcpServerPageResult(options)).data;
+
 export const clearPluginsCache = (): void => {
-  const { setMarketPlugins, setMarketMcpServers } = useSettingsStore.getState();
-  setMarketPlugins([]);
-  setMarketMcpServers([]);
+  useSettingsStore.setState({
+    marketPlugins: [],
+    marketPluginsTimestamp: 0,
+    marketMcpServers: [],
+    marketMcpServersTimestamp: 0,
+  });
   logDevInfo("Plugins cache cleared");
 };
 

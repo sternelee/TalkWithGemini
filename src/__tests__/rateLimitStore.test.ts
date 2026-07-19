@@ -50,7 +50,7 @@ describe("rate limit store", () => {
     ).rejects.toThrow("shared store unavailable");
   });
 
-  it("uses the safe outbound policy for hosted shared store requests", async () => {
+  it("allows hosted shared store requests to private HTTPS addresses", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("RATE_LIMIT_STORE", "upstash");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://127.0.0.1:8787");
@@ -61,7 +61,21 @@ describe("rate limit store", () => {
 
     await expect(
       incrementRateLimitBucket("hosted:key", 1_000, 1_000),
-    ).rejects.toThrow(/Private network outbound requests are blocked/i);
+    ).resolves.toEqual({ count: 1, resetAt: 2_000 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps hosted shared store requests HTTPS-only", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("RATE_LIMIT_STORE", "upstash");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "http://127.0.0.1:8787");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      incrementRateLimitBucket("hosted:key", 1_000, 1_000),
+    ).rejects.toThrow(/Protocol/i);
 
     expect(fetchMock).not.toHaveBeenCalled();
   });

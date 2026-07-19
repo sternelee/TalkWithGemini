@@ -24,9 +24,16 @@ import {
 import { readJsonResponseOrThrow } from "@/lib/api/client";
 import { logDevWarn } from "@/lib/utils/devLogger";
 import { CACHE_CONFIG } from "@/config/api";
+import {
+  toMarketLoadError,
+  type MarketLoadResult,
+} from "@/lib/market/loadResult";
 import { streamGenerateToolCall } from "./chatService";
 
-const catalogRequests = new Map<string, Promise<SkillCatalog>>();
+const catalogRequests = new Map<
+  string,
+  Promise<MarketLoadResult<SkillCatalog>>
+>();
 const definitionRequests = new Map<string, Promise<TextSkill>>();
 
 function getCatalogPath(locale: SkillDataLocale) {
@@ -42,17 +49,25 @@ function getSkillDefinitionCacheKey(
   return `${locale}:${file}`;
 }
 
-function getCachedSkillCatalog(locale: SkillDataLocale): SkillCatalog | null {
+function getSkillCatalogCacheSnapshot(locale: SkillDataLocale): {
+  catalog: SkillCatalog;
+  fetchedAt: number;
+  fresh: boolean;
+} | null {
   const { skillCatalogs, skillCatalogTimestamps } = useSettingsStore.getState();
   const catalog = skillCatalogs?.[locale];
   const timestamp = skillCatalogTimestamps?.[locale] || 0;
 
-  if (!catalog || !timestamp || Date.now() - timestamp >= CACHE_CONFIG.skills) {
+  if (!catalog || !timestamp) {
     return null;
   }
 
   const normalized = normalizeSkillCatalog(catalog);
-  return normalized.skills.length > 0 ? { ...normalized, locale } : null;
+  return {
+    catalog: { ...normalized, locale },
+    fetchedAt: timestamp,
+    fresh: Date.now() - timestamp < CACHE_CONFIG.skills,
+  };
 }
 
 function getCachedSkillDefinition(cacheKey: string): TextSkill | null {
@@ -68,15 +83,21 @@ function getCachedSkillDefinition(cacheKey: string): TextSkill | null {
   return normalizeTextSkill(skill);
 }
 
-export async function fetchSkillCatalog(
-  locale?: string,
-  forceRefresh = false,
-): Promise<SkillCatalog> {
-  const dataLocale = resolveSkillDataLocale(locale);
+async function fetchCatalogForLocale(
+  dataLocale: SkillDataLocale,
+  forceRefresh: boolean,
+): Promise<MarketLoadResult<SkillCatalog>> {
   const cacheKey = dataLocale;
+  const cache = getSkillCatalogCacheSnapshot(dataLocale);
   if (!forceRefresh) {
-    const cachedCatalog = getCachedSkillCatalog(dataLocale);
-    if (cachedCatalog) return cachedCatalog;
+    if (cache?.fresh) {
+      return {
+        data: cache.catalog,
+        status: "cache",
+        source: `skills:${dataLocale}:cache`,
+        fetchedAt: cache.fetchedAt,
+      };
+    }
   }
 
   if (!forceRefresh && catalogRequests.has(cacheKey)) {
@@ -84,31 +105,100 @@ export async function fetchSkillCatalog(
   }
 
   const request = (async () => {
-    const response = await fetch(getCatalogPath(dataLocale), {
-      cache: forceRefresh ? "no-store" : "default",
-    });
-    if (!response.ok) throw new Error("Failed to fetch skills catalog");
-    const data = await readJsonResponseOrThrow(
-      response,
-      "Failed to fetch skills catalog",
-    );
-    const catalog = normalizeSkillCatalog(data);
-    useSettingsStore.getState().setSkillCatalog?.(dataLocale, catalog);
-    return catalog;
+    try {
+      const response = await fetch(getCatalogPath(dataLocale), {
+        cache: forceRefresh ? "no-store" : "default",
+      });
+      if (!response.ok) throw new Error("Failed to fetch skills catalog");
+      const data = await readJsonResponseOrThrow(
+        response,
+        "Failed to fetch skills catalog",
+      );
+      const catalog = {
+        ...normalizeSkillCatalog(data),
+        locale: dataLocale,
+      };
+      const fetchedAt = Date.now();
+      useSettingsStore.getState().setSkillCatalog?.(dataLocale, catalog);
+      return {
+        data: catalog,
+        status: "fresh",
+        source: `skills:${dataLocale}:catalog`,
+        fetchedAt,
+      } satisfies MarketLoadResult<SkillCatalog>;
+    } catch (error) {
+      const marketError = toMarketLoadError(
+        error,
+        "Failed to fetch skills catalog",
+      );
+      if (cache) {
+        logDevWarn("Using stale skills catalog after fetch failure:", error);
+        return {
+          data: cache.catalog,
+          status: "stale",
+          source: `skills:${dataLocale}:cache`,
+          fetchedAt: cache.fetchedAt,
+          error: marketError,
+        } satisfies MarketLoadResult<SkillCatalog>;
+      }
+      return {
+        data: { ...normalizeSkillCatalog(undefined), locale: dataLocale },
+        status: "error",
+        source: `skills:${dataLocale}:catalog`,
+        error: marketError,
+      } satisfies MarketLoadResult<SkillCatalog>;
+    }
   })();
 
   catalogRequests.set(cacheKey, request);
 
   try {
     return await request;
-  } catch (error) {
-    catalogRequests.delete(cacheKey);
-    if (dataLocale !== "en") {
-      logDevWarn("Failed to load localized skills catalog:", error);
-      return fetchSkillCatalog("en", forceRefresh);
+  } finally {
+    if (catalogRequests.get(cacheKey) === request) {
+      catalogRequests.delete(cacheKey);
     }
-    throw error;
   }
+}
+
+export async function fetchSkillCatalogResult(
+  locale?: string,
+  forceRefresh = false,
+): Promise<MarketLoadResult<SkillCatalog>> {
+  const dataLocale = resolveSkillDataLocale(locale);
+  const localized = await fetchCatalogForLocale(dataLocale, forceRefresh);
+  if (localized.status !== "error" || dataLocale === "en") {
+    return localized;
+  }
+
+  logDevWarn(
+    "Failed to load localized skills catalog; using English fallback:",
+    localized.error,
+  );
+  const english = await fetchCatalogForLocale("en", forceRefresh);
+  if (english.status === "error") return localized;
+
+  return {
+    ...english,
+    status: english.status === "stale" ? "stale" : "fallback",
+    source: `${english.source}:localized-fallback`,
+    error: english.status === "stale" ? english.error : localized.error,
+    fallbackFrom: {
+      source: localized.source,
+      error: localized.error,
+    },
+  };
+}
+
+export async function fetchSkillCatalog(
+  locale?: string,
+  forceRefresh = false,
+): Promise<SkillCatalog> {
+  const result = await fetchSkillCatalogResult(locale, forceRefresh);
+  if (result.status === "error") {
+    throw new Error(result.error?.message || "Failed to fetch skills catalog");
+  }
+  return result.data;
 }
 
 export async function fetchSkillDefinition(

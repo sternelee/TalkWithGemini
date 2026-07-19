@@ -28,13 +28,53 @@ export function normalizeToolCall(toolCall: Partial<ToolCall>): ToolCall {
     }
   }
 
+  const interruptedConfirmation = status === "awaiting_confirmation";
+  if (interruptedConfirmation) status = "error";
+
+  const confirmation = interruptedConfirmation
+    ? {
+        required: true,
+        state: "interrupted" as const,
+        decidedAt: Date.now(),
+      }
+    : toolCall.confirmation
+      ? {
+          required: toolCall.confirmation.required === true,
+          state: toolCall.confirmation.state,
+          ...(toolCall.confirmation.decision
+            ? { decision: toolCall.confirmation.decision }
+            : {}),
+          ...(typeof toolCall.confirmation.decidedAt === "number"
+            ? { decidedAt: toolCall.confirmation.decidedAt }
+            : {}),
+        }
+      : undefined;
+  const interruptedResult = {
+    error: {
+      code: "CONFIRMATION_INTERRUPTED",
+      message: "Tool confirmation was interrupted before a decision.",
+    },
+  };
+
   return {
     id: toolCall.id || `tool_${Date.now()}`,
     name: toolCall.name || "unknown_tool",
+    pluginId: toolCall.pluginId,
+    pluginTitle: toolCall.pluginTitle,
+    functionFingerprint: toolCall.functionFingerprint,
     args: toolCall.args ?? {},
     status,
-    result: toolCall.result,
-    isError: toolCall.isError,
+    result: interruptedConfirmation ? interruptedResult : toolCall.result,
+    isError: interruptedConfirmation ? true : toolCall.isError,
+    risk: toolCall.risk,
+    confirmation,
+    errorInfo: interruptedConfirmation
+      ? {
+          code: "CONFIRMATION_INTERRUPTED",
+          message: "Tool confirmation was interrupted before a decision.",
+          recoverable: true,
+        }
+      : toolCall.errorInfo,
     auth: toolCall.auth,
   };
 }

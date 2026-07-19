@@ -1,7 +1,6 @@
 import type { EncryptedSecretEnvelope } from "../byok/shared";
 import type { ServerDefaultProviderSource } from "../defaultConfig/shared";
 import type { ProviderType } from "@/types";
-import { HostedProxyBlockedError } from "../errors";
 import {
   getOutboundPolicyProfile,
   type OutboundPolicyProfile,
@@ -31,15 +30,10 @@ export type OutboundContext =
 export interface SafeUrlPolicy {
   context: OutboundContext;
   allowedProtocols?: Array<"https:" | "http:">;
-  allowLocalhost?: boolean;
-  allowPrivateNetwork?: boolean;
-  allowHttp?: boolean;
-  allowLocalHttp?: boolean;
   allowedHosts?: string[];
   maxRedirects?: number;
   requireDnsResolution?: boolean;
   profile?: OutboundPolicyProfile;
-  hostedProxyBlocked?: boolean;
 }
 
 export interface ValidatedOutboundRequest {
@@ -282,35 +276,23 @@ export function isPrivateIpAddress(address: string): boolean {
 
 export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
   const profile = getOutboundPolicyProfile();
-  const localNetworkProxyAllowed = profile.allowLocalNetworkProxy;
 
   switch (context) {
     case "provider":
     case "rag":
     case "search":
-    case "image":
       return {
         context,
-        allowedProtocols: localNetworkProxyAllowed
-          ? ["https:", "http:"]
-          : ["https:"],
-        allowLocalhost: localNetworkProxyAllowed,
-        allowPrivateNetwork: localNetworkProxyAllowed,
-        allowLocalHttp: localNetworkProxyAllowed,
-        requireDnsResolution:
-          profile.mode === "hosted" && !localNetworkProxyAllowed,
-        hostedProxyBlocked:
-          profile.mode === "hosted" && !localNetworkProxyAllowed,
+        allowedProtocols: ["https:", "http:"],
+        requireDnsResolution: profile.mode === "hosted",
         profile,
       };
     case "mcp":
+    case "pluginManifest":
+    case "plugin":
       return {
         context,
-        allowedProtocols: ["https:"],
-        allowLocalhost: localNetworkProxyAllowed,
-        allowPrivateNetwork: localNetworkProxyAllowed,
-        hostedProxyBlocked:
-          profile.mode === "hosted" && !localNetworkProxyAllowed,
+        allowedProtocols: ["https:", "http:"],
         profile,
       };
     case "docs":
@@ -347,27 +329,24 @@ export function getSafeUrlPolicy(context: OutboundContext): SafeUrlPolicy {
         allowedHosts: ["basellm.github.io"],
         profile,
       };
-    case "pluginManifest":
-    case "plugin":
+    case "image":
+      return {
+        context,
+        allowedProtocols: profile.allowLocalNetworkProxy
+          ? ["https:", "http:"]
+          : ["https:"],
+        requireDnsResolution:
+          profile.mode === "hosted" && !profile.allowLocalNetworkProxy,
+        profile,
+      };
     case "sharedStore":
     default:
       return {
         context,
         allowedProtocols: ["https:"],
-        allowLocalhost: false,
-        allowPrivateNetwork: false,
         profile,
       };
   }
-}
-
-function createOutboundPolicyError(
-  policy: SafeUrlPolicy,
-  message: string,
-): Error {
-  return policy.hostedProxyBlocked
-    ? new HostedProxyBlockedError(message)
-    : new Error(message);
 }
 
 export function validateOutboundUrl(
@@ -387,10 +366,7 @@ export function validateOutboundUrl(
 
   const allowedProtocols = policy.allowedProtocols || ["https:"];
   if (!allowedProtocols.includes(url.protocol as "https:" | "http:")) {
-    throw createOutboundPolicyError(
-      policy,
-      `Protocol ${url.protocol} is not allowed`,
-    );
+    throw new Error(`Protocol ${url.protocol} is not allowed`);
   }
 
   const hostname = url.hostname.toLowerCase();
@@ -401,33 +377,6 @@ export function validateOutboundUrl(
     });
     if (!isAllowedHost) {
       throw new Error(`Host ${hostname} is not trusted for ${policy.context}`);
-    }
-  }
-
-  const isLocalhost = isLocalhostName(hostname);
-  const isPrivateLiteral = isPrivateIpAddress(hostname);
-
-  if (isLocalhost && !policy.allowLocalhost) {
-    throw createOutboundPolicyError(
-      policy,
-      "Localhost outbound requests are blocked",
-    );
-  }
-
-  if (isPrivateLiteral && !policy.allowPrivateNetwork) {
-    throw createOutboundPolicyError(
-      policy,
-      "Private network outbound requests are blocked",
-    );
-  }
-
-  if (url.protocol === "http:") {
-    const isLocalHttp = isLocalhost || isPrivateLiteral;
-    if (!policy.allowHttp && !(policy.allowLocalHttp && isLocalHttp)) {
-      throw createOutboundPolicyError(
-        policy,
-        "Plain HTTP outbound requests are blocked",
-      );
     }
   }
 

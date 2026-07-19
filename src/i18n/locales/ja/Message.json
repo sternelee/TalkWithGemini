@@ -8,6 +8,8 @@
   "videoAttachment": "動画",
   "videoAttachmentAria": "動画添付ファイル: {fileName}",
   "documentAttachment": "ドキュメント",
+  "localFileMissing": "復元後にローカルファイルを利用できません",
+  "localFileMissingAria": "添付ファイル {fileName} のローカルファイルを利用できません",
   "openDocumentAttachment": "ドキュメントを開く",
   "openDocumentAttachmentAria": "ドキュメント添付ファイル {fileName} を開く",
   "previewImageAria": "画像プレビュー: {fileName}",

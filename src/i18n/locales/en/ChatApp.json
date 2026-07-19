@@ -9,12 +9,14 @@
   "errRetractMessage": "Couldn't retract the message. The chat was restored.",
   "errEditUserMessage": "Couldn't edit that message. Please try again.",
   "errRenameChat": "Couldn't rename the chat. Please try again.",
-  "skipToChat": "Skip to chat",
   "closeSidebar": "Close Sidebar",
   "openSidebar": "Open Sidebar",
   "closeSidebarAria": "Close sidebar",
   "openSidebarAria": "Open sidebar",
   "productName": "Neo Chat",
   "newChat": "New Chat",
-  "newChatAria": "New chat"
+  "newChatAria": "New chat",
+  "pendingToolAction": "A tool operation is waiting for your approval",
+  "reviewToolAction": "Review",
+  "denyToolAction": "Deny"
 }

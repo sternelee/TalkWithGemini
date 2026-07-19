@@ -10,8 +10,8 @@ deployment issues, or simpler implementation paths.
   stable across browser refreshes and storage migrations.
 - Keep public documentation current as deployment, skills, plugin execution,
   privacy, and configuration behavior changes.
-- Tighten CI quality gates with formatting, linting, type checking, tests,
-  builds, and dependency audits.
+- Keep CI quality gates aligned across import hygiene, formatting, linting, type
+  checking, unit and E2E tests, builds, and dependency audits.
 
 ## Mid Term
 
@@ -19,8 +19,8 @@ deployment issues, or simpler implementation paths.
   shared-store diagnostics, and safer defaults.
 - Expand plugin and skills workflow examples for OpenAPI-compatible tools and
   text-only reusable instructions.
-- Improve knowledge-base recovery, indexing diagnostics, and user-facing error
-  states.
+- Continue hardening knowledge-base recovery and indexing diagnostics across
+  browser refreshes, storage migrations, and upstream parser failures.
 - Add more screenshots and workflow examples for common model, search, RAG,
   voice, skills, plugin, and deployment health setups.
 
@@ -37,7 +37,9 @@ deployment issues, or simpler implementation paths.
 - `ACCESS_PASSWORD` is only a deployment gate, not a user account system.
 - Public multi-user SaaS deployments need additional security and operational
   controls before production use.
-- Runtime plugin calls execute automatically after a plugin is enabled for a
-  chat; users should only enable plugins they trust.
+- Plugin calls execute automatically by default. The optional confirmation
+  setting gates only calls classified as destructive; read, write, and external
+  calls, including MCP tools at the external risk floor, remain automatic, so
+  users should enable only plugins they trust.
 - Skills are text-only prompt context. They do not execute scripts, call
   networks, or access local files.

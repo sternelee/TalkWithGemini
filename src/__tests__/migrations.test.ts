@@ -64,6 +64,56 @@ describe("storage migrations", () => {
     ).toBe("error");
   });
 
+  it("preserves permission metadata and closes interrupted confirmations", () => {
+    expect(
+      normalizeToolCall({
+        id: "confirmed",
+        name: "create_record",
+        pluginId: "writer",
+        pluginTitle: "Writer",
+        functionFingerprint: "v1:abc",
+        risk: "write",
+        args: { title: "Draft" },
+        status: "success",
+        confirmation: {
+          required: true,
+          state: "approved",
+          decision: "allow_once",
+          decidedAt: 123,
+        },
+        errorInfo: { code: "OLD_ERROR", message: "old", recoverable: true },
+      }),
+    ).toMatchObject({
+      pluginId: "writer",
+      pluginTitle: "Writer",
+      functionFingerprint: "v1:abc",
+      risk: "write",
+      confirmation: {
+        required: true,
+        state: "approved",
+        decision: "allow_once",
+        decidedAt: 123,
+      },
+      errorInfo: { code: "OLD_ERROR", message: "old", recoverable: true },
+    });
+
+    expect(
+      normalizeToolCall({
+        id: "interrupted",
+        name: "delete_record",
+        args: {},
+        status: "awaiting_confirmation",
+        confirmation: { required: true, state: "pending" },
+      }),
+    ).toMatchObject({
+      status: "error",
+      isError: true,
+      confirmation: { state: "interrupted" },
+      errorInfo: { code: "CONFIRMATION_INTERRUPTED" },
+      result: { error: { code: "CONFIRMATION_INTERRUPTED" } },
+    });
+  });
+
   it("normalizes legacy Gemini message parts", () => {
     const message = normalizeLegacyGeminiMessage(
       {

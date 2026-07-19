@@ -41,18 +41,6 @@ function trimDisplayImageUrl(value: unknown, maxChars: number): string {
   return trimWebUrl(candidate, maxChars);
 }
 
-function trimHttpsUrl(value: unknown, maxChars: number): string {
-  const candidate = trimString(value, maxChars);
-  if (!candidate) return "";
-
-  try {
-    const url = new URL(candidate);
-    return url.protocol === "https:" ? url.toString() : "";
-  } catch {
-    return "";
-  }
-}
-
 function normalizeHeaderMap(
   value: unknown,
 ): Record<string, string> | undefined {
@@ -117,7 +105,7 @@ function normalizeMcpMetadata(value: unknown): Plugin["mcp"] | undefined {
   if (!value || typeof value !== "object") return undefined;
 
   const raw = value as Record<string, unknown>;
-  const serverUrl = trimHttpsUrl(raw.serverUrl, 2_048);
+  const serverUrl = trimWebUrl(raw.serverUrl, 2_048);
   const serverName = trimString(
     raw.serverName,
     MARKET_LIMITS.maxPluginTitleChars,

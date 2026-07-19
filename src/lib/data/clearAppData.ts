@@ -13,6 +13,10 @@ import {
   resolveRagToken,
 } from "../security/localSecretResolvers";
 import { deleteLocalSecretMasterKey } from "../security/localSecrets";
+import {
+  APP_RESTORE_CREDENTIAL_NOTICE_KEY,
+  runWithExclusiveAppDataClearLock,
+} from "./appRestoreJournal";
 
 const APP_OPFS_DIRECTORIES = ["knowledge-base", "workspaces", "images", "chat"];
 const SESSION_MESSAGES_PREFIX = "session_messages_";
@@ -197,6 +201,7 @@ async function clearSettingsAndSecrets(): Promise<void> {
     window.localStorage.removeItem(STORAGE_KEYS.CORE_SETTINGS);
     window.localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     window.localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+    window.localStorage.removeItem(APP_RESTORE_CREDENTIAL_NOTICE_KEY);
   }
   await appDb.removeItem(STORAGE_KEYS.SETTINGS);
   await deleteLocalSecretMasterKey();
@@ -238,36 +243,38 @@ export async function clearBrowserAppDataSources({
   sources,
   rag,
 }: ClearBrowserAppDataSourcesOptions): Promise<void> {
-  const uniqueSources = Array.from(new Set(sources));
+  await runWithExclusiveAppDataClearLock(async () => {
+    const uniqueSources = Array.from(new Set(sources));
 
-  for (const source of uniqueSources) {
-    switch (source) {
-      case "cache":
-        await clearCacheData();
-        break;
-      case "settings":
-        await clearSettingsAndSecrets();
-        break;
-      case "chats":
-        await clearChatMetadataAndMessages();
-        break;
-      case "chatFiles":
-        await cleanupOPFSDirectory("chat");
-        break;
-      case "workspaceFiles":
-        await cleanupOPFSDirectory("workspaces");
-        break;
-      case "knowledge":
-        await clearKnowledgeData(rag);
-        break;
-      case "memory":
-        await clearMemoryData();
-        break;
-      case "media":
-        await cleanupOPFSDirectory("images");
-        break;
+    for (const source of uniqueSources) {
+      switch (source) {
+        case "cache":
+          await clearCacheData();
+          break;
+        case "settings":
+          await clearSettingsAndSecrets();
+          break;
+        case "chats":
+          await clearChatMetadataAndMessages();
+          break;
+        case "chatFiles":
+          await cleanupOPFSDirectory("chat");
+          break;
+        case "workspaceFiles":
+          await cleanupOPFSDirectory("workspaces");
+          break;
+        case "knowledge":
+          await clearKnowledgeData(rag);
+          break;
+        case "memory":
+          await clearMemoryData();
+          break;
+        case "media":
+          await cleanupOPFSDirectory("images");
+          break;
+      }
     }
-  }
+  });
 }
 
 async function clearLocalStorageKeys(): Promise<void> {
@@ -279,13 +286,16 @@ async function clearLocalStorageKeys(): Promise<void> {
   window.localStorage.removeItem(STORAGE_KEYS.KNOWLEDGE);
   window.localStorage.removeItem(STORAGE_KEYS.MEMORY);
   window.localStorage.removeItem(FONT_SIZE_STORAGE_KEY);
+  window.localStorage.removeItem(APP_RESTORE_CREDENTIAL_NOTICE_KEY);
   await deleteLocalSecretMasterKey();
 }
 
 export async function clearBrowserAppData(rag: RAGConfig): Promise<void> {
-  await cleanupPersistedKnowledgeVectors(rag);
-  await cleanupOPFSDirectories();
-  await clearLocalStorageKeys();
-  await localforage.clear();
-  await appDb.clear();
+  await runWithExclusiveAppDataClearLock(async () => {
+    await cleanupPersistedKnowledgeVectors(rag);
+    await cleanupOPFSDirectories();
+    await clearLocalStorageKeys();
+    await localforage.clear();
+    await appDb.clear();
+  });
 }

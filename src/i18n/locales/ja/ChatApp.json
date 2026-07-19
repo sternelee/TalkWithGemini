@@ -9,12 +9,14 @@
   "errRetractMessage": "メッセージを取り消せませんでした。チャットは復元されました。",
   "errEditUserMessage": "メッセージを編集できませんでした。もう一度お試しください。",
   "errRenameChat": "チャットの名前を変更できませんでした。もう一度お試しください。",
-  "skipToChat": "チャットへスキップ",
   "closeSidebar": "サイドバーを閉じる",
   "openSidebar": "サイドバーを開く",
   "closeSidebarAria": "サイドバーを閉じる",
   "openSidebarAria": "サイドバーを開く",
   "productName": "Neo Chat",
   "newChat": "新規チャット",
-  "newChatAria": "新規チャット"
+  "newChatAria": "新規チャット",
+  "pendingToolAction": "ツール操作が承認を待っています",
+  "reviewToolAction": "確認する",
+  "denyToolAction": "拒否"
 }

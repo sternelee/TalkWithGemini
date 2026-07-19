@@ -37,7 +37,11 @@ export async function GET(
       `${API_URL}/${encodeURIComponent(detailFile)}`,
       { method: "GET" },
       {
-        policy: getSafeUrlPolicy("agent"),
+        policy: {
+          ...getSafeUrlPolicy("agent"),
+          allowedProtocols: ["https:"],
+          allowedHosts: ["registry.npmmirror.com"],
+        },
         timeoutMs: 20_000,
         maxResponseBytes: 2 * 1024 * 1024,
       },

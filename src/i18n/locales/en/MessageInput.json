@@ -35,6 +35,7 @@
   "searchUnavailableNoProvider": "No active model provider is available for search.",
   "searchUnavailableGoogleGemini": "Google Search only works with Google models. Choose an external search provider for this model.",
   "searchUnavailableModelBuiltIn": "Model built-in search is only available with Google or OpenAI Responses models. Choose an external search provider for OpenAI-compatible or Anthropic models.",
+  "searchUnavailableServerDefault": "Default search is not configured on this deployment.",
   "searchUnavailableApiKey": "{provider} search requires an API key in Settings.",
   "searchUnavailableBaseUrl": "{provider} search requires a base URL in Settings.",
   "searchUnavailableGeneric": "Search is unavailable with the current configuration.",

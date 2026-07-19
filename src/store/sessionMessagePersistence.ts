@@ -1,13 +1,22 @@
+import {
+  assertAppDataWritesAllowed,
+  runWithAppDataWriteLock,
+} from "@/lib/data/appRestoreJournal";
+
 const sessionMessageWriteQueues = new Map<string, Promise<void>>();
 
 export async function enqueueSessionMessageWrite(
   sessionId: string,
   write: () => Promise<void>,
 ): Promise<void> {
+  assertAppDataWritesAllowed();
   const previousWrite = sessionMessageWriteQueues.get(sessionId);
   const queuedWrite = previousWrite
-    ? previousWrite.catch(() => undefined).then(write)
-    : write();
+    ? runWithAppDataWriteLock(async () => {
+        await previousWrite.catch(() => undefined);
+        await write();
+      })
+    : runWithAppDataWriteLock(write);
 
   sessionMessageWriteQueues.set(sessionId, queuedWrite);
 

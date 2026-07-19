@@ -1,9 +1,11 @@
-import { create } from "zustand";
+import { create, type StoreApi } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { v7 as uuidv7 } from "uuid";
 import {
   Collection,
   KnowledgeFile,
+  KnowledgeFileIndexStatus,
+  KnowledgeFileStorageStatus,
   KnowledgeFileStatus,
   RAGConfig,
 } from "@/types";
@@ -24,6 +26,7 @@ import { KNOWLEDGE_LIMITS } from "@/config/limits";
 import {
   deleteFromOPFS,
   listOPFSDirectory,
+  resolveOPFSBlob,
   resolveOPFSUrl,
   saveToOPFS,
   writeToOPFS,
@@ -39,6 +42,7 @@ import {
 } from "../storage/storageConfig";
 import { withResolvedObjectUrl } from "@/lib/utils/objectUrlLifecycle";
 import { logDevError, logDevWarn } from "@/lib/utils/devLogger";
+import { reportAppRestoreHydration } from "@/lib/data/appRestoreJournal";
 import {
   hasRagVectorStore,
   resolveDocumentParseToken,
@@ -71,6 +75,11 @@ interface KnowledgeState {
   ) => Promise<void>;
   cancelUpload: (collectionId: string, fileId: string) => Promise<void>;
   retryFile: (collectionId: string, fileId: string) => Promise<void>;
+  reparseFile: (
+    collectionId: string,
+    fileId: string,
+    replacementSource?: File,
+  ) => Promise<void>;
   reconcileCollection: (
     collectionId: string,
   ) => Promise<OPFSReconciliationPlan>;
@@ -80,6 +89,108 @@ interface KnowledgeState {
 
 const MISSING_OPFS_FILE_ERROR =
   "Local file content is missing. Retry upload or remove this file.";
+const MISSING_SOURCE_FILE_ERROR =
+  "The original file is missing. Select it again to enable reparsing.";
+const knowledgeOperationControllers = new Map<string, AbortController>();
+const knowledgeFileOperationQueues = new Map<string, Promise<unknown>>();
+
+function getOperationKey(collectionId: string, fileId: string): string {
+  return `${collectionId}:${fileId}`;
+}
+
+async function runKnowledgeFileOperation<T>(
+  collectionId: string,
+  fileId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const operationKey = getOperationKey(collectionId, fileId);
+  const previousOperation = knowledgeFileOperationQueues.get(operationKey);
+  const currentOperation = (previousOperation || Promise.resolve())
+    .catch(() => undefined)
+    .then(operation);
+
+  knowledgeFileOperationQueues.set(operationKey, currentOperation);
+  try {
+    return await currentOperation;
+  } finally {
+    if (knowledgeFileOperationQueues.get(operationKey) === currentOperation) {
+      knowledgeFileOperationQueues.delete(operationKey);
+    }
+  }
+}
+
+function getContentPath(file: KnowledgeFile): string | undefined {
+  return file.contentPath || file.path;
+}
+
+function getSourcePath(file: KnowledgeFile): string | undefined {
+  return (
+    file.sourcePath ||
+    (file.contentKind === "source_text" ? getContentPath(file) : undefined)
+  );
+}
+
+function getLegacyStatus(
+  storageStatus: KnowledgeFileStorageStatus,
+  indexStatus: KnowledgeFileIndexStatus,
+): KnowledgeFileStatus {
+  if (storageStatus === "uploading" || storageStatus === "parsing") {
+    return storageStatus;
+  }
+  if (storageStatus === "error") return "error";
+  if (indexStatus === "indexing") return "indexing";
+  if (indexStatus === "indexed") return "indexed";
+  if (indexStatus === "error") return "error";
+  return "saved";
+}
+
+function buildStatusUpdate(
+  file: KnowledgeFile,
+  updates: Partial<KnowledgeFile> & {
+    storageStatus?: KnowledgeFileStorageStatus;
+    indexStatus?: KnowledgeFileIndexStatus;
+  },
+): Partial<KnowledgeFile> {
+  const storageStatus =
+    updates.storageStatus ||
+    file.storageStatus ||
+    (file.status === "uploading" || file.status === "parsing"
+      ? file.status
+      : file.status === "error" && !getContentPath(file)
+        ? "error"
+        : "saved");
+  const indexStatus =
+    updates.indexStatus ||
+    file.indexStatus ||
+    (file.status === "indexing"
+      ? "indexing"
+      : file.status === "indexed" || file.ragId
+        ? "indexed"
+        : file.status === "error" && Boolean(getContentPath(file))
+          ? "error"
+          : "not_indexed");
+  const storageError =
+    "storageError" in updates ? updates.storageError : file.storageError;
+  const indexError =
+    "indexError" in updates ? updates.indexError : file.indexError;
+
+  return {
+    ...updates,
+    storageStatus,
+    indexStatus,
+    status: getLegacyStatus(storageStatus, indexStatus),
+    storageError,
+    indexError,
+    error: storageError || indexError,
+  };
+}
+
+function createExtractedTextFile(name: string, content: string): File {
+  const baseName = name.replace(/\.[^./\\]+$/, "") || "document";
+  return new File([content], `${baseName}.extracted.txt`, {
+    type: "text/plain",
+  });
+}
 
 function isTextMimeType(mimeType: string) {
   if (!mimeType) return false;
@@ -108,7 +219,20 @@ function isTextMimeType(mimeType: string) {
   return textMimeTypes.includes(mimeType);
 }
 
-async function parseKnowledgeDocument(file: File, rag: RAGConfig) {
+function isTextKnowledgeSource(file: Pick<File, "name" | "type">): boolean {
+  return (
+    isTextMimeType(file.type) ||
+    /\.(?:txt|md|markdown|csv|tsv|json|jsonl|xml|ya?ml|js|jsx|ts|tsx|css|html?|sql|graphql|sh|php)$/i.test(
+      file.name,
+    )
+  );
+}
+
+async function parseKnowledgeDocument(
+  file: File,
+  rag: RAGConfig,
+  signal?: AbortSignal,
+) {
   const provider = rag.documentParseProvider || "mineru";
   const useDefaultDocumentProcessing = Boolean(
     rag.useDefaultDocumentProcessing && rag.serverDocumentProcessingAvailable,
@@ -127,20 +251,36 @@ async function parseKnowledgeDocument(file: File, rag: RAGConfig) {
     provider,
     apiKey,
     useDefault: useDefaultDocumentProcessing,
+    signal,
   });
 }
 
 async function cleanupKnowledgeFileResources(
-  file: Pick<KnowledgeFile, "path" | "ragId" | "ragChunkCount"> | undefined,
+  file:
+    | Pick<
+        KnowledgeFile,
+        | "path"
+        | "sourcePath"
+        | "contentPath"
+        | "contentKind"
+        | "ragId"
+        | "ragChunkCount"
+      >
+    | undefined,
   collectionId: string,
   options: { strict?: boolean } = {},
 ) {
   if (!file) return;
   const errors: unknown[] = [];
 
-  if (file.path) {
+  const opfsUrls = new Set(
+    [file.sourcePath, file.contentPath, file.path].filter(
+      (url): url is string => Boolean(url),
+    ),
+  );
+  for (const url of opfsUrls) {
     try {
-      await deleteFromOPFS(file.path);
+      await deleteFromOPFS(url);
     } catch (error) {
       logDevWarn("Failed to delete OPFS knowledge file:", error);
       errors.push(error);
@@ -179,6 +319,156 @@ async function cleanupKnowledgeFiles(
     results.some((result) => result.status === "rejected")
   ) {
     throw new Error("Failed to clean up knowledge collection resources.");
+  }
+}
+
+async function reindexKnowledgeFile(
+  set: StoreApi<KnowledgeState>["setState"],
+  get: StoreApi<KnowledgeState>["getState"],
+  collectionId: string,
+  fileId: string,
+) {
+  const file = get()
+    .collections.find((collection) => collection.id === collectionId)
+    ?.files.find((item) => item.id === fileId);
+
+  const contentPath = file ? getContentPath(file) : undefined;
+  if (!file || !contentPath) {
+    throw new Error("No local file content is available to re-index.");
+  }
+
+  const { rag } = useSettingsStore.getState();
+  if (!rag.enabled || !hasRagVectorStore(rag)) {
+    throw new Error("Enable and configure RAG before rebuilding the index.");
+  }
+
+  set((state) => ({
+    collections: state.collections.map((collection) => {
+      if (collection.id !== collectionId) return collection;
+      return {
+        ...collection,
+        files: collection.files.map((item) =>
+          item.id === fileId
+            ? {
+                ...item,
+                ...buildStatusUpdate(item, {
+                  indexStatus: "indexing",
+                  indexError: undefined,
+                }),
+              }
+            : item,
+        ),
+      };
+    }),
+  }));
+
+  try {
+    const content = await withResolvedObjectUrl({
+      source: contentPath,
+      resolveObjectUrl: resolveOPFSUrl,
+      read: async (objectUrl) => {
+        const response = await fetch(objectUrl);
+        return response.text();
+      },
+    });
+
+    if (!content?.trim()) {
+      throw new Error("No text content available to index.");
+    }
+
+    const ragFileId = file.ragId || file.id;
+    const vectorItems = buildKnowledgeVectorItems({
+      collectionId,
+      fileName: file.name,
+      ragFileId,
+      textContent: content,
+      chunkSize: rag.chunkSize || 512,
+    });
+    if (vectorItems.length === 0) {
+      throw new Error("No text content available to index.");
+    }
+    const success = await upsertToRAG(vectorItems, collectionId);
+    if (!success) throw new Error("Failed to rebuild RAG index.");
+
+    const fileStillExists = get().collections.some(
+      (collection) =>
+        collection.id === collectionId &&
+        collection.files.some((item) => item.id === fileId),
+    );
+    if (!fileStillExists) {
+      await cleanupKnowledgeFileResources(
+        {
+          sourcePath: getSourcePath(file),
+          contentPath,
+          path: contentPath,
+          ragId: file.ragId || file.id,
+          ragChunkCount: vectorItems.length,
+        },
+        collectionId,
+      );
+      return;
+    }
+
+    const previousChunkCount = file.ragChunkCount || vectorItems.length;
+    if (file.ragId && previousChunkCount > vectorItems.length) {
+      const staleIds = buildKnowledgeVectorIds(
+        file.ragId,
+        previousChunkCount,
+      ).slice(vectorItems.length);
+      const deleted = await deleteFromRAG(staleIds, collectionId);
+      if (!deleted) {
+        throw new Error("Failed to remove stale RAG vectors.");
+      }
+    }
+
+    set((state) => ({
+      collections: state.collections.map((collection) => {
+        if (collection.id !== collectionId) return collection;
+        return {
+          ...collection,
+          files: collection.files.map((item) =>
+            item.id === fileId
+              ? normalizeKnowledgeFile({
+                  ...item,
+                  ...buildStatusUpdate(item, {
+                    storageStatus: "saved",
+                    storageError: undefined,
+                    indexStatus: "indexed",
+                    indexError: undefined,
+                    ragId: ragFileId,
+                    ragChunkCount: vectorItems.length,
+                  }),
+                }) || item
+              : item,
+          ),
+          updatedAt: Date.now(),
+        };
+      }),
+    }));
+  } catch (error) {
+    set((state) => ({
+      collections: state.collections.map((collection) => {
+        if (collection.id !== collectionId) return collection;
+        return {
+          ...collection,
+          files: collection.files.map((item) =>
+            item.id === fileId
+              ? {
+                  ...item,
+                  ...buildStatusUpdate(item, {
+                    indexStatus: "error",
+                    indexError:
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to rebuild RAG index.",
+                  }),
+                }
+              : item,
+          ),
+        };
+      }),
+    }));
+    throw error;
   }
 }
 
@@ -232,6 +522,11 @@ export const useKnowledgeStore = create<KnowledgeState>()(
         const collection = get().collections.find((c) => c.id === id);
 
         if (collection) {
+          for (const file of collection.files) {
+            knowledgeOperationControllers
+              .get(getOperationKey(id, file.id))
+              ?.abort();
+          }
           await cleanupKnowledgeFiles(collection.files, id, { strict: true });
         }
 
@@ -252,7 +547,6 @@ export const useKnowledgeStore = create<KnowledgeState>()(
         const filesToUpload = selection.accepted;
         if (filesToUpload.length === 0) return;
 
-        // 1. Initialize files in state with "uploading" status
         const newKnowledgeFiles: KnowledgeFile[] = filesToUpload
           .map((f) =>
             normalizeKnowledgeFile({
@@ -262,6 +556,8 @@ export const useKnowledgeStore = create<KnowledgeState>()(
               type: f.type || "application/octet-stream",
               uploadedAt: Date.now(),
               status: "uploading",
+              storageStatus: "uploading",
+              indexStatus: "not_indexed",
             }),
           )
           .filter((file): file is KnowledgeFile => Boolean(file));
@@ -287,258 +583,15 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           );
 
         const cleanupStaleUploadResources = async (
-          path?: string,
-          ragId?: string,
-          ragChunkCount?: number,
+          file: Partial<KnowledgeFile>,
         ) => {
-          await cleanupKnowledgeFileResources(
-            { path, ragId, ragChunkCount },
-            collectionId,
-          );
+          await cleanupKnowledgeFileResources(file, collectionId);
         };
 
-        // Helper to update status of a specific file
-        const updateFileStatus = (
+        const updateFileState = (
           fileId: string,
-          status: KnowledgeFileStatus,
-          updates?: Partial<KnowledgeFile>,
+          updates: Partial<KnowledgeFile>,
         ) => {
-          set((state) => ({
-            collections: state.collections.map((c) => {
-              if (c.id === collectionId) {
-                return {
-                  ...c,
-                  files: c.files.map((f) => {
-                    if (f.id !== fileId) return f;
-                    return (
-                      normalizeKnowledgeFile({ ...f, status, ...updates }) || f
-                    );
-                  }),
-                };
-              }
-              return c;
-            }),
-          }));
-        };
-
-        // 2. Process each file
-        for (let i = 0; i < filesToUpload.length; i++) {
-          const file = filesToUpload[i];
-          const kFile = newKnowledgeFiles[i];
-          let errorMsg = undefined;
-          let ragId = undefined;
-          let opfsPath = undefined;
-          let ragChunkCount = undefined;
-
-          try {
-            if (!isFileStillPresent(kFile.id)) continue;
-
-            if (rag.enabled) {
-              // --- RAG FLOW ---
-              if (!hasRagVectorStore(rag))
-                throw new Error("RAG Configuration missing.");
-
-              let textContent = "";
-              const isText = isTextMimeType(file.type);
-
-              if (isText) {
-                textContent = await file.text();
-              } else {
-                updateFileStatus(kFile.id, "parsing");
-                textContent = await parseKnowledgeDocument(file, rag);
-              }
-
-              if (!textContent.trim())
-                throw new Error("No text content extracted.");
-
-              // STEP: Save Text to OPFS (New Requirement)
-              // Create a plain text file with the same name as the original
-              const textFile = new File([textContent], file.name, {
-                type: "text/plain",
-              });
-              opfsPath = await saveToOPFS(
-                textFile,
-                `knowledge-base/${collectionId}`,
-              );
-
-              // Update state with path immediately so user can view it if needed
-              if (!isFileStillPresent(kFile.id)) {
-                await cleanupStaleUploadResources(opfsPath);
-                continue;
-              }
-              updateFileStatus(kFile.id, "indexing", { path: opfsPath });
-
-              // STEP: Indexing
-              const chunkSize = rag.chunkSize || 512;
-              const ragFileId = kFile.id;
-              const vectorItems = buildKnowledgeVectorItems({
-                collectionId,
-                fileName: file.name,
-                ragFileId,
-                textContent,
-                chunkSize,
-              });
-
-              // FIX: Pass collectionId as namespace
-              if (!isFileStillPresent(kFile.id)) {
-                await cleanupStaleUploadResources(opfsPath);
-                continue;
-              }
-              const success = await upsertToRAG(vectorItems, collectionId);
-              if (!success) throw new Error("Failed to upload to Vector DB.");
-
-              ragId = ragFileId; // Mark as RAG processed
-              ragChunkCount = vectorItems.length;
-
-              if (!isFileStillPresent(kFile.id)) {
-                await cleanupStaleUploadResources(
-                  opfsPath,
-                  ragId,
-                  ragChunkCount,
-                );
-                continue;
-              }
-
-              // STEP: Indexed (Final)
-              updateFileStatus(kFile.id, "indexed", {
-                ragId,
-                ragChunkCount,
-              });
-            } else {
-              // --- NO RAG FLOW (Local Storage) ---
-              const isText = isTextMimeType(file.type);
-
-              if (isText) {
-                // Save to OPFS
-                opfsPath = await saveToOPFS(
-                  file,
-                  `knowledge-base/${collectionId}`,
-                );
-              } else {
-                updateFileStatus(kFile.id, "parsing");
-
-                const textContent = await parseKnowledgeDocument(file, rag);
-                if (!textContent.trim())
-                  throw new Error("No text content extracted.");
-
-                // STEP: Save Text to OPFS (New Requirement)
-                // Create a plain text file with the same name as the original
-                const textFile = new File([textContent], file.name, {
-                  type: "text/plain",
-                });
-                opfsPath = await saveToOPFS(
-                  textFile,
-                  `knowledge-base/${collectionId}`,
-                );
-              }
-
-              // STEP: Saved (Final)
-              if (!isFileStillPresent(kFile.id)) {
-                await cleanupStaleUploadResources(opfsPath);
-                continue;
-              }
-              updateFileStatus(kFile.id, "saved", { path: opfsPath });
-            }
-          } catch (e: any) {
-            logDevError(`File processing failed: ${file.name}`, e);
-            errorMsg = e.message || "Unknown error";
-            updateFileStatus(kFile.id, "error", { error: errorMsg });
-          }
-        }
-      },
-
-      updateFileContent: async (collectionId, fileId, content) => {
-        const { collections } = get();
-        const collection = collections.find((c) => c.id === collectionId);
-        if (!collection) return;
-
-        const file = collection.files.find((f) => f.id === fileId);
-        if (!file || !file.path) return;
-
-        const isFileStillPresent = () =>
-          get().collections.some(
-            (c) =>
-              c.id === collectionId && c.files.some((f) => f.id === fileId),
-          );
-
-        try {
-          const blob = new Blob([content]);
-          let nextRagChunkCount = file.ragChunkCount;
-          let nextRagId = file.ragId;
-          let nextStatus = file.status;
-
-          if (!isFileStillPresent()) return;
-
-          const { rag } = useSettingsStore.getState();
-          const shouldIndexWithRAG = !!file.ragId || rag.enabled;
-
-          if (shouldIndexWithRAG) {
-            if (!hasRagVectorStore(rag)) {
-              throw new Error("RAG Configuration missing.");
-            }
-            const chunkSize = rag.chunkSize || 512;
-            const ragFileId = file.ragId || file.id;
-            const vectorItems = buildKnowledgeVectorItems({
-              collectionId,
-              fileName: file.name,
-              ragFileId,
-              textContent: content,
-              chunkSize,
-            });
-            if (vectorItems.length === 0) {
-              throw new Error("No text content available to index.");
-            }
-            const success = await upsertToRAG(vectorItems, collectionId);
-            if (!success) {
-              throw new Error("Failed to update RAG vectors.");
-            }
-
-            if (!isFileStillPresent()) {
-              await cleanupKnowledgeFileResources(
-                {
-                  path: file.path,
-                  ragId: ragFileId,
-                  ragChunkCount: vectorItems.length,
-                },
-                collectionId,
-              );
-              return;
-            }
-
-            const previousChunkCount = file.ragChunkCount || vectorItems.length;
-            if (file.ragId && previousChunkCount > vectorItems.length) {
-              const staleIds = buildKnowledgeVectorIds(
-                file.ragId,
-                previousChunkCount,
-              ).slice(vectorItems.length);
-              const deleted = await deleteFromRAG(staleIds, collectionId);
-              if (!deleted) {
-                throw new Error("Failed to remove stale RAG vectors.");
-              }
-            }
-
-            nextRagId = ragFileId;
-            nextRagChunkCount = vectorItems.length;
-            nextStatus = "indexed";
-          }
-
-          // Write local copy after RAG validation so failed re-indexing does
-          // not silently leave retrievable knowledge stale.
-          if (!isFileStillPresent()) return;
-          await writeToOPFS(file.path, content);
-
-          if (!isFileStillPresent()) {
-            await cleanupKnowledgeFileResources(
-              {
-                path: file.path,
-                ragId: file.ragId,
-                ragChunkCount: nextRagChunkCount,
-              },
-              collectionId,
-            );
-            return;
-          }
-
           set((state) => ({
             collections: state.collections.map((c) => {
               if (c.id === collectionId) {
@@ -549,11 +602,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                     return (
                       normalizeKnowledgeFile({
                         ...f,
-                        status: nextStatus,
-                        size: blob.size,
-                        ragId: nextRagId,
-                        ragChunkCount: nextRagChunkCount,
-                        error: undefined,
+                        ...buildStatusUpdate(f, updates),
                       }) || f
                     );
                   }),
@@ -563,10 +612,219 @@ export const useKnowledgeStore = create<KnowledgeState>()(
               return c;
             }),
           }));
-        } catch (e) {
-          logDevError("Failed to update file content", e);
-          throw e;
+        };
+
+        for (let i = 0; i < filesToUpload.length; i++) {
+          const file = filesToUpload[i];
+          const kFile = newKnowledgeFiles[i];
+          if (!kFile || !isFileStillPresent(kFile.id)) continue;
+
+          const operationKey = getOperationKey(collectionId, kFile.id);
+          const controller = new AbortController();
+          knowledgeOperationControllers.set(operationKey, controller);
+          await runKnowledgeFileOperation(collectionId, kFile.id, async () => {
+            let sourcePath: string | undefined;
+            let contentPath: string | undefined;
+            let textContent = "";
+
+            try {
+              sourcePath = await saveToOPFS(
+                file,
+                `knowledge-base/${collectionId}/source`,
+              );
+              if (!isFileStillPresent(kFile.id)) {
+                await cleanupStaleUploadResources({ sourcePath });
+                knowledgeOperationControllers.delete(operationKey);
+                return;
+              }
+
+              if (isTextKnowledgeSource(file)) {
+                textContent = await file.text();
+                contentPath = sourcePath;
+              } else {
+                updateFileState(kFile.id, {
+                  sourcePath,
+                  sourceMissing: false,
+                  storageStatus: "parsing",
+                  storageError: undefined,
+                });
+                textContent = await parseKnowledgeDocument(
+                  file,
+                  rag,
+                  controller.signal,
+                );
+                if (!textContent.trim()) {
+                  throw new Error("No text content extracted.");
+                }
+                contentPath = await saveToOPFS(
+                  createExtractedTextFile(file.name, textContent),
+                  `knowledge-base/${collectionId}/content`,
+                );
+              }
+
+              if (!textContent.trim()) {
+                throw new Error("No text content extracted.");
+              }
+              if (!isFileStillPresent(kFile.id)) {
+                await cleanupStaleUploadResources({ sourcePath, contentPath });
+                knowledgeOperationControllers.delete(operationKey);
+                return;
+              }
+
+              updateFileState(kFile.id, {
+                sourcePath,
+                contentPath,
+                path: contentPath,
+                contentKind: isTextKnowledgeSource(file)
+                  ? "source_text"
+                  : "extracted_text",
+                contentSize: new Blob([textContent]).size,
+                sourceMissing: false,
+                storageStatus: "saved",
+                storageError: undefined,
+                indexStatus: "not_indexed",
+                indexError: undefined,
+              });
+            } catch (error) {
+              if (isFileStillPresent(kFile.id)) {
+                const message =
+                  error instanceof Error ? error.message : "Unknown error";
+                updateFileState(kFile.id, {
+                  sourcePath,
+                  storageStatus: "error",
+                  storageError: message,
+                });
+                if (!(error instanceof Error && error.name === "AbortError")) {
+                  logDevError(`File processing failed: ${file.name}`, error);
+                }
+              } else {
+                await cleanupStaleUploadResources({ sourcePath, contentPath });
+              }
+              knowledgeOperationControllers.delete(operationKey);
+              return;
+            }
+
+            if (rag.enabled && isFileStillPresent(kFile.id)) {
+              try {
+                if (!hasRagVectorStore(rag)) {
+                  throw new Error("RAG Configuration missing.");
+                }
+                updateFileState(kFile.id, {
+                  indexStatus: "indexing",
+                  indexError: undefined,
+                });
+                const vectorItems = buildKnowledgeVectorItems({
+                  collectionId,
+                  fileName: file.name,
+                  ragFileId: kFile.id,
+                  textContent,
+                  chunkSize: rag.chunkSize || 512,
+                });
+                if (vectorItems.length === 0) {
+                  throw new Error("No text content available to index.");
+                }
+                const success = await upsertToRAG(vectorItems, collectionId);
+                if (!success) {
+                  throw new Error("Failed to upload to Vector DB.");
+                }
+                if (!isFileStillPresent(kFile.id)) {
+                  await cleanupStaleUploadResources({
+                    sourcePath,
+                    contentPath,
+                    ragId: kFile.id,
+                    ragChunkCount: vectorItems.length,
+                  });
+                  knowledgeOperationControllers.delete(operationKey);
+                  return;
+                }
+                updateFileState(kFile.id, {
+                  indexStatus: "indexed",
+                  indexError: undefined,
+                  ragId: kFile.id,
+                  ragChunkCount: vectorItems.length,
+                });
+              } catch (error) {
+                if (isFileStillPresent(kFile.id)) {
+                  const message =
+                    error instanceof Error ? error.message : "Unknown error";
+                  updateFileState(kFile.id, {
+                    indexStatus: "error",
+                    indexError: message,
+                  });
+                  logDevError(`File indexing failed: ${file.name}`, error);
+                }
+              }
+            }
+            knowledgeOperationControllers.delete(operationKey);
+          });
         }
+      },
+
+      updateFileContent: async (collectionId, fileId, content) => {
+        return runKnowledgeFileOperation(collectionId, fileId, async () => {
+          const { collections } = get();
+          const collection = collections.find((c) => c.id === collectionId);
+          if (!collection) return;
+
+          const file = collection.files.find((f) => f.id === fileId);
+          const contentPath = file ? getContentPath(file) : undefined;
+          if (!file || !contentPath) return;
+
+          const isFileStillPresent = () =>
+            get().collections.some(
+              (c) =>
+                c.id === collectionId && c.files.some((f) => f.id === fileId),
+            );
+
+          try {
+            const blob = new Blob([content]);
+            if (!isFileStillPresent()) return;
+            await writeToOPFS(contentPath, content);
+
+            if (!isFileStillPresent()) {
+              await deleteFromOPFS(contentPath);
+              return;
+            }
+
+            set((state) => ({
+              collections: state.collections.map((c) => {
+                if (c.id === collectionId) {
+                  return {
+                    ...c,
+                    files: c.files.map((f) => {
+                      if (f.id !== fileId) return f;
+                      return (
+                        normalizeKnowledgeFile({
+                          ...f,
+                          ...buildStatusUpdate(f, {
+                            contentPath,
+                            path: contentPath,
+                            contentSize: blob.size,
+                            ...(f.contentKind === "source_text"
+                              ? { size: blob.size }
+                              : { contentEditedAt: Date.now() }),
+                            storageStatus: "saved",
+                            storageError: undefined,
+                          }),
+                        }) || f
+                      );
+                    }),
+                    updatedAt: Date.now(),
+                  };
+                }
+                return c;
+              }),
+            }));
+
+            const { rag } = useSettingsStore.getState();
+            if (file.ragId || rag.enabled) {
+              await reindexKnowledgeFile(set, get, collectionId, fileId);
+            }
+          } catch (e) {
+            logDevError("Failed to update file content", e);
+            throw e;
+          }
+        });
       },
 
       addTextFileToCollection: async (collectionId, title, content) => {
@@ -588,6 +846,8 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           type: textFile.type,
           uploadedAt: Date.now(),
           status: "uploading",
+          storageStatus: "uploading",
+          indexStatus: "not_indexed",
         });
 
         if (!newKnowledgeFile) return;
@@ -611,10 +871,6 @@ export const useKnowledgeStore = create<KnowledgeState>()(
               item.files.some((file) => file.id === fileId),
           );
 
-        let opfsPath: string | undefined;
-        let ragId: string | undefined;
-        let ragChunkCount: number | undefined;
-
         const updateCreatedFile = (updates: Partial<KnowledgeFile>) => {
           set((state) => ({
             collections: state.collections.map((item) => {
@@ -632,93 +888,138 @@ export const useKnowledgeStore = create<KnowledgeState>()(
           }));
         };
 
-        try {
-          opfsPath = await saveToOPFS(
-            textFile,
-            `knowledge-base/${collectionId}`,
-          );
-          if (!isFileStillPresent()) {
-            await cleanupKnowledgeFileResources(
-              { path: opfsPath },
-              collectionId,
+        return runKnowledgeFileOperation(collectionId, fileId, async () => {
+          let opfsPath: string | undefined;
+          let ragId: string | undefined;
+          let ragChunkCount: number | undefined;
+
+          try {
+            opfsPath = await saveToOPFS(
+              textFile,
+              `knowledge-base/${collectionId}/source`,
             );
-            return;
-          }
-
-          const { rag } = useSettingsStore.getState();
-          if (rag.enabled) {
-            if (!hasRagVectorStore(rag)) {
-              throw new Error("RAG Configuration missing.");
+            if (!isFileStillPresent()) {
+              await cleanupKnowledgeFileResources(
+                { path: opfsPath },
+                collectionId,
+              );
+              return;
             }
 
-            const vectorItems = buildKnowledgeVectorItems({
-              collectionId,
-              fileName,
-              ragFileId: fileId,
-              textContent: content,
-              chunkSize: rag.chunkSize || 512,
-            });
-            if (vectorItems.length === 0) {
-              throw new Error("No text content available to index.");
-            }
-            const success = await upsertToRAG(vectorItems, collectionId);
-            if (!success) {
-              throw new Error("Failed to upload to Vector DB.");
-            }
-
-            ragId = fileId;
-            ragChunkCount = vectorItems.length;
-          }
-
-          if (!isFileStillPresent()) {
-            await cleanupKnowledgeFileResources(
-              { path: opfsPath, ragId, ragChunkCount },
-              collectionId,
-            );
-            return;
-          }
-
-          updateCreatedFile({
-            path: opfsPath,
-            status: ragId ? "indexed" : "saved",
-            ragId,
-            ragChunkCount,
-            error: undefined,
-          });
-        } catch (e) {
-          const errorMsg = e instanceof Error ? e.message : "Unknown error";
-          if (isFileStillPresent()) {
             updateCreatedFile({
+              sourcePath: opfsPath,
+              contentPath: opfsPath,
               path: opfsPath,
-              status: "error",
-              error: errorMsg,
+              contentKind: "source_text",
+              contentSize: textFile.size,
+              storageStatus: "saved",
+              indexStatus: "not_indexed",
+              status: "saved",
+              storageError: undefined,
+              indexError: undefined,
+              error: undefined,
+            });
+
+            const { rag } = useSettingsStore.getState();
+            if (rag.enabled) {
+              updateCreatedFile({
+                indexStatus: "indexing",
+                status: "indexing",
+                indexError: undefined,
+                error: undefined,
+              });
+              if (!hasRagVectorStore(rag)) {
+                throw new Error("RAG Configuration missing.");
+              }
+
+              const vectorItems = buildKnowledgeVectorItems({
+                collectionId,
+                fileName,
+                ragFileId: fileId,
+                textContent: content,
+                chunkSize: rag.chunkSize || 512,
+              });
+              if (vectorItems.length === 0) {
+                throw new Error("No text content available to index.");
+              }
+              const success = await upsertToRAG(vectorItems, collectionId);
+              if (!success) {
+                throw new Error("Failed to upload to Vector DB.");
+              }
+
+              ragId = fileId;
+              ragChunkCount = vectorItems.length;
+            }
+
+            if (!isFileStillPresent()) {
+              await cleanupKnowledgeFileResources(
+                { path: opfsPath, ragId, ragChunkCount },
+                collectionId,
+              );
+              return;
+            }
+
+            updateCreatedFile({
+              sourcePath: opfsPath,
+              contentPath: opfsPath,
+              path: opfsPath,
+              contentKind: "source_text",
+              contentSize: textFile.size,
+              storageStatus: "saved",
+              indexStatus: ragId ? "indexed" : "not_indexed",
+              status: ragId ? "indexed" : "saved",
               ragId,
               ragChunkCount,
+              error: undefined,
             });
+          } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : "Unknown error";
+            if (isFileStillPresent()) {
+              updateCreatedFile({
+                sourcePath: opfsPath,
+                contentPath: opfsPath,
+                path: opfsPath,
+                contentKind: opfsPath ? "source_text" : undefined,
+                contentSize: opfsPath ? textFile.size : undefined,
+                storageStatus: opfsPath ? "saved" : "error",
+                indexStatus: opfsPath ? "error" : "not_indexed",
+                status: "error",
+                storageError: opfsPath ? undefined : errorMsg,
+                indexError: opfsPath ? errorMsg : undefined,
+                error: errorMsg,
+                ragId,
+                ragChunkCount,
+              });
+            }
+            throw e;
           }
-          throw e;
-        }
+        });
       },
 
       cancelUpload: async (collectionId, fileId) => {
-        const currentFile = get()
-          .collections.find((c) => c.id === collectionId)
-          ?.files.find((f) => f.id === fileId);
+        knowledgeOperationControllers
+          .get(getOperationKey(collectionId, fileId))
+          ?.abort();
+        return runKnowledgeFileOperation(collectionId, fileId, async () => {
+          const currentFile = get()
+            .collections.find((c) => c.id === collectionId)
+            ?.files.find((f) => f.id === fileId);
 
-        await cleanupKnowledgeFileResources(currentFile, collectionId, {
-          strict: true,
+          await cleanupKnowledgeFileResources(currentFile, collectionId, {
+            strict: true,
+          });
+
+          set((state) => ({
+            collections: state.collections.map((collection) => {
+              if (collection.id !== collectionId) return collection;
+              return {
+                ...collection,
+                files: collection.files.filter((file) => file.id !== fileId),
+                updatedAt: Date.now(),
+              };
+            }),
+          }));
         });
-
-        set((state) => ({
-          collections: state.collections.map((collection) => {
-            if (collection.id !== collectionId) return collection;
-            return {
-              ...collection,
-              files: collection.files.filter((file) => file.id !== fileId),
-              updatedAt: Date.now(),
-            };
-          }),
-        }));
       },
 
       retryFile: async (collectionId, fileId) => {
@@ -728,7 +1029,14 @@ export const useKnowledgeStore = create<KnowledgeState>()(
 
         if (!file) return;
 
-        if (!file.path) {
+        const contentPath = getContentPath(file);
+        const sourcePath = getSourcePath(file);
+        if ((file.storageStatus === "error" || !contentPath) && sourcePath) {
+          await get().reparseFile(collectionId, fileId);
+          return;
+        }
+
+        if (!contentPath) {
           const message = "Upload the file again to retry.";
           set((state) => ({
             collections: state.collections.map((collection) => {
@@ -739,8 +1047,10 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                   item.id === fileId
                     ? {
                         ...item,
-                        status: "error",
-                        error: message,
+                        ...buildStatusUpdate(item, {
+                          storageStatus: "error",
+                          storageError: message,
+                        }),
                       }
                     : item,
                 ),
@@ -751,7 +1061,7 @@ export const useKnowledgeStore = create<KnowledgeState>()(
         }
 
         const { rag } = useSettingsStore.getState();
-        if (rag.enabled || file.ragId) {
+        if (file.indexStatus === "error" || rag.enabled || file.ragId) {
           await get().reindexFile(collectionId, fileId);
           return;
         }
@@ -765,8 +1075,12 @@ export const useKnowledgeStore = create<KnowledgeState>()(
                 item.id === fileId
                   ? {
                       ...item,
-                      status: "saved",
-                      error: undefined,
+                      ...buildStatusUpdate(item, {
+                        storageStatus: "saved",
+                        storageError: undefined,
+                        indexStatus: "not_indexed",
+                        indexError: undefined,
+                      }),
                     }
                   : item,
               ),
@@ -776,11 +1090,215 @@ export const useKnowledgeStore = create<KnowledgeState>()(
         }));
       },
 
+      reparseFile: async (collectionId, fileId, replacementSource) => {
+        if (replacementSource) {
+          const selection = selectKnowledgeFilesForUpload(0, [
+            replacementSource,
+          ]);
+          if (selection.accepted.length !== 1) {
+            throw new Error(
+              "Select a supported, non-empty file within the size limit.",
+            );
+          }
+        }
+
+        const operationKey = getOperationKey(collectionId, fileId);
+        knowledgeOperationControllers.get(operationKey)?.abort();
+        return runKnowledgeFileOperation(collectionId, fileId, async () => {
+          const collection = get().collections.find(
+            (item) => item.id === collectionId,
+          );
+          const file = collection?.files.find((item) => item.id === fileId);
+          if (!file) return;
+
+          const controller = new AbortController();
+          knowledgeOperationControllers.set(operationKey, controller);
+
+          const updateCurrentFile = (updates: Partial<KnowledgeFile>) => {
+            set((state) => ({
+              collections: state.collections.map((item) => {
+                if (item.id !== collectionId) return item;
+                return {
+                  ...item,
+                  files: item.files.map((current) =>
+                    current.id === fileId
+                      ? normalizeKnowledgeFile({
+                          ...current,
+                          ...buildStatusUpdate(current, updates),
+                        }) || current
+                      : current,
+                  ),
+                  updatedAt: Date.now(),
+                };
+              }),
+            }));
+          };
+          const isFileStillPresent = () =>
+            get().collections.some(
+              (item) =>
+                item.id === collectionId &&
+                item.files.some((current) => current.id === fileId),
+            );
+
+          const oldSourcePath = getSourcePath(file);
+          const oldContentPath = getContentPath(file);
+          let sourcePath = oldSourcePath;
+          let contentPath: string | undefined;
+          let sourceFile = replacementSource;
+          let contentSaved = false;
+
+          try {
+            if (replacementSource) {
+              sourcePath = await saveToOPFS(
+                replacementSource,
+                `knowledge-base/${collectionId}/source`,
+              );
+              if (!isFileStillPresent()) {
+                await deleteFromOPFS(sourcePath);
+                return;
+              }
+              updateCurrentFile({
+                name: replacementSource.name,
+                size: replacementSource.size,
+                type: replacementSource.type || "application/octet-stream",
+                uploadedAt: Date.now(),
+                sourcePath,
+                sourceMissing: false,
+                storageStatus: isTextKnowledgeSource(replacementSource)
+                  ? "uploading"
+                  : "parsing",
+                storageError: undefined,
+              });
+            } else {
+              if (!sourcePath) {
+                throw new Error(MISSING_SOURCE_FILE_ERROR);
+              }
+              const sourceBlob = await resolveOPFSBlob(sourcePath);
+              if (!sourceBlob) throw new Error(MISSING_SOURCE_FILE_ERROR);
+              sourceFile = new File([sourceBlob], file.name, {
+                type: file.type,
+              });
+              updateCurrentFile({
+                storageStatus: isTextKnowledgeSource(file)
+                  ? "uploading"
+                  : "parsing",
+                storageError: undefined,
+              });
+            }
+
+            if (!sourceFile || !sourcePath) {
+              throw new Error(MISSING_SOURCE_FILE_ERROR);
+            }
+
+            const sourceIsText = isTextKnowledgeSource(sourceFile);
+            const textContent = sourceIsText
+              ? await sourceFile.text()
+              : await parseKnowledgeDocument(
+                  sourceFile,
+                  useSettingsStore.getState().rag,
+                  controller.signal,
+                );
+            if (!textContent.trim()) {
+              throw new Error("No text content extracted.");
+            }
+
+            contentPath = sourceIsText
+              ? sourcePath
+              : await saveToOPFS(
+                  createExtractedTextFile(sourceFile.name, textContent),
+                  `knowledge-base/${collectionId}/content`,
+                );
+            if (!isFileStillPresent()) {
+              await cleanupKnowledgeFileResources(
+                { sourcePath, contentPath },
+                collectionId,
+              );
+              return;
+            }
+
+            updateCurrentFile({
+              sourcePath,
+              contentPath,
+              path: contentPath,
+              contentKind: sourceIsText ? "source_text" : "extracted_text",
+              contentSize: new Blob([textContent]).size,
+              contentEditedAt: undefined,
+              sourceMissing: false,
+              storageStatus: "saved",
+              storageError: undefined,
+              indexStatus: "not_indexed",
+              indexError: undefined,
+            });
+            contentSaved = true;
+
+            for (const oldPath of new Set([oldSourcePath, oldContentPath])) {
+              if (
+                oldPath &&
+                oldPath !== sourcePath &&
+                oldPath !== contentPath
+              ) {
+                try {
+                  await deleteFromOPFS(oldPath);
+                } catch (cleanupError) {
+                  logDevWarn(
+                    "Failed to delete replaced knowledge file:",
+                    cleanupError,
+                  );
+                }
+              }
+            }
+
+            const { rag } = useSettingsStore.getState();
+            if (rag.enabled || file.ragId) {
+              await reindexKnowledgeFile(set, get, collectionId, fileId);
+            }
+          } catch (error) {
+            if (isFileStillPresent()) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Document parsing failed.";
+              if (!contentSaved) {
+                updateCurrentFile({
+                  sourcePath,
+                  sourceMissing: !sourcePath,
+                  storageStatus: "error",
+                  storageError: message,
+                });
+              }
+            } else {
+              await Promise.all(
+                Array.from(
+                  new Set([
+                    oldSourcePath,
+                    oldContentPath,
+                    sourcePath,
+                    contentPath,
+                  ]),
+                )
+                  .filter((path): path is string => Boolean(path))
+                  .map((path) => deleteFromOPFS(path)),
+              );
+            }
+            if (!(error instanceof Error && error.name === "AbortError")) {
+              logDevError(`File reparsing failed: ${file.name}`, error);
+            }
+            throw error;
+          } finally {
+            if (
+              knowledgeOperationControllers.get(operationKey) === controller
+            ) {
+              knowledgeOperationControllers.delete(operationKey);
+            }
+          }
+        });
+      },
+
       reconcileCollection: async (collectionId) => {
         const collection = get().collections.find((c) => c.id === collectionId);
         const expectedUrls =
           collection?.files
-            .map((file) => file.path)
+            .flatMap((file) => [getSourcePath(file), getContentPath(file)])
             .filter((path): path is string => Boolean(path)) || [];
 
         const actualPaths = await listOPFSDirectory(
@@ -801,12 +1319,28 @@ export const useKnowledgeStore = create<KnowledgeState>()(
               return {
                 ...item,
                 files: item.files.map((file) => {
-                  if (!file.path || !missingUrls.has(file.path)) return file;
+                  const sourcePath = getSourcePath(file);
+                  const contentPath = getContentPath(file);
+                  const sourceMissing = Boolean(
+                    sourcePath && missingUrls.has(sourcePath),
+                  );
+                  const contentMissing = Boolean(
+                    contentPath && missingUrls.has(contentPath),
+                  );
+                  if (!sourceMissing && !contentMissing) return file;
                   return (
                     normalizeKnowledgeFile({
                       ...file,
-                      status: "error",
-                      error: MISSING_OPFS_FILE_ERROR,
+                      ...buildStatusUpdate(file, {
+                        sourceMissing:
+                          sourceMissing || file.sourceMissing || undefined,
+                        ...(contentMissing
+                          ? {
+                              storageStatus: "error" as const,
+                              storageError: MISSING_OPFS_FILE_ERROR,
+                            }
+                          : {}),
+                      }),
                     }) || file
                   );
                 }),
@@ -820,99 +1354,36 @@ export const useKnowledgeStore = create<KnowledgeState>()(
       },
 
       reindexFile: async (collectionId, fileId) => {
-        const file = get()
-          .collections.find((c) => c.id === collectionId)
-          ?.files.find((f) => f.id === fileId);
-
-        if (!file?.path) {
-          throw new Error("No local file content is available to re-index.");
-        }
-
-        const { rag } = useSettingsStore.getState();
-        if (!rag.enabled || !hasRagVectorStore(rag)) {
-          throw new Error(
-            "Enable and configure RAG before rebuilding the index.",
-          );
-        }
-
-        set((state) => ({
-          collections: state.collections.map((collection) => {
-            if (collection.id !== collectionId) return collection;
-            return {
-              ...collection,
-              files: collection.files.map((item) =>
-                item.id === fileId
-                  ? {
-                      ...item,
-                      status: "indexing",
-                      error: undefined,
-                    }
-                  : item,
-              ),
-            };
-          }),
-        }));
-
-        try {
-          const content = await withResolvedObjectUrl({
-            source: file.path,
-            resolveObjectUrl: resolveOPFSUrl,
-            read: async (objectUrl) => {
-              const response = await fetch(objectUrl);
-              return response.text();
-            },
-          });
-
-          if (!content?.trim()) {
-            throw new Error("No text content available to index.");
-          }
-
-          await get().updateFileContent(collectionId, fileId, content);
-        } catch (error) {
-          set((state) => ({
-            collections: state.collections.map((collection) => {
-              if (collection.id !== collectionId) return collection;
-              return {
-                ...collection,
-                files: collection.files.map((item) =>
-                  item.id === fileId
-                    ? {
-                        ...item,
-                        status: "error",
-                        error:
-                          error instanceof Error
-                            ? error.message
-                            : "Failed to rebuild RAG index.",
-                      }
-                    : item,
-                ),
-              };
-            }),
-          }));
-          throw error;
-        }
+        return runKnowledgeFileOperation(collectionId, fileId, () =>
+          reindexKnowledgeFile(set, get, collectionId, fileId),
+        );
       },
 
       deleteFile: async (collectionId, fileId) => {
-        const currentFile = get()
-          .collections.find((c) => c.id === collectionId)
-          ?.files.find((f) => f.id === fileId);
+        knowledgeOperationControllers
+          .get(getOperationKey(collectionId, fileId))
+          ?.abort();
+        return runKnowledgeFileOperation(collectionId, fileId, async () => {
+          const currentFile = get()
+            .collections.find((c) => c.id === collectionId)
+            ?.files.find((f) => f.id === fileId);
 
-        await cleanupKnowledgeFileResources(currentFile, collectionId, {
-          strict: true,
+          await cleanupKnowledgeFileResources(currentFile, collectionId, {
+            strict: true,
+          });
+
+          set((state) => ({
+            collections: state.collections.map((c) => {
+              if (c.id === collectionId) {
+                return {
+                  ...c,
+                  files: c.files.filter((f) => f.id !== fileId),
+                };
+              }
+              return c;
+            }),
+          }));
         });
-
-        set((state) => ({
-          collections: state.collections.map((c) => {
-            if (c.id === collectionId) {
-              return {
-                ...c,
-                files: c.files.filter((f) => f.id !== fileId),
-              };
-            }
-            return c;
-          }),
-        }));
       },
     }),
     {
@@ -929,12 +1400,17 @@ export const useKnowledgeStore = create<KnowledgeState>()(
       onRehydrateStorage: () => {
         return (state, error) => {
           if (typeof window === "undefined") return;
-          if (error) {
-            logDevError("Knowledge store hydration failed:", error);
-            state?.setHasHydrated(true);
-          } else if (state) {
-            state.setHasHydrated(true);
-          }
+          if (error) logDevError("Knowledge store hydration failed:", error);
+          void reportAppRestoreHydration("knowledge", error).then(
+            () => state?.setHasHydrated(true),
+            (restoreError) => {
+              logDevError(
+                "Restored knowledge data failed startup validation:",
+                restoreError,
+              );
+              window.location.reload();
+            },
+          );
         };
       },
     },

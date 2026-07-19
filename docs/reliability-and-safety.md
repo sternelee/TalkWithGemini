@@ -43,24 +43,33 @@ Plugin functions carry risk metadata:
 - `destructive`: may delete or overwrite external data.
 - `external`: may trigger an external service or workflow.
 
-If risk is not provided by the plugin manifest, Neo Chat infers it from the HTTP
-method: `GET` is `read`, `DELETE` is `destructive`, and other non-GET methods are
-`write`.
+The HTTP/MCP transport establishes a minimum risk even when a remote manifest
+declares a lower value: `GET` is at least `read`, `DELETE` is always
+`destructive`, other HTTP mutations are at least `write`, and MCP functions
+without an HTTP method are at least `external`.
 
-Runtime tool calls execute automatically once a plugin is enabled for the chat.
-There is no per-call confirmation modal. Plugin execution still goes through the
-server route, request schema validation, BYOK secret handling, outbound URL
-policy, response limits, and the configured tool-call round ceiling. Hosted
-deployments still require server-registered plugins; client-submitted legacy
-plugin definitions remain blocked.
+Tool calls execute automatically by default. If destructive-tool confirmation
+is enabled in System settings, only `destructive` calls pause for allow-once or
+deny decisions; `read`, `write`, and `external` calls continue automatically.
+Destructive approval is never persisted for the chat. Session-scoped approval
+records are limited to `write` and `external` risks and are bound to the plugin
+ID, function name, risk, and stable function fingerprint. Refresh, cancellation,
+and lost confirmation controllers fail closed for a pending destructive call. A
+definition fingerprint is checked in the browser and again by the server
+immediately before every dispatch, including automatic execution, so a plugin
+update cannot reuse a stale execution contract. Plugin execution still goes
+through the server route, request validation, BYOK secret handling, outbound URL
+policy, response limits, and the tool-call round ceiling.
 
 MCP-backed functions add a remote side-effect boundary: the MCP server owns the
 tool implementation and may perform external actions. The supported MCP
-transport is remote `streamable-http` over HTTPS. Installation and execution
-use the same server-side plugin registration, outbound URL policy, response
-limits, and hosted local-network restrictions as other network-capable
-plugins. MCP results are also bounded before they enter tool details or later
-model context.
+transport is remote `streamable-http` over HTTP or HTTPS. User-configured MCP,
+provider, search, RAG, and plugin targets may resolve to localhost or private
+networks in either deployment mode; fixed registries and built-in services
+remain HTTPS-only. HTTP may expose credentials or permit response tampering,
+and private targets expand the server's SSRF surface. MCP installation and
+execution retain server-side registration and response limits, and results are
+bounded before entering tool details or later model context.
 
 Built-in plugin IDs are reserved. Custom or manifest-installed plugins cannot
 override them, and built-ins take precedence if a stale mutable registry entry
@@ -69,19 +78,40 @@ resolution reports the collision instead of guessing which plugin should run.
 
 ## Knowledge Base Recovery
 
-Knowledge files keep their metadata until backing resources are cleaned up
-successfully. Strict delete and cancel paths fail before removing metadata if
-OPFS or vector cleanup fails.
+Knowledge records distinguish the original `sourcePath` from the searchable and
+editable `contentPath`. Text files can share one path; parsed documents retain
+the binary original and a separate extracted text file. Local storage failures
+and vector-index failures are recorded independently.
 
 Store recovery actions:
 
-- `cancelUpload(collectionId, fileId)` removes an in-flight file only after local
-  and vector resources are cleaned.
-- `retryFile(collectionId, fileId)` retries index rebuild when a local OPFS copy
-  exists, or tells the user to upload again when the original file is unavailable.
-- `reconcileCollection(collectionId)` lists `knowledge-base/<collectionId>`,
-  deletes orphan OPFS files, and marks metadata entries with missing local
-  content as recoverable errors.
+- `cancelUpload(collectionId, fileId)` aborts local work and remote parsing, then
+  removes only files no longer referenced by a durable record.
+- `retryFile(collectionId, fileId)` resumes the failed parsing or indexing stage
+  without discarding already saved source/content files.
+- `reconcileCollection(collectionId)` checks both source and content references,
+  cleans orphans, and preserves extracted content when an old source is missing.
+- `reparseFile` replaces only extracted text; an edited extraction requires an
+  explicit confirmation before it is overwritten.
+
+## Market And Search Health States
+
+Plugin, MCP, skill, and assistant catalogs distinguish fresh data, valid or
+stale cache, explicit fallback, and request errors. A failed request without a
+cache is never presented as an empty catalog. Search settings, the composer,
+request preflight, and deployment health share the same effective-capability
+resolver, including server defaults and self-hosted URL requirements.
+Deployment credentials are exposed to the browser only as the `Default Search`
+capability; selecting an individual provider uses its client credential or an
+explicit valid `http`/`https` self-hosted URL.
+
+Global search builds a cancellable browser-memory index when opened and keeps
+per-source sub-indexes for the current application lifecycle. Only changed
+conversation, workspace, knowledge, or memory sources are rebuilt. It indexes
+only each conversation's active branch plus local workspace, knowledge, and
+existing memory data. Reasoning, tool arguments/results, binary data, settings,
+market content, and credentials are excluded. Limits retain metadata while
+surfacing partial-index notices for omitted body text.
 
 RAG update and reindex paths remove stale vector ids when a newer version has
 fewer chunks, which prevents old chunks from continuing to appear in retrieval.

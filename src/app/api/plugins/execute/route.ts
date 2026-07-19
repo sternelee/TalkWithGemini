@@ -20,6 +20,7 @@ import { decryptOptionalSecret } from "@/lib/byok/server";
 import { safeFetchText } from "@/lib/security/safeFetch";
 import { safeServerLogError } from "@/lib/utils/safeServerLog";
 import type { Plugin, PluginFunction } from "@/types";
+import { createPluginFunctionFingerprint } from "@/lib/plugin/confirmation";
 
 function getMcpAuthType(
   plugin: Plugin,
@@ -48,7 +49,8 @@ export async function POST(request: NextRequest) {
     const newBody = PluginExecutionRequestSchema.safeParse(rawBody);
 
     if (newBody.success) {
-      const { pluginId, functionName, args, authConfig } = newBody.data;
+      const { pluginId, functionName, expectedFingerprint, args, authConfig } =
+        newBody.data;
       const registeredPlugin = await getServerPlugin(pluginId);
       if (!registeredPlugin) {
         return NextResponse.json(
@@ -73,6 +75,24 @@ export async function POST(request: NextRequest) {
           },
           { status: 400 },
         );
+      }
+
+      if (expectedFingerprint) {
+        const currentFingerprint = await createPluginFunctionFingerprint(
+          registeredPlugin,
+          functionDef,
+        );
+        if (currentFingerprint !== expectedFingerprint) {
+          return NextResponse.json(
+            {
+              error:
+                "Plugin function definition changed before execution. Review the updated tool before trying again.",
+              code: "TOOL_DEFINITION_CHANGED",
+              statusCode: 409,
+            },
+            { status: 409 },
+          );
+        }
       }
 
       const plugin =

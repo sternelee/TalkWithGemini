@@ -235,10 +235,68 @@ describe("agent service", () => {
         headers: { "content-type": "application/json" },
       }),
     );
-    const { getAgents } = await import("../services/api/agentService");
+    const { getAgentsResult } = await import("../services/api/agentService");
 
-    await expect(getAgents()).resolves.toEqual([staleAgent]);
+    await expect(getAgentsResult()).resolves.toMatchObject({
+      status: "stale",
+      source: "agents:en:cache",
+      data: [staleAgent],
+      error: { retryable: true },
+    });
     expect(setMarketAgents).not.toHaveBeenCalled();
+  });
+
+  it("reports an unavailable empty registry as an error", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ agents: [], unavailable: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { getAgentsResult } = await import("../services/api/agentService");
+
+    await expect(getAgentsResult()).resolves.toMatchObject({
+      status: "error",
+      source: "agents:en:api",
+      data: [],
+      error: { retryable: true },
+    });
+  });
+
+  it("reports a successful empty assistant registry as fresh", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ agents: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { getAgentsResult } = await import("../services/api/agentService");
+
+    await expect(getAgentsResult()).resolves.toMatchObject({
+      status: "fresh",
+      source: "agents:en:api",
+      data: [],
+    });
+  });
+
+  it("reuses a successful empty assistant cache", async () => {
+    storeState.value = {
+      marketAgents: [],
+      marketAgentsTimestamp: Date.now(),
+      marketAgentsLocale: "en",
+      setMarketAgents: vi.fn(),
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("network should not be used"));
+    const { getAgentsResult } = await import("../services/api/agentService");
+
+    await expect(getAgentsResult()).resolves.toMatchObject({
+      status: "cache",
+      source: "agents:en:cache",
+      data: [],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("reuses an in-flight agent list request", async () => {

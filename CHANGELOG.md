@@ -7,6 +7,60 @@ group changes under a level-2 heading that matches the release tag, such as
 `## v2.0.0`; the release workflow uses that section as the GitHub release notes
 when the matching tag is pushed.
 
+## v2.3.0
+
+- **Local search and navigation:** Added a local global search center, available
+  from the sidebar or `Ctrl`/`Cmd` + `K`, across active conversation branches,
+  attachments, workspaces, knowledge content, and memories. Search supports
+  source, workspace, role, date, and sort controls, cancellable incremental
+  indexing, partial-index notices, highlighted results, and direct navigation
+  without persisting or uploading its index.
+- **Portable backup and restore:** Replaced metadata-only app export with the
+  version 3 ZIP format, bundling `manifest.json`, `data.json`, and referenced
+  app-owned OPFS files. Added path, size, digest, and extraction validation;
+  bounded and cancellable inspection; missing-file reporting; legacy version 2
+  JSON import; staged replacement; hydration validation; rollback journaling;
+  credential exclusion; and a post-restore credential checklist.
+- **Knowledge-base lifecycle:** Separated preserved source files from editable
+  or indexable extracted content, with independent storage and index states.
+  Added migration, editing, retry, reparse, reindex, cancellation,
+  reconciliation, orphan cleanup, and per-file operation serialization while
+  retaining originals through parser or vector-service failures.
+- **Plugin and MCP safety:** Enforced transport-derived risk floors, added an
+  optional destructive-tool confirmation flow with allow-once and deny
+  decisions, redacted sensitive arguments, and limited chat-scoped approvals to
+  non-destructive `write` and `external` risks. Approvals are bound to stable
+  function fingerprints; browser and server checks prevent stale-definition
+  execution, and confirmed calls fail closed instead of falling back to legacy
+  full-manifest payloads.
+- **Markets, search, and deployment health:** Distinguished fresh, cached,
+  stale, fallback, and failed marketplace loads so errors are not presented as
+  empty catalogs. Unified effective search capability across settings, request
+  preflight, and deployment health, preserved the search-enabled setting, and
+  kept public Firecrawl search available without an API key while treating an
+  explicit non-default Base URL as self-hosted configuration.
+- **Self-hosted endpoint compatibility:** Allowed user-configured provider,
+  search, RAG, plugin, and remote MCP targets to use HTTP or private-network
+  addresses in local or hosted mode. Fixed registries and built-in service
+  endpoints retain their HTTPS and host allowlists, and the documentation now
+  calls out the administrative trust, SSRF, credential, and transport risks.
+- **Chat, media, and export fixes:** Corrected OpenAI Responses multi-turn
+  assistant-history serialization, added a bounded server image proxy for
+  cross-origin image display and export, improved image proxy policy and DNS
+  checks, restored model-message download progress, and fixed startup behavior
+  that unexpectedly reset search availability.
+- **Data integrity:** Coordinated session writes, snapshots, app restore, and
+  selective data clearing through shared/exclusive gates so queued writes cannot
+  deadlock restore or recreate cleared data. Restore now drains admitted writes
+  before replacement, validates hydrated stores and message trees, and rolls
+  back interrupted or invalid replacements.
+- **Engineering and dependencies:** Added import-alias enforcement, Testing
+  Library coverage, isolated Playwright smoke tests on port 3100, and Chromium
+  E2E execution in CI. Refreshed provider SDKs and development dependencies,
+  excluded E2E artifacts from Vitest and Git, and expanded regression coverage
+  for search, backup/restore, knowledge operations, plugins, networking, and UI
+  state.
+
 ## v2.2.0
 
 - **New capabilities:** Added native Anthropic Messages API support through the

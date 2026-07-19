@@ -35,6 +35,7 @@
   "searchUnavailableNoProvider": "検索に使用できる有効なモデルプロバイダーがありません。",
   "searchUnavailableGoogleGemini": "Google 検索は Google モデルでのみ機能します。このモデルには外部の検索プロバイダーを選択してください。",
   "searchUnavailableModelBuiltIn": "モデル内蔵検索は Google または OpenAI Responses モデルでのみ利用できます。OpenAI 互換モデルや Anthropic モデルでは外部検索プロバイダーを選択してください。",
+  "searchUnavailableServerDefault": "このデプロイにはデフォルト検索が構成されていません。",
   "searchUnavailableApiKey": "{provider} 検索を使用するには、設定で API キーを入力する必要があります。",
   "searchUnavailableBaseUrl": "{provider} 検索を使用するには、設定でベース URL を入力する必要があります。",
   "searchUnavailableGeneric": "現在の構成では検索機能を利用できません。",

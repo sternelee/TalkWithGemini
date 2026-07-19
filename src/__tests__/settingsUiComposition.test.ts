@@ -36,6 +36,29 @@ describe("settings UI primitives", () => {
     expect(settingsUi).toContain(
       "focus-visible:ring-2 focus-visible:ring-blue-500/60",
     );
+    expect(settingsUi).toContain(
+      'aria-label={`${name}: ${isActive ? t("active") : t("enable")}`}',
+    );
+  });
+
+  it("uses the shared search capability resolver in search settings", () => {
+    const searchSettings = readFileSync(
+      resolve(process.cwd(), "src/components/settings/SearchSettings.tsx"),
+      "utf8",
+    );
+
+    expect(searchSettings).toContain("resolveEffectiveSearchCapability");
+    expect(searchSettings).toContain(
+      'compatibility.source === "public_service"',
+    );
+    expect(searchSettings).toContain("capabilityPublicService");
+    expect(searchSettings).not.toContain("capabilityMissingFirecrawl");
+    expect(en.Search.capabilityPublicService).toContain("without an API key");
+    expect(zh.Search.capabilityPublicService).toContain("无需 API Key");
+    expect(ja.Search.capabilityPublicService).toContain("API キーなし");
+    expect(en.Search.capabilityServer).toBeTruthy();
+    expect(zh.Search.capabilityServer).toBeTruthy();
+    expect(ja.Search.capabilityServer).toBeTruthy();
   });
 
   it("exposes memory management as a settings tab", () => {
@@ -63,9 +86,24 @@ describe("settings UI primitives", () => {
     expect(systemSettings).toContain("systemAssistantTitle");
     expect(systemSettings).toContain("systemAutomationTitle");
     expect(systemSettings).toContain("systemDataTitle");
+    expect(systemSettings).toContain(
+      'name="enableDestructiveToolConfirmation"',
+    );
+    expect(systemSettings).toContain(
+      'ariaLabel={t("destructiveToolConfirmationAria")}',
+    );
     expect(en.System.systemInterfaceTitle).toBeTruthy();
     expect(zh.System.systemInterfaceTitle).toBeTruthy();
     expect(ja.System.systemInterfaceTitle).toBeTruthy();
+    expect(en.System.destructiveToolConfirmationDesc).toContain(
+      "Other tool calls run automatically",
+    );
+    expect(zh.System.destructiveToolConfirmationDesc).toContain(
+      "其他工具调用将自动执行",
+    );
+    expect(ja.System.destructiveToolConfirmationDesc).toContain(
+      "その他のツール呼び出しは自動実行",
+    );
   });
 
   it("uses a dropdown for interface language instead of a fixed segmented control", () => {

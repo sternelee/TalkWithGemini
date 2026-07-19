@@ -33,6 +33,10 @@ import {
   Image as ImageIcon,
   Headphones,
   Film,
+  Download,
+  FileUp,
+  RotateCcw,
+  Ban,
 } from "lucide-react";
 import { useKnowledgeStore } from "@/store/core/knowledgeStore";
 import { useSettingsStore } from "@/store/core/settingsStore";
@@ -670,21 +674,73 @@ const getStatusConfig = (status: KnowledgeFileStatus): StatusConfig => {
   }
 };
 
+const getStorageDisplayStatus = (file: KnowledgeFile): KnowledgeFileStatus => {
+  if (file.storageStatus) {
+    return file.storageStatus === "saved" ? "saved" : file.storageStatus;
+  }
+  if (file.status === "uploading" || file.status === "parsing") {
+    return file.status;
+  }
+  if (file.status === "error" && !(file.contentPath || file.path)) {
+    return "error";
+  }
+  return "saved";
+};
+
+const getIndexDisplayStatus = (
+  file: KnowledgeFile,
+): KnowledgeFileStatus | null => {
+  if (file.indexStatus === "not_indexed") return null;
+  if (file.indexStatus) {
+    return file.indexStatus === "error" ? "error" : file.indexStatus;
+  }
+  if (["indexing", "indexed"].includes(file.status) || file.ragId) {
+    return file.status === "indexing" ? "indexing" : "indexed";
+  }
+  return null;
+};
+
 // --- File Row ---
 const FileRow: React.FC<{
   file: KnowledgeFile;
+  rowRef?: React.Ref<HTMLDivElement>;
+  isHighlighted?: boolean;
   onDelete: () => void | Promise<void>;
   onClick: () => void;
   onReindex?: () => void | Promise<void>;
+  onCancel?: () => void | Promise<void>;
+  onRetry?: () => void | Promise<void>;
+  onReparse?: () => void | Promise<void>;
+  onReplaceSource?: (file: File) => void | Promise<void>;
+  onDownloadOriginal?: () => void | Promise<void>;
   isReindexing?: boolean;
-}> = ({ file, onDelete, onClick, onReindex, isReindexing = false }) => {
+  isBusy?: boolean;
+}> = ({
+  file,
+  rowRef,
+  isHighlighted = false,
+  onDelete,
+  onClick,
+  onReindex,
+  onCancel,
+  onRetry,
+  onReparse,
+  onReplaceSource,
+  onDownloadOriginal,
+  isReindexing = false,
+  isBusy = false,
+}) => {
   const t = useTranslations("Knowledge");
   const locale = useLocale();
   const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
-  const statusConfig = getStatusConfig(file.status);
+  const replacementInputRef = useRef<HTMLInputElement | null>(null);
+  const storageStatus = getStorageDisplayStatus(file);
+  const indexStatus = getIndexDisplayStatus(file);
+  const storageStatusConfig = getStatusConfig(storageStatus);
+  const indexStatusConfig = indexStatus ? getStatusConfig(indexStatus) : null;
   const FileIcon = useMemo(() => {
     if (file.type.startsWith("image/")) return ImageIcon;
     if (file.type.startsWith("audio/")) return Headphones;
@@ -728,7 +784,15 @@ const FileRow: React.FC<{
   };
 
   return (
-    <div className="group flex items-center justify-between gap-3 rounded-xl border border-transparent p-3 transition-colors hover:border-gray-100 hover:bg-gray-50 dark:hover:border-border dark:hover:bg-muted/50">
+    <div
+      ref={rowRef}
+      data-knowledge-file-id={file.id}
+      className={`group flex items-center justify-between gap-3 rounded-xl border p-3 transition-[background-color,border-color,box-shadow] ${
+        isHighlighted
+          ? "border-purple-400 bg-purple-50 ring-2 ring-purple-500/30 dark:border-purple-700 dark:bg-purple-950/30"
+          : "border-transparent hover:border-gray-100 hover:bg-gray-50 dark:hover:border-border dark:hover:bg-muted/50"
+      }`}
+    >
       <button
         type="button"
         onClick={onClick}
@@ -759,19 +823,21 @@ const FileRow: React.FC<{
       </button>
 
       <div className="flex shrink-0 items-center gap-3">
-        {/* Status Indicator */}
         <div className="flex max-w-44 items-center gap-1.5 rounded-md border border-gray-100 bg-gray-50 px-2 py-1 dark:border-border dark:bg-muted">
           <span
-            className={`w-2 h-2 rounded-full ${statusConfig.color} ${["uploading", "parsing", "indexing"].includes(file.status) ? "animate-pulse" : ""}`}
+            className={`w-2 h-2 rounded-full ${storageStatusConfig.color} ${["uploading", "parsing"].includes(storageStatus) ? "animate-pulse" : ""}`}
             aria-hidden="true"
           />
           <span
-            className={`truncate text-[10px] font-medium ${statusConfig.textColor}`}
+            className={`truncate text-[10px] font-medium ${storageStatusConfig.textColor}`}
           >
-            {t(statusConfig.labelKey)}
+            {t(storageStatusConfig.labelKey)}
           </span>
-          {file.status === "error" && file.error && (
-            <Tooltip content={file.error} position="left">
+          {storageStatus === "error" && (file.storageError || file.error) && (
+            <Tooltip
+              content={file.storageError || file.error || ""}
+              position="left"
+            >
               <AlertCircle
                 size={12}
                 className="text-red-500 ml-1"
@@ -779,12 +845,153 @@ const FileRow: React.FC<{
               />
             </Tooltip>
           )}
-          {file.status === "indexed" && file.ragChunkCount ? (
-            <span className="shrink-0 text-[10px] text-gray-400">
-              {t("chunkCount", { count: file.ragChunkCount })}
-            </span>
-          ) : null}
         </div>
+
+        {indexStatusConfig && indexStatus && (
+          <div className="flex max-w-44 items-center gap-1.5 rounded-md border border-gray-100 bg-gray-50 px-2 py-1 dark:border-border dark:bg-muted">
+            <span
+              className={`h-2 w-2 rounded-full ${indexStatusConfig.color} ${indexStatus === "indexing" ? "animate-pulse" : ""}`}
+              aria-hidden="true"
+            />
+            <span
+              className={`truncate text-[10px] font-medium ${indexStatusConfig.textColor}`}
+            >
+              {t(indexStatusConfig.labelKey)}
+            </span>
+            {indexStatus === "error" && (file.indexError || file.error) && (
+              <Tooltip
+                content={file.indexError || file.error || ""}
+                position="left"
+              >
+                <AlertCircle
+                  size={12}
+                  className="ml-1 text-red-500"
+                  aria-hidden="true"
+                />
+              </Tooltip>
+            )}
+            {indexStatus === "indexed" && file.ragChunkCount ? (
+              <span className="shrink-0 text-[10px] text-gray-400">
+                {t("chunkCount", { count: file.ragChunkCount })}
+              </span>
+            ) : null}
+          </div>
+        )}
+
+        {file.sourceMissing && (
+          <Tooltip content={t("originalMissing")} position="left">
+            <AlertCircle
+              size={16}
+              className="shrink-0 text-amber-500"
+              aria-hidden="true"
+            />
+          </Tooltip>
+        )}
+
+        {onDownloadOriginal && (
+          <Tooltip content={t("downloadOriginal")} position="left">
+            <button
+              type="button"
+              aria-label={t("downloadOriginalAria", { name: file.name })}
+              onClick={(event) => {
+                event.stopPropagation();
+                void onDownloadOriginal();
+              }}
+              className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:hover:bg-blue-900/20"
+            >
+              <Download size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        )}
+
+        {onReparse && (
+          <Tooltip content={t("reparseFile")} position="left">
+            <button
+              type="button"
+              aria-label={t("reparseFileAria", { name: file.name })}
+              disabled={isBusy}
+              onClick={(event) => {
+                event.stopPropagation();
+                void onReparse();
+              }}
+              className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-amber-50 hover:text-amber-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 disabled:opacity-50 dark:hover:bg-amber-900/20"
+            >
+              <RotateCcw
+                size={16}
+                className={isBusy ? "animate-spin" : ""}
+                aria-hidden="true"
+              />
+            </button>
+          </Tooltip>
+        )}
+
+        {onReplaceSource && (
+          <>
+            <input
+              ref={replacementInputRef}
+              type="file"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label={t("selectOriginalAria", { name: file.name })}
+              onChange={(event) => {
+                const replacement = event.target.files?.[0];
+                event.target.value = "";
+                if (replacement) void onReplaceSource(replacement);
+              }}
+            />
+            <Tooltip content={t("selectOriginal")} position="left">
+              <button
+                type="button"
+                aria-label={t("selectOriginalAria", { name: file.name })}
+                disabled={isBusy}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  replacementInputRef.current?.click();
+                }}
+                className="shrink-0 rounded-lg p-1.5 text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 disabled:opacity-50 dark:hover:bg-amber-900/20"
+              >
+                <FileUp size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          </>
+        )}
+
+        {onRetry && (
+          <Tooltip content={t("retryFile")} position="left">
+            <button
+              type="button"
+              aria-label={t("retryFileAria", { name: file.name })}
+              disabled={isBusy}
+              onClick={(event) => {
+                event.stopPropagation();
+                void onRetry();
+              }}
+              className="shrink-0 rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 disabled:opacity-50 dark:hover:bg-red-900/20"
+            >
+              <RotateCcw
+                size={16}
+                className={isBusy ? "animate-spin" : ""}
+                aria-hidden="true"
+              />
+            </button>
+          </Tooltip>
+        )}
+
+        {onCancel && (
+          <Tooltip content={t("cancelProcessing")} position="left">
+            <button
+              type="button"
+              aria-label={t("cancelProcessingAria", { name: file.name })}
+              onClick={(event) => {
+                event.stopPropagation();
+                void onCancel();
+              }}
+              className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60 dark:hover:bg-red-900/20"
+            >
+              <Ban size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        )}
 
         {onReindex && (
           <Tooltip
@@ -841,10 +1048,16 @@ const FileRow: React.FC<{
 
 interface KnowledgeBaseProps {
   onClose?: () => void;
+  initialCollectionId?: string;
+  initialFileId?: string;
 }
 
 // --- Main Component ---
-const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
+const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({
+  onClose,
+  initialCollectionId,
+  initialFileId,
+}) => {
   const t = useTranslations("Knowledge");
   const {
     _hasHydrated,
@@ -853,6 +1066,9 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
     deleteFile,
     updateFileContent,
     reindexFile,
+    cancelUpload,
+    retryFile,
+    reparseFile,
   } = useKnowledgeStore();
   const { rag } = useSettingsStore();
 
@@ -867,6 +1083,10 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadNotice, setUploadNotice] = useState("");
   const [reindexingFileId, setReindexingFileId] = useState<string | null>(null);
+  const [busyFileId, setBusyFileId] = useState<string | null>(null);
+  const [highlightedFileId, setHighlightedFileId] = useState<string | null>(
+    null,
+  );
 
   // File Viewing State
   const [viewingFile, setViewingFile] = useState<{
@@ -884,6 +1104,8 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
   const [saveError, setSaveError] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const highlightedFileRef = useRef<HTMLDivElement | null>(null);
+  const locatedTargetRef = useRef("");
   const fileViewerDialogRef = useRef<HTMLDivElement | null>(null);
   const fileViewerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileViewerPreviousFocusRef = useRef<HTMLElement | null>(null);
@@ -901,6 +1123,50 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
 
   const activeCollection = collections.find((c) => c.id === activeCollectionId);
   const viewingFileId = viewingFile?.id;
+
+  useEffect(() => {
+    if (!initialCollectionId && !initialFileId) {
+      locatedTargetRef.current = "";
+      return;
+    }
+    if (!_hasHydrated) return;
+    const requestedCollection = collections.find(
+      (collection) => collection.id === initialCollectionId,
+    );
+    const targetCollection =
+      (requestedCollection &&
+      (!initialFileId ||
+        requestedCollection.files.some((file) => file.id === initialFileId))
+        ? requestedCollection
+        : undefined) ||
+      collections.find((collection) =>
+        collection.files.some((file) => file.id === initialFileId),
+      );
+    if (!targetCollection) return;
+    const targetFile = initialFileId
+      ? targetCollection.files.find((file) => file.id === initialFileId)
+      : undefined;
+    const targetKey = `${targetCollection.id}:${targetFile?.id || ""}`;
+    if (locatedTargetRef.current === targetKey) return;
+    locatedTargetRef.current = targetKey;
+    setActiveCollectionId(targetCollection.id);
+    setHighlightedFileId(targetFile?.id || null);
+  }, [_hasHydrated, collections, initialCollectionId, initialFileId]);
+
+  useEffect(() => {
+    if (!highlightedFileId || activeCollectionId === null) return;
+    const frame = requestAnimationFrame(() => {
+      highlightedFileRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    const timer = window.setTimeout(() => setHighlightedFileId(null), 3_500);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [activeCollectionId, highlightedFileId]);
 
   const setCopyFeedback = (status: Exclude<CopyStatus, "idle">) => {
     const controller =
@@ -1007,10 +1273,11 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
   const handleFileClick = async (file: KnowledgeFile) => {
     try {
       let content = t("previewNotAvailable");
+      const contentPath = file.contentPath || file.path;
 
-      if (file.path && isOPFSUrl(file.path)) {
+      if (contentPath && isOPFSUrl(contentPath)) {
         const result = await withResolvedObjectUrl({
-          source: file.path,
+          source: contentPath,
           resolveObjectUrl: resolveOPFSUrl,
           read: async (blobUrl) => {
             const response = await fetch(blobUrl);
@@ -1110,6 +1377,70 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
       );
     } finally {
       setReindexingFileId(null);
+    }
+  };
+
+  const handleKnowledgeFileAction = async (
+    file: KnowledgeFile,
+    action: () => Promise<void>,
+    successMessage?: string,
+  ) => {
+    if (busyFileId) return;
+    setBusyFileId(file.id);
+    setUploadNotice("");
+    try {
+      await action();
+      if (successMessage) setUploadNotice(successMessage);
+    } catch (error) {
+      logDevError(`Knowledge file action failed: ${file.name}`, error);
+      setUploadNotice(
+        error instanceof Error ? error.message : t("fileActionFailed"),
+      );
+    } finally {
+      setBusyFileId(null);
+    }
+  };
+
+  const handleReparseFile = async (
+    collectionId: string,
+    file: KnowledgeFile,
+    replacementSource?: File,
+  ) => {
+    if (
+      file.contentEditedAt &&
+      !window.confirm(t("confirmReparseEdited", { name: file.name }))
+    ) {
+      return;
+    }
+    await handleKnowledgeFileAction(
+      file,
+      () => reparseFile(collectionId, file.id, replacementSource),
+      t("reparseSuccess", { name: file.name }),
+    );
+  };
+
+  const handleDownloadOriginal = async (file: KnowledgeFile) => {
+    const sourcePath =
+      file.sourcePath ||
+      (file.contentKind === "source_text"
+        ? file.contentPath || file.path
+        : undefined);
+    if (!sourcePath) return;
+
+    try {
+      await withResolvedObjectUrl({
+        source: sourcePath,
+        resolveObjectUrl: resolveOPFSUrl,
+        read: async (objectUrl) => {
+          const anchor = document.createElement("a");
+          anchor.href = objectUrl;
+          anchor.download = file.name;
+          anchor.click();
+        },
+      });
+    } catch (error) {
+      logDevError("Failed to download original knowledge file", error);
+      setUploadNotice(t("downloadOriginalFailed"));
     }
   };
 
@@ -1358,7 +1689,7 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
 
       {/* Main Content */}
       <div
-        className={`flex-1 overflow-y-auto px-6 ${activeCollection ? "py-6" : "pb-10"} custom-scrollbar`}
+        className={`flex-1 overflow-y-auto px-4 ${activeCollection ? "py-6" : "pb-10"} custom-scrollbar`}
       >
         <div className="max-w-7xl mx-auto flex flex-col min-h-full">
           {!activeCollection ? (
@@ -1494,17 +1825,77 @@ const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ onClose }) => {
                           <FileRow
                             key={file.id}
                             file={file}
+                            rowRef={
+                              highlightedFileId === file.id
+                                ? highlightedFileRef
+                                : undefined
+                            }
+                            isHighlighted={highlightedFileId === file.id}
                             onClick={() => handleFileClick(file)}
                             onDelete={() =>
                               handleDeleteFile(activeCollection.id, file.id)
                             }
                             onReindex={
-                              file.path
+                              file.contentPath || file.path
                                 ? () =>
                                     handleReindexFile(activeCollection.id, file)
                                 : undefined
                             }
+                            onCancel={
+                              file.storageStatus === "uploading" ||
+                              file.storageStatus === "parsing" ||
+                              file.status === "uploading" ||
+                              file.status === "parsing"
+                                ? () =>
+                                    handleKnowledgeFileAction(file, () =>
+                                      cancelUpload(
+                                        activeCollection.id,
+                                        file.id,
+                                      ),
+                                    )
+                                : undefined
+                            }
+                            onRetry={
+                              file.storageStatus === "error" ||
+                              file.indexStatus === "error" ||
+                              file.status === "error"
+                                ? () =>
+                                    handleKnowledgeFileAction(
+                                      file,
+                                      () =>
+                                        retryFile(activeCollection.id, file.id),
+                                      t("retrySuccess", { name: file.name }),
+                                    )
+                                : undefined
+                            }
+                            onReparse={
+                              file.contentKind === "extracted_text" &&
+                              file.sourcePath &&
+                              !file.sourceMissing
+                                ? () =>
+                                    handleReparseFile(activeCollection.id, file)
+                                : undefined
+                            }
+                            onReplaceSource={
+                              file.contentKind === "extracted_text" &&
+                              (!file.sourcePath || file.sourceMissing)
+                                ? (replacement) =>
+                                    handleReparseFile(
+                                      activeCollection.id,
+                                      file,
+                                      replacement,
+                                    )
+                                : undefined
+                            }
+                            onDownloadOriginal={
+                              file.sourcePath ||
+                              (file.contentKind === "source_text" &&
+                                (file.contentPath || file.path))
+                                ? () => handleDownloadOriginal(file)
+                                : undefined
+                            }
                             isReindexing={reindexingFileId === file.id}
+                            isBusy={busyFileId === file.id}
                           />
                         ))}
                       </div>

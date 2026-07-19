@@ -147,13 +147,15 @@ function getServerEntry(value: unknown): Record<string, unknown> | null {
   return isRecord(nested) ? nested : value;
 }
 
-function normalizeHttpsUrl(value: unknown): string {
+function normalizeHttpUrl(value: unknown): string {
   const raw = trimString(value, MARKET_LIMITS.maxPluginManifestUrlChars);
   if (!raw) return "";
 
   try {
     const url = new URL(raw);
-    return url.protocol === "https:" ? url.toString() : "";
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : "";
   } catch {
     return "";
   }
@@ -272,7 +274,7 @@ function getRemoteEndpoint(
     );
     if (!rawUrl || hasUnresolvedUrlVariables(rawUrl, remote)) continue;
 
-    const serverUrl = normalizeHttpsUrl(rawUrl);
+    const serverUrl = normalizeHttpUrl(rawUrl);
     if (!serverUrl) continue;
 
     const headerMetadata = normalizeRemoteHeaders(remote);

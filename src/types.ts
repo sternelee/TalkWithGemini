@@ -20,11 +20,18 @@ export type {
   SessionConfig,
   SessionMessageTree,
   ToolCall,
+  ToolConfirmationController,
+  ToolConfirmationDecision,
+  ToolConfirmationRequest,
+  ToolSessionApproval,
   Workspace,
 } from "./lib/chat/types";
 export type {
   Collection,
   KnowledgeFile,
+  KnowledgeFileContentKind,
+  KnowledgeFileIndexStatus,
+  KnowledgeFileStorageStatus,
   KnowledgeFileStatus,
 } from "./lib/knowledge/types";
 export type {

@@ -20,8 +20,14 @@ import type {
   Message,
   Session,
   SessionMessageTree,
+  ToolCall,
+  ToolConfirmationDecision,
+  ToolConfirmationRequest,
 } from "@/types";
 import { getMessageBranchInfo } from "@/lib/chat/messageTree";
+import { getActiveMessagePath } from "@/lib/chat/messageTree";
+import type { GlobalSearchNavigationTarget } from "@/lib/global-search";
+import { useChatStore } from "@/store/core/chatStore";
 
 const ImagePreview = dynamic(() => import("@/components/media/ImagePreview"), {
   ssr: false,
@@ -49,6 +55,10 @@ const SettingsPage = dynamic(
   {
     ssr: false,
   },
+);
+const GlobalSearchCenter = dynamic(
+  () => import("@/components/search/GlobalSearchCenter"),
+  { ssr: false },
 );
 
 type WelcomeState = "visible" | "exiting" | "hidden";
@@ -110,6 +120,12 @@ interface ChatAppShellProps {
   handleStopGeneration: () => void;
   setModel: (model: string) => void;
   onToggleSearch: () => void;
+  pendingToolConfirmations: ToolConfirmationRequest[];
+  onToolConfirmationDecision: (
+    toolCallId: string,
+    decision: ToolConfirmationDecision,
+  ) => boolean;
+  onRevokeToolSessionApproval: (toolCall: ToolCall) => void;
 }
 
 const ChatAppShell = ({
@@ -161,8 +177,134 @@ const ChatAppShell = ({
   handleStopGeneration,
   setModel,
   onToggleSearch,
+  pendingToolConfirmations,
+  onToolConfirmationDecision,
+  onRevokeToolSessionApproval,
 }: ChatAppShellProps) => {
   const t = useTranslations("ChatApp");
+  const [focusedMessageId, setFocusedMessageId] = React.useState<string>();
+  const [focusedWorkspaceId, setFocusedWorkspaceId] = React.useState<string>();
+  const [focusedKnowledgeTarget, setFocusedKnowledgeTarget] = React.useState<{
+    collectionId: string;
+    fileId?: string;
+  }>();
+  const [focusedMemoryId, setFocusedMemoryId] = React.useState<string>();
+  const pendingToolConfirmation = pendingToolConfirmations[0];
+  const shouldShowPendingToolBanner = Boolean(
+    pendingToolConfirmation &&
+    (viewMode !== "chat" ||
+      (pendingToolConfirmation.sessionId &&
+        pendingToolConfirmation.sessionId !== currentSessionId)),
+  );
+
+  const returnToPendingToolSession = React.useCallback(async () => {
+    if (
+      pendingToolConfirmation?.sessionId &&
+      pendingToolConfirmation.sessionId !== currentSessionId
+    ) {
+      await selectSession(pendingToolConfirmation.sessionId);
+    }
+    navigateToPanel("chat");
+  }, [
+    currentSessionId,
+    navigateToPanel,
+    pendingToolConfirmation,
+    selectSession,
+  ]);
+
+  const denyPendingTool = React.useCallback(async () => {
+    if (!pendingToolConfirmation) return;
+    await returnToPendingToolSession();
+    onToolConfirmationDecision(pendingToolConfirmation.toolCallId, "deny");
+  }, [
+    onToolConfirmationDecision,
+    pendingToolConfirmation,
+    returnToPendingToolSession,
+  ]);
+
+  const openGlobalSearch = React.useCallback(() => {
+    navigateToPanel("search");
+  }, [navigateToPanel]);
+
+  React.useEffect(() => {
+    const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.key.toLowerCase() !== "k"
+      ) {
+        return;
+      }
+      event.preventDefault();
+      openGlobalSearch();
+    };
+    window.addEventListener("keydown", handleGlobalSearchShortcut);
+    return () =>
+      window.removeEventListener("keydown", handleGlobalSearchShortcut);
+  }, [openGlobalSearch]);
+
+  React.useEffect(() => {
+    if (viewMode !== "chat" || !focusedMessageId) return;
+    const frameId = requestAnimationFrame(() => {
+      const target = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-message-id]"),
+      ).find((element) => element.dataset.messageId === focusedMessageId);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+      target?.focus({ preventScroll: true });
+    });
+    const timerId = window.setTimeout(
+      () => setFocusedMessageId(undefined),
+      2400,
+    );
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.clearTimeout(timerId);
+    };
+  }, [focusedMessageId, messages, viewMode]);
+
+  const handleGlobalSearchNavigate = React.useCallback(
+    async (target: GlobalSearchNavigationTarget) => {
+      if (target.type === "session" || target.type === "message") {
+        if (isGenerating) await stopActiveGenerationWithFeedback();
+        await selectSession(target.sessionId);
+        if (target.type === "message") {
+          const activeIds = new Set(
+            getActiveMessagePath(useChatStore.getState().activeMessageTree).map(
+              (message) => message.id,
+            ),
+          );
+          if (!activeIds.has(target.messageId)) return false;
+          setFocusedMessageId(target.messageId);
+        }
+        navigateToPanel("chat");
+        return true;
+      }
+      if (target.type === "knowledge") {
+        setFocusedKnowledgeTarget({
+          collectionId: target.collectionId,
+          fileId: target.fileId,
+        });
+        navigateToPanel("knowledge");
+        return true;
+      }
+      if (target.type === "workspace") {
+        setFocusedWorkspaceId(target.workspaceId);
+        setIsSidebarOpen(true);
+        navigateToPanel("chat");
+        window.setTimeout(() => setFocusedWorkspaceId(undefined), 2400);
+        return true;
+      }
+      setFocusedMemoryId(target.memoryId);
+      navigateToPanel("settings", "memory");
+      return true;
+    },
+    [
+      isGenerating,
+      navigateToPanel,
+      selectSession,
+      setIsSidebarOpen,
+      stopActiveGenerationWithFeedback,
+    ],
+  );
   let lastUserMessageIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index].role === "user") {
@@ -173,9 +315,6 @@ const ChatAppShell = ({
 
   return (
     <div className="relative flex h-dvh w-full overflow-hidden bg-background font-sans text-foreground transition-colors duration-300">
-      <a className="skip-link" href="#main-chat">
-        {t("skipToChat")}
-      </a>
       <ImagePreview />
 
       {isSidebarDrawerOpen && (
@@ -218,13 +357,14 @@ const ChatAppShell = ({
         isKnowledgeBaseOpen={viewMode === "knowledge"}
         onOpenSettings={() => navigateToPanel("settings", "system")}
         isSettingsOpen={viewMode === "settings"}
+        onOpenGlobalSearch={openGlobalSearch}
+        isGlobalSearchOpen={viewMode === "search"}
+        focusedWorkspaceId={focusedWorkspaceId}
         onLogoClick={() => navigateToPanel("chat")}
       />
 
       <main
         {...mainInertProps}
-        id="main-chat"
-        tabIndex={-1}
         className="flex-1 flex flex-col h-full relative z-0 min-w-0 overflow-hidden"
       >
         {actionError && (
@@ -237,7 +377,37 @@ const ChatAppShell = ({
             </div>
           </div>
         )}
-        {viewMode === "plugins" ? (
+        {shouldShowPendingToolBanner && pendingToolConfirmation ? (
+          <div className="absolute inset-x-4 top-3 z-40 mx-auto flex max-w-3xl items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 shadow-lg dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">{t("pendingToolAction")}</p>
+              <p className="truncate text-xs opacity-80">
+                {pendingToolConfirmation.pluginTitle} ·{" "}
+                {pendingToolConfirmation.functionName}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void returnToPendingToolSession()}
+              className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              {t("reviewToolAction")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void denyPendingTool()}
+              className="rounded-md border border-amber-400 px-2.5 py-1 text-xs font-medium hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:hover:bg-amber-900"
+            >
+              {t("denyToolAction")}
+            </button>
+          </div>
+        ) : null}
+        {viewMode === "search" ? (
+          <GlobalSearchCenter
+            onClose={() => navigateToPanel("chat")}
+            onNavigate={handleGlobalSearchNavigate}
+          />
+        ) : viewMode === "plugins" ? (
           <PluginMarket onClose={() => navigateToPanel("chat")} />
         ) : viewMode === "skills" ? (
           <SkillMarket onClose={() => navigateToPanel("chat")} />
@@ -247,12 +417,17 @@ const ChatAppShell = ({
             onSelect={handleAssistantSelect}
           />
         ) : viewMode === "knowledge" ? (
-          <KnowledgeBase onClose={() => navigateToPanel("chat")} />
+          <KnowledgeBase
+            onClose={() => navigateToPanel("chat")}
+            initialCollectionId={focusedKnowledgeTarget?.collectionId}
+            initialFileId={focusedKnowledgeTarget?.fileId}
+          />
         ) : viewMode === "settings" ? (
           <SettingsPage
             activeTab={settingsTab}
             onTabChange={handleSettingsTabChange}
             onClose={() => navigateToPanel("chat")}
+            focusMemoryId={focusedMemoryId}
           />
         ) : (
           <>
@@ -307,7 +482,7 @@ const ChatAppShell = ({
             <div
               ref={messagesScrollRef}
               onScroll={updateIsNearMessageBottom}
-              className="flex-1 px-4 md:px-8 pt-4 md:pt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] relative motion-safe:scroll-smooth scrollbar-overlay"
+              className="relative flex-1 overflow-y-auto px-3 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-4 motion-safe:scroll-smooth md:px-6 md:pt-6"
             >
               <div className="w-full max-w-3xl mx-auto min-h-full flex flex-col">
                 {currentSession &&
@@ -346,7 +521,16 @@ const ChatAppShell = ({
 
                       return (
                         <React.Fragment key={msg.id}>
-                          <div className="[content-visibility:auto] [contain-intrinsic-size:0_240px]">
+                          <div
+                            id={`message-${msg.id}`}
+                            data-message-id={msg.id}
+                            tabIndex={-1}
+                            className={`[content-visibility:auto] [contain-intrinsic-size:0_240px] rounded-xl outline-none transition-shadow ${
+                              focusedMessageId === msg.id
+                                ? "ring-2 ring-blue-500/60 ring-offset-2 ring-offset-background"
+                                : ""
+                            }`}
+                          >
                             <MessageItem
                               message={msg}
                               actionsDisabled={isActiveSessionLoading}
@@ -369,6 +553,12 @@ const ChatAppShell = ({
                               isTyping={isGenerating && isLastMessage}
                               onRegenerate={() => handleRegenerate(msg.id)}
                               onVersionChange={handleVersionChange}
+                              onToolConfirmationDecision={
+                                onToolConfirmationDecision
+                              }
+                              onRevokeToolSessionApproval={
+                                onRevokeToolSessionApproval
+                              }
                             />
                           </div>
                           {msg.role === "model" &&

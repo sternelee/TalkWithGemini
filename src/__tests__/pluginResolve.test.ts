@@ -10,6 +10,7 @@ import {
 import {
   getPluginFunctionNameCollisions,
   getEnabledPluginFunctions,
+  resolveEnabledPluginFunction,
   resolvePluginFunction,
 } from "../lib/plugin/resolve";
 import type { Plugin } from "../types";
@@ -48,6 +49,22 @@ describe("plugin function resolution", () => {
     expect(
       resolvePluginFunction([inactive], "search", ["another-plugin"]),
     ).toBeNull();
+  });
+
+  it("fails closed when multiple enabled plugins expose the same function", () => {
+    const first = makePlugin("first", ["search"]);
+    const second = makePlugin("second", ["search"]);
+
+    expect(
+      resolveEnabledPluginFunction([first, second], "search", [
+        "first",
+        "second",
+      ]),
+    ).toBeNull();
+    expect(
+      resolveEnabledPluginFunction([first, second], "search", ["second"])
+        ?.plugin.id,
+    ).toBe("second");
   });
 
   it("applies enabled and disabled function filters", () => {

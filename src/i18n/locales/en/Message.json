@@ -8,6 +8,8 @@
   "videoAttachment": "Video",
   "videoAttachmentAria": "Video attachment {fileName}",
   "documentAttachment": "Document",
+  "localFileMissing": "Local file unavailable after restore",
+  "localFileMissingAria": "Local file unavailable for attachment {fileName}",
   "openDocumentAttachment": "Open document",
   "openDocumentAttachmentAria": "Open document attachment {fileName}",
   "previewImageAria": "Preview image {fileName}",

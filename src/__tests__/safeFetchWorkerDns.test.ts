@@ -57,10 +57,12 @@ describe("safeFetch Worker DNS compatibility", () => {
     expect(dns.resolve6).toHaveBeenCalledWith("example.com");
   });
 
-  it("still blocks private addresses resolved through Worker DNS", async () => {
+  it("allows private addresses resolved through Worker DNS", async () => {
     vi.resetModules();
     mockWorkerDns({ ipv4: ["127.0.0.1"] });
-    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ ok: true }));
     const { safeFetch } = await import("../lib/security/safeFetch");
 
     await expect(
@@ -69,14 +71,15 @@ describe("safeFetch Worker DNS compatibility", () => {
         { method: "GET" },
         { policy: getSafeUrlPolicy("plugin") },
       ),
-    ).rejects.toThrow(/Private network/i);
+    ).resolves.toBeInstanceOf(Response);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed for hosted image requests when DNS validation is unavailable", async () => {
     vi.resetModules();
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("ALLOW_LOCAL_NETWORK_PROXY", "false");
     vi.doMock("node:dns/promises", () => ({
       lookup: undefined,
       resolve4: undefined,

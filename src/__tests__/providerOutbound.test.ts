@@ -15,7 +15,7 @@ describe("provider outbound policy", () => {
     lookupMock.mockReset();
   });
 
-  it("blocks provider SDK base URLs that resolve to private addresses in hosted mode", async () => {
+  it("allows provider SDK base URLs that resolve to private addresses in hosted mode", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     lookupMock.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
 
@@ -27,9 +27,7 @@ describe("provider outbound policy", () => {
         baseUrl: "https://provider.example",
         apiKey: "key",
       }),
-    ).rejects.toMatchObject({
-      code: "HOSTED_PROXY_BLOCKED",
-    });
+    ).resolves.toBeUndefined();
   });
 
   it("allows custom public provider SDK base URLs in hosted mode", async () => {
@@ -64,18 +62,19 @@ describe("provider outbound policy", () => {
     ).not.toThrow();
   });
 
-  it("blocks OpenAI SDK redirects to local networks in hosted mode", async () => {
+  it("allows OpenAI SDK redirects to local HTTP targets in hosted mode", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(null, {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, {
           status: 302,
           headers: { Location: "http://127.0.0.1:11434/v1/models" },
-        });
-      }),
-    );
+        }),
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
 
     const { ProviderFactory } = await import("../lib/providers/base");
     const client = ProviderFactory.createOpenAIClient({
@@ -88,23 +87,23 @@ describe("provider outbound policy", () => {
       (client as any).fetch("https://proxy.example/v1/models", {
         method: "GET",
       }),
-    ).rejects.toMatchObject({
-      code: "HOSTED_PROXY_BLOCKED",
-    });
+    ).resolves.toMatchObject({ status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("blocks Google SDK redirects to local networks in hosted mode", async () => {
+  it("allows Google SDK redirects to local HTTP targets in hosted mode", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     lookupMock.mockResolvedValue([{ address: "93.184.216.34", family: 4 }]);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        return new Response(null, {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(null, {
           status: 302,
           headers: { Location: "http://127.0.0.1:11434/v1/models" },
-        });
-      }),
-    );
+        }),
+      )
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
 
     const { ProviderFactory } = await import("../lib/providers/base");
     const client = ProviderFactory.createGoogleClient({
@@ -120,9 +119,8 @@ describe("provider outbound policy", () => {
           method: "GET",
         },
       ),
-    ).rejects.toMatchObject({
-      code: "HOSTED_PROXY_BLOCKED",
-    });
+    ).resolves.toMatchObject({ status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("keeps local OpenAI-compatible provider SDK calls available in local mode", async () => {

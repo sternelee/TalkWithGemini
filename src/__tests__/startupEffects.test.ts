@@ -84,9 +84,9 @@ describe("app startup effects", () => {
   });
 
   it("does not clear restored search during transient model startup", () => {
-    const keylessFirecrawl = getSearchCompatibility({
+    const configuredFirecrawl = getSearchCompatibility({
       searchProvider: "firecrawl",
-      searchConfig: { apiKey: "" },
+      searchConfig: { apiKey: "firecrawl-key" },
       modelProviderType: "OpenAI",
     });
 
@@ -97,7 +97,7 @@ describe("app startup effects", () => {
         coreHydrated: true,
         serverModelBootstrapReady: true,
         useSearch: true,
-        searchCompatibility: keylessFirecrawl,
+        searchCompatibility: configuredFirecrawl,
       }),
     ).toBe(false);
 

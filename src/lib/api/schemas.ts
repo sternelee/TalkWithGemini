@@ -418,6 +418,7 @@ export const PluginExecutionRequestSchema = z
   .object({
     pluginId: z.string().min(1).max(200),
     functionName: z.string().min(1).max(128),
+    expectedFingerprint: z.string().min(1).max(200).optional(),
     args: z.record(z.string(), JsonLikeSchema).default({}),
     authConfig: PluginAuthConfigSchema,
     callId: z.string().max(200).optional(),

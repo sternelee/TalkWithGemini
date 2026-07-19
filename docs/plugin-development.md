@@ -46,10 +46,11 @@ Each function should define:
 | `mcpToolName` | Original remote MCP tool name. MCP functions omit `path` and `method`.                                |
 | `risk`        | Optional risk level: `read`, `write`, `destructive`, or `external`.                                   |
 
-If risk is omitted, Neo Chat infers it from the HTTP method: `GET` maps to
-`read`, `DELETE` maps to `destructive`, and other non-GET methods map to
-`write`. MCP tools should use `external` because the side effects are owned by
-the remote server.
+The method is a minimum risk floor even when a manifest supplies `risk`: `GET`
+maps to at least `read`, `DELETE` is always `destructive`, and other mutating
+methods map to at least `write`. MCP tools without an HTTP method are at least
+`external` because the side effects are owned by the remote server. A manifest
+may raise this level but cannot lower it.
 
 ## MCP Servers
 
@@ -59,12 +60,12 @@ MCP servers live in `installedPlugins`, enabled MCP servers live in
 local-secret path as OpenAPI plugins. There is no separate `activeMcpServers`
 store.
 
-Version 1 supports only remote `streamable-http` MCP servers discovered from
-the official MCP Registry. It does not launch local stdio processes, npm
-packages, Docker containers, or OAuth login flows. MCP server URLs are
-HTTPS-only. Local and self-hosted deployments may call localhost or private
-network HTTPS endpoints for LAN MCP servers; hosted deployments block those
-targets unless `ALLOW_LOCAL_NETWORK_PROXY=true` is set.
+Version 1 supports remote `streamable-http` MCP servers discovered from the
+official MCP Registry or configured by the user. It does not launch local stdio
+processes, npm packages, Docker containers, or OAuth login flows. User-
+configured MCP server URLs may use HTTP or HTTPS and may target localhost or a
+private network in local or hosted deployments. The official Registry fetch
+remains HTTPS-only.
 
 During installation, the server route opens a short-lived MCP SDK client,
 calls `listTools`, converts the tools into `PluginFunction` entries, registers
@@ -146,9 +147,16 @@ the OpenAI Responses API. Supported built-ins can expose plugin-level API Base
 URL and Model ID fields; Agnes video remains a two-step `create_video` /
 `get_video_result` flow and accepts public HTTPS image URLs for image-to-video.
 
-Runtime tool calls execute automatically after a plugin is enabled for the chat.
-There is no per-call confirmation modal, so the plugin market, function toggle,
-auth configuration, and risk metadata are the user's control points.
+Tool calls execute automatically by default. If the user enables destructive-
+tool confirmation in System settings, only calls marked or inferred as
+`destructive` pause for allow-once or deny decisions; `read`, `write`, and
+`external` calls continue automatically. Destructive approval is never
+persisted for the chat. Session-scoped approval records are limited to `write`
+and `external` risks and are bound to the plugin ID, function name, risk level,
+and stable function fingerprint. Confirmation summaries redact credential-like
+arguments, and interrupted confirmations fail closed. The expected function
+fingerprint travels with every execution request and is rechecked against the
+server registry before any REST or MCP dispatch.
 
 If two active plugins expose the same function name, execution returns a
 collision error instead of choosing one silently. Keep function names unique
@@ -156,8 +164,9 @@ across plugins that users are likely to enable together.
 
 ## Safety Checklist
 
-- Keep plugin `baseUrl` and OpenAPI server URLs on trusted HTTPS origins for
-  hosted deployments.
+- Prefer trusted HTTPS plugin and OpenAPI origins. HTTP and private-network
+  targets are supported but can expose credentials, permit response tampering,
+  and expand the deployment's SSRF surface.
 - Prefer `GET` for read-only tools and reserve mutating HTTP methods for
   actions that actually change external state.
 - Mark destructive or external-side-effect functions with explicit risk

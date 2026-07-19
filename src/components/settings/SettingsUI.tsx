@@ -596,6 +596,7 @@ export const SearchProviderItem = ({
           <button
             type="button"
             aria-pressed={isActive}
+            aria-label={`${name}: ${isActive ? t("active") : t("enable")}`}
             onClick={onActivate}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 ${
               isActive

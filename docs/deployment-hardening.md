@@ -6,8 +6,9 @@ then configure secrets and shared state accordingly.
 
 ## Local or Private Self-hosted
 
-Use `DEPLOYMENT_MODE=local` for Docker, LAN, or private deployments that need
-local provider, RAG, SearXNG, or proxy endpoints.
+Use `DEPLOYMENT_MODE=local` for Docker, LAN, or private deployments. User-
+configured provider, search, RAG, plugin, and MCP endpoints may use HTTP(S) and
+local/private addresses in either deployment mode.
 
 Recommended settings:
 
@@ -40,9 +41,10 @@ UPSTASH_REDIS_REST_TOKEN=...
 ## Hosted Internet Deployment
 
 Use `DEPLOYMENT_MODE=hosted` when the app is reachable from the public internet.
-Hosted mode tightens outbound URL policy and CSP. It also requires shared
-short-lived state so rate limits, document parse jobs, and server-registered
-plugins behave consistently across instances.
+Hosted mode tightens CSP and requires shared short-lived state so rate limits,
+document parse jobs, and server-registered plugins behave consistently across
+instances. It does not reject HTTP, localhost, or private-network addresses for
+user-configured provider, search, RAG, plugin, or MCP targets.
 
 Required hosted settings:
 
@@ -64,6 +66,12 @@ Enable `TRUST_PROXY_HEADERS=true` only when the platform or reverse proxy strips
 spoofed forwarded headers before requests reach Neo Chat. These headers affect
 rate-limit identity and public request metadata; trusting user-supplied values
 can weaken hosted protections.
+
+Treat permission to configure outbound URLs as an administrative capability on
+public deployments. Private-network targets expand the SSRF surface, and HTTP
+can expose provider or plugin credentials and allow responses to be modified in
+transit. Fixed registries and built-in service endpoints remain HTTPS-only, but
+that does not protect a user-supplied target.
 
 ## Vercel Environment Variables
 
@@ -183,17 +191,20 @@ own provider keys in local browser settings.
 
 Hosted mode also disables legacy plugin execution payloads where the browser
 submits a complete plugin manifest and function definition to the server. Plugin
-calls must resolve through server-registered plugin ids and function names. Once
-a plugin is enabled for a chat, runtime tool calls execute automatically without
-a per-call confirmation modal. See [Reliability and Safety Model](reliability-and-safety.md)
-for tool execution boundaries, context budgeting, and recovery behavior.
+calls must resolve through server-registered plugin ids and function names.
+Tool calls execute automatically by default. When destructive-tool
+confirmation is enabled in System settings, only destructive calls pause for a
+one-time allow or deny decision; destructive approval is never persisted for
+the chat. See
+[Reliability and Safety Model](reliability-and-safety.md) for tool execution
+boundaries, context budgeting, and recovery behavior.
 
 Remote MCP servers use the same server-registered plugin path and outbound URL
-policy. Neo Chat v1 supports only remote `streamable-http` MCP over HTTPS;
-hosted deployments block localhost and private-network MCP targets unless
-`ALLOW_LOCAL_NETWORK_PROXY=true` is explicitly enabled. Hosted or multi-instance
-deployments should configure `PLUGIN_REGISTRY_STORE=upstash` so installed MCP
-tools resolve consistently across instances.
+policy. Neo Chat v1 supports remote `streamable-http` MCP over HTTP or HTTPS,
+including localhost and private-network targets. The official Registry remains
+HTTPS-only. Hosted or multi-instance deployments should configure
+`PLUGIN_REGISTRY_STORE=upstash` so installed MCP tools resolve consistently
+across instances.
 
 ## Deployment Health
 

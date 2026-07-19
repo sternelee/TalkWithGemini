@@ -29,7 +29,7 @@ import type { SkillCatalogEntry, TextSkill } from "@/types";
 import { useSettingsStore } from "@/store/core/settingsStore";
 import { normalizeTextSkill } from "@/lib/skills";
 import {
-  fetchSkillCatalog,
+  fetchSkillCatalogResult,
   fetchSkillDefinition,
 } from "@/services/api/skillService";
 import {
@@ -41,6 +41,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MARKET_LIMITS } from "@/config/limits";
 import { logDevError } from "@/lib/utils/devLogger";
+import type { MarketLoadResult } from "@/lib/market/loadResult";
+import MarketLoadNotice from "@/components/ui/MarketLoadNotice";
 
 interface SkillMarketProps {
   onClose: () => void;
@@ -577,8 +579,11 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
   } = useSettingsStore();
 
   const [builtInSkills, setBuiltInSkills] = useState<SkillCatalogEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [marketLoadResult, setMarketLoadResult] = useState<
+    MarketLoadResult<unknown> | undefined
+  >();
   const [installingSkillIds, setInstallingSkillIds] = useState<string[]>([]);
   const [installError, setInstallError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -607,11 +612,17 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
       const requestId = requestRef.current + 1;
       requestRef.current = requestId;
       if (forceRefresh) setIsRefreshing(true);
-      else setIsLoading(true);
+      else {
+        setIsLoading(true);
+        setMarketLoadResult(undefined);
+      }
       try {
-        const dataset = await fetchSkillCatalog(locale, forceRefresh);
+        const result = await fetchSkillCatalogResult(locale, forceRefresh);
         if (isMountedRef.current && requestRef.current === requestId) {
-          setBuiltInSkills(dataset.skills);
+          if (result.status !== "error") {
+            setBuiltInSkills(result.data.skills);
+          }
+          setMarketLoadResult(result);
         }
       } catch (error) {
         logDevError("Failed to load skills:", error);
@@ -804,6 +815,23 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
     </div>
   );
 
+  const marketNoticeMessage = (() => {
+    if (marketLoadResult?.status === "stale") {
+      const time = marketLoadResult.fetchedAt
+        ? new Date(marketLoadResult.fetchedAt).toLocaleString(locale)
+        : t("unknownCacheTime");
+      const staleMessage = t("staleData", { time });
+      return marketLoadResult.fallbackFrom
+        ? `${t("englishFallback")} ${staleMessage}`
+        : staleMessage;
+    }
+    if (marketLoadResult?.status === "fallback") {
+      return t("englishFallback");
+    }
+    if (marketLoadResult?.status === "error") return t("loadFailed");
+    return "";
+  })();
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden animate-in fade-in duration-300">
       {showEditor && (
@@ -863,6 +891,18 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
         </div>
       </div>
 
+      {marketNoticeMessage ? (
+        <div className="mx-6 mt-4">
+          <MarketLoadNotice
+            status={marketLoadResult?.status}
+            message={marketNoticeMessage}
+            retryLabel={t("retry")}
+            onRetry={() => void loadSkills(true)}
+            isRetrying={isRefreshing}
+          />
+        </div>
+      ) : null}
+
       {/* Search Bar */}
       <div className="mx-auto flex w-full max-w-7xl shrink-0 flex-wrap gap-3 px-6 pb-6 pt-6">
         <div className="group relative min-w-0 flex-1">
@@ -887,7 +927,7 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 pb-10 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-4 pb-10 custom-scrollbar">
         <div className="mx-auto flex min-h-full max-w-7xl flex-col gap-8">
           {installError ? (
             <div
@@ -978,11 +1018,15 @@ const SkillMarket: React.FC<SkillMarketProps> = ({ onClose }) => {
                     />
                   ))}
                 </div>
-                {paginatedSkills.length === 0 && (
-                  <div className="py-12 text-center text-gray-400">
-                    {t("noSkillsFound")}
-                  </div>
-                )}
+                {paginatedSkills.length === 0 &&
+                  marketLoadResult &&
+                  ["fresh", "cache", "fallback"].includes(
+                    marketLoadResult.status,
+                  ) && (
+                    <div className="py-12 text-center text-gray-400">
+                      {t("noSkillsFound")}
+                    </div>
+                  )}
                 {totalPages > 1 && (
                   <div className="mt-auto flex items-center justify-center gap-4 py-6">
                     <button

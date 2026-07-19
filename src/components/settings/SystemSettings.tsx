@@ -1,6 +1,7 @@
 import React from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   Download,
@@ -8,6 +9,7 @@ import {
   Loader2,
   Moon,
   Sun,
+  Upload,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSettingsStore } from "@/store/core/settingsStore";
@@ -24,6 +26,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { BrowserAppDataSource } from "@/lib/data/clearAppData";
+import type { AppBackupProgress } from "@/lib/data/appBackup";
+import {
+  clearAppRestoreCredentialNotice,
+  readAppRestoreCredentialNotice,
+} from "@/lib/data/appRestoreJournal";
 
 type TranslationOption<T extends string> = {
   value: T;
@@ -385,11 +392,33 @@ function RadioDropdown<T extends string>({
 
 const SystemSettings = () => {
   const t = useTranslations("System");
-  const { clearDataSources, exportAllData, system, updateSystemSettings } =
-    useSettingsStore();
+  const {
+    clearDataSources,
+    exportAllData,
+    inspectBackupFile,
+    restoreAllData,
+    system,
+    updateSystemSettings,
+  } = useSettingsStore();
   const [isExportingData, setIsExportingData] = React.useState(false);
+  const [exportProgress, setExportProgress] =
+    React.useState<AppBackupProgress | null>(null);
   const [exportDataError, setExportDataError] = React.useState<string | null>(
     null,
+  );
+  const [isInspectingBackup, setIsInspectingBackup] = React.useState(false);
+  const [isRestoringData, setIsRestoringData] = React.useState(false);
+  const [restoreProgress, setRestoreProgress] =
+    React.useState<AppBackupProgress | null>(null);
+  const [restoreDataError, setRestoreDataError] = React.useState<string | null>(
+    null,
+  );
+  const [restoreFile, setRestoreFile] = React.useState<File | null>(null);
+  const [restoreInspection, setRestoreInspection] = React.useState<Awaited<
+    ReturnType<typeof inspectBackupFile>
+  > | null>(null);
+  const [restoreCredentialNotice, setRestoreCredentialNotice] = React.useState(
+    () => readAppRestoreCredentialNotice(),
   );
   const [isClearingData, setIsClearingData] = React.useState(false);
   const [isClearConfirming, setIsClearConfirming] = React.useState(false);
@@ -403,6 +432,9 @@ const SystemSettings = () => {
   const clearConfirmTimerRef = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const restoreInputRef = React.useRef<HTMLInputElement | null>(null);
+  const exportAbortRef = React.useRef<AbortController | null>(null);
+  const restoreAbortRef = React.useRef<AbortController | null>(null);
 
   const { theme, setTheme, language } = useCoreSettingsStore();
   const setLocale = useSetLocale();
@@ -414,6 +446,8 @@ const SystemSettings = () => {
         clearTimeout(clearConfirmTimerRef.current);
         clearConfirmTimerRef.current = null;
       }
+      exportAbortRef.current?.abort();
+      restoreAbortRef.current?.abort();
     };
   }, []);
 
@@ -436,7 +470,14 @@ const SystemSettings = () => {
   };
 
   const handleClearSelectedData = async () => {
-    if (isClearingData || selectedDataSources.length === 0) return;
+    if (
+      isClearingData ||
+      isExportingData ||
+      isRestoringData ||
+      selectedDataSources.length === 0
+    ) {
+      return;
+    }
 
     if (!isClearConfirming) {
       setClearDataError(null);
@@ -465,32 +506,116 @@ const SystemSettings = () => {
   };
 
   const handleExportAllData = async () => {
-    if (isExportingData) return;
+    if (isExportingData) {
+      exportAbortRef.current?.abort();
+      return;
+    }
+    if (isClearingData || isRestoringData) return;
 
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
     setIsExportingData(true);
+    setExportProgress(null);
     setExportDataError(null);
     try {
-      const payload = await exportAllData();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json",
+      const backup = await exportAllData({
+        signal: controller.signal,
+        onProgress: setExportProgress,
       });
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(backup.blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `neo-chat-export-${new Date()
-        .toISOString()
-        .slice(0, 10)}.json`;
+      anchor.download = backup.fileName;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setExportDataError(
-        error instanceof Error ? error.message : t("exportError"),
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setExportDataError(
+          error instanceof Error ? error.message : t("exportError"),
+        );
+      }
+    } finally {
+      exportAbortRef.current = null;
+      setIsExportingData(false);
+      setExportProgress(null);
+    }
+  };
+
+  const clearRestoreSelection = () => {
+    setRestoreFile(null);
+    setRestoreInspection(null);
+    setRestoreProgress(null);
+    setRestoreDataError(null);
+    if (restoreInputRef.current) restoreInputRef.current.value = "";
+  };
+
+  const handleRestoreFileSelection = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file || isExportingData || isInspectingBackup || isRestoringData) {
+      return;
+    }
+
+    setRestoreFile(file);
+    setRestoreInspection(null);
+    setRestoreDataError(null);
+    setIsInspectingBackup(true);
+    try {
+      setRestoreInspection(await inspectBackupFile(file));
+    } catch (error) {
+      setRestoreDataError(
+        error instanceof Error ? error.message : t("restoreError"),
       );
     } finally {
-      setIsExportingData(false);
+      setIsInspectingBackup(false);
     }
+  };
+
+  const handleRestoreAllData = async () => {
+    if (
+      !restoreFile ||
+      !restoreInspection ||
+      isExportingData ||
+      isRestoringData ||
+      isClearingData
+    ) {
+      return;
+    }
+
+    setIsRestoringData(true);
+    setRestoreProgress(null);
+    setRestoreDataError(null);
+    const controller = new AbortController();
+    restoreAbortRef.current = controller;
+    try {
+      await restoreAllData(restoreFile, {
+        signal: controller.signal,
+        onProgress: setRestoreProgress,
+      });
+      window.location.reload();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setRestoreDataError(
+          error instanceof Error ? error.message : t("restoreError"),
+        );
+      }
+      restoreAbortRef.current = null;
+      setIsRestoringData(false);
+      setRestoreProgress(null);
+    }
+  };
+
+  const handleRestoreAction = () => {
+    if (isRestoringData) {
+      if (restoreProgress?.phase !== "applying") {
+        restoreAbortRef.current?.abort();
+      }
+      return;
+    }
+    void handleRestoreAllData();
   };
 
   const themeOptions = THEME_OPTIONS.map((option) => ({
@@ -613,6 +738,20 @@ const SystemSettings = () => {
         title={t("systemAutomationTitle")}
         description={t("systemAutomationDesc")}
       >
+        <ToggleRow
+          title={t("destructiveToolConfirmation")}
+          description={t("destructiveToolConfirmationDesc")}
+          ariaLabel={t("destructiveToolConfirmationAria")}
+          name="enableDestructiveToolConfirmation"
+          checked={system.enableDestructiveToolConfirmation}
+          onChange={() =>
+            updateSystemSettings({
+              enableDestructiveToolConfirmation:
+                !system.enableDestructiveToolConfirmation,
+            })
+          }
+        />
+
         <ToggleRow
           title={t("autoTitle")}
           description={t("autoTitleDesc")}
@@ -776,9 +915,9 @@ const SystemSettings = () => {
             <button
               type="button"
               onClick={handleExportAllData}
-              disabled={isExportingData}
+              disabled={isClearingData || isRestoringData}
               aria-busy={isExportingData}
-              aria-label={t("exportAria")}
+              aria-label={isExportingData ? t("cancelBackup") : t("exportAria")}
               className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {isExportingData ? (
@@ -790,9 +929,20 @@ const SystemSettings = () => {
               ) : (
                 <Download size={14} aria-hidden="true" />
               )}
-              {isExportingData ? t("exporting") : t("exportData")}
+              {isExportingData ? t("cancelBackup") : t("exportData")}
             </button>
           </div>
+          {exportProgress ? (
+            <div
+              aria-live="polite"
+              className="mt-2 text-xs text-muted-foreground"
+            >
+              {t("backupProgress", {
+                completed: exportProgress.completed,
+                total: exportProgress.total,
+              })}
+            </div>
+          ) : null}
           {exportDataError ? (
             <div
               role="alert"
@@ -800,6 +950,176 @@ const SystemSettings = () => {
               className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
             >
               {exportDataError}
+            </div>
+          ) : null}
+        </SettingRow>
+
+        <SettingRow
+          title={t("restoreAllData")}
+          description={t("restoreAllDataDesc")}
+          align="start"
+          controlClassName="sm:w-[min(28rem,42vw)]"
+        >
+          <input
+            ref={restoreInputRef}
+            type="file"
+            accept=".zip,.json,application/zip,application/json"
+            onChange={handleRestoreFileSelection}
+            className="sr-only"
+            aria-label={t("restoreAria")}
+          />
+          <div className="flex justify-start sm:justify-end">
+            <button
+              type="button"
+              onClick={() => restoreInputRef.current?.click()}
+              disabled={
+                isExportingData ||
+                isInspectingBackup ||
+                isRestoringData ||
+                isClearingData
+              }
+              aria-busy={isInspectingBackup}
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {isInspectingBackup ? (
+                <Loader2
+                  size={14}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Upload size={14} aria-hidden="true" />
+              )}
+              {isInspectingBackup ? t("inspectingBackup") : t("selectBackup")}
+            </button>
+          </div>
+
+          {restoreInspection ? (
+            <div className="mt-3 rounded-lg border border-border bg-muted/35 p-3 text-xs leading-relaxed text-muted-foreground">
+              <div className="font-medium text-foreground">
+                {t("restoreSummary", {
+                  date: new Date(restoreInspection.exportedAt).toLocaleString(),
+                  count: restoreInspection.fileCount,
+                })}
+              </div>
+              <p className="mt-1">{t("restoreCredentialsNotice")}</p>
+              {restoreInspection.incomplete ? (
+                <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
+                  <AlertTriangle
+                    size={14}
+                    className="mt-0.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {restoreInspection.kind === "legacy-json-v2"
+                      ? t("legacyBackupWarning")
+                      : t("incompleteBackupWarning", {
+                          count: restoreInspection.missingFileCount,
+                        })}
+                  </span>
+                </div>
+              ) : null}
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={clearRestoreSelection}
+                  disabled={isRestoringData}
+                  className="min-h-9 rounded-lg border border-border bg-background px-3 py-2 font-medium text-foreground hover:bg-accent disabled:opacity-60"
+                >
+                  {t("cancelRestore")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRestoreAction}
+                  disabled={
+                    isClearingData ||
+                    isExportingData ||
+                    (isRestoringData && restoreProgress?.phase === "applying")
+                  }
+                  aria-busy={isRestoringData}
+                  className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-red-600 bg-red-600 px-3 py-2 font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  {isRestoringData ? (
+                    <Loader2
+                      size={14}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  {isRestoringData
+                    ? restoreProgress?.phase === "applying"
+                      ? t("restoringBackup")
+                      : t("cancelRestoreOperation")
+                    : t("confirmRestore")}
+                </button>
+              </div>
+              {restoreProgress ? (
+                <div
+                  aria-live="polite"
+                  className="mt-2 text-right text-xs text-muted-foreground"
+                >
+                  {t("backupProgress", {
+                    completed: restoreProgress.completed,
+                    total: restoreProgress.total,
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {restoreDataError ? (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              {restoreDataError}
+            </div>
+          ) : null}
+          {restoreCredentialNotice ? (
+            <div
+              role="status"
+              className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle
+                  size={15}
+                  className="mt-0.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">
+                    {t("restoreCredentialChecklistTitle")}
+                  </div>
+                  <p className="mt-1 leading-relaxed">
+                    {t("restoreCredentialChecklistDesc")}
+                  </p>
+                  <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                    <li>• {t("restoreCredentialProviders")}</li>
+                    <li>• {t("restoreCredentialSearch")}</li>
+                    <li>• {t("restoreCredentialRag")}</li>
+                    <li>• {t("restoreCredentialVoice")}</li>
+                    <li>• {t("restoreCredentialPlugins")}</li>
+                  </ul>
+                  <div className="mt-2 text-[11px] opacity-80">
+                    {t("restoreCredentialRestoredAt", {
+                      date: new Date(
+                        restoreCredentialNotice.restoredAt,
+                      ).toLocaleString(),
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearAppRestoreCredentialNotice();
+                      setRestoreCredentialNotice(null);
+                    }}
+                    className="mt-3 min-h-8 rounded-md border border-amber-300 bg-background px-3 py-1.5 font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-900/40"
+                  >
+                    {t("restoreCredentialDismiss")}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
         </SettingRow>
@@ -898,7 +1218,12 @@ const SystemSettings = () => {
                 <button
                   type="button"
                   onClick={handleClearSelectedData}
-                  disabled={isClearingData || selectedDataSources.length === 0}
+                  disabled={
+                    isClearingData ||
+                    isExportingData ||
+                    isRestoringData ||
+                    selectedDataSources.length === 0
+                  }
                   aria-busy={isClearingData}
                   aria-label={
                     isClearConfirming ? t("clearConfirmAria") : t("clearAria")

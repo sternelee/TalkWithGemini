@@ -62,6 +62,7 @@ export interface SystemSettings {
   historyKeepCount: number;
   enableCodeCollapse: boolean;
   enableHtmlVisualPrompt: boolean;
+  enableDestructiveToolConfirmation: boolean;
   fontSize: "small" | "medium" | "large";
 }
 

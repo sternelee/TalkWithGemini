@@ -94,6 +94,9 @@ interface SidebarProps {
   isKnowledgeBaseOpen: boolean;
   onOpenSettings: () => void;
   isSettingsOpen: boolean;
+  onOpenGlobalSearch: () => void;
+  isGlobalSearchOpen: boolean;
+  focusedWorkspaceId?: string;
   onLogoClick: () => void;
 }
 
@@ -165,6 +168,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   isKnowledgeBaseOpen,
   onOpenSettings,
   isSettingsOpen,
+  onOpenGlobalSearch,
+  isGlobalSearchOpen,
+  focusedWorkspaceId,
   onLogoClick,
 }) => {
   const t = useTranslations("Sidebar");
@@ -184,7 +190,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     auto: t("langSystem"),
   }[language];
 
-  const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -228,7 +233,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
 
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const sidebarListRegionRef = useRef<HTMLDivElement>(null);
@@ -237,21 +241,13 @@ const Sidebar: React.FC<SidebarProps> = ({
   const workspacePaneContentRef = useRef<HTMLDivElement>(null);
   const chatPaneContentRef = useRef<HTMLDivElement>(null);
   const isMountedRef = useRef(true);
-  const searchFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
   const sidebarId = useId();
-  const searchInputId = `${sidebarId}-search`;
 
   useEffect(() => {
     isMountedRef.current = true;
 
     return () => {
       isMountedRef.current = false;
-      if (searchFocusTimerRef.current) {
-        clearTimeout(searchFocusTimerRef.current);
-        searchFocusTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -260,6 +256,18 @@ const Sidebar: React.FC<SidebarProps> = ({
       renameInputRef.current.focus();
     }
   }, [renamingId]);
+
+  useEffect(() => {
+    if (!focusedWorkspaceId || !isOpen) return;
+    requestAnimationFrame(() => {
+      const target = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          "[data-workspace-id]",
+        ) ?? [],
+      ).find((element) => element.dataset.workspaceId === focusedWorkspaceId);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, [focusedWorkspaceId, isOpen]);
 
   useEffect(() => {
     if (!isModal || !isOpen) return;
@@ -447,19 +455,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     if (e.key === "Escape") setRenamingId(null);
   };
 
-  const handleSearchIconClick = () => {
-    if (!isOpen) {
-      toggleSidebar();
-      if (searchFocusTimerRef.current) {
-        clearTimeout(searchFocusTimerRef.current);
-      }
-      searchFocusTimerRef.current = setTimeout(() => {
-        searchFocusTimerRef.current = null;
-        searchInputRef.current?.focus();
-      }, 300);
-    }
-  };
-
   const handleSidebarKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!isModal) return;
 
@@ -521,23 +516,17 @@ const Sidebar: React.FC<SidebarProps> = ({
     onSelectSession(sessionId);
   };
 
-  // Filtering Logic
-  const isSearchingChats = searchTerm.trim().length > 0;
-  const filteredSessions = sessions.filter((s) =>
-    s.title.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
-
   const now = getNow();
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
   // Split sessions into Workspace-bound and Unbound (Root)
-  const rootSessions = filteredSessions.filter((s) => !s.workspaceId);
+  const rootSessions = sessions.filter((s) => !s.workspaceId);
   const workspaceSessionsMap = new Map<string, Session[]>();
 
   workspaces.forEach((w) => {
     workspaceSessionsMap.set(
       w.id,
-      filteredSessions.filter((s) => s.workspaceId === w.id),
+      sessions.filter((s) => s.workspaceId === w.id),
     );
   });
 
@@ -557,7 +546,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     sectionKey: RootSessionListKey,
     items: Session[],
   ) => {
-    if (isSearchingChats || expandedRootSessionLists[sectionKey]) {
+    if (expandedRootSessionLists[sectionKey]) {
       return items;
     }
     return items.slice(0, ROOT_SESSION_PREVIEW_LIMIT);
@@ -579,7 +568,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     workspaceId: string,
     items: Session[],
   ) => {
-    if (isSearchingChats || expandedWorkspaceSessionLists[workspaceId]) {
+    if (expandedWorkspaceSessionLists[workspaceId]) {
       return items;
     }
     return items.slice(0, WORKSPACE_SESSION_PREVIEW_LIMIT);
@@ -743,7 +732,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="overflow-hidden">
             {items.map(renderSessionItem)}
-            {!isSearchingChats && listExpansion
+            {listExpansion
               ? renderShowAllButton({
                   controlId: contentId,
                   expanded: listExpansion.expanded,
@@ -943,11 +932,8 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="shrink-0">
           <SidebarSearch
             isOpen={isOpen}
-            inputId={searchInputId}
-            inputRef={searchInputRef}
-            value={searchTerm}
-            onChange={setSearchTerm}
-            onCollapsedSearchClick={handleSearchIconClick}
+            onOpenGlobalSearch={onOpenGlobalSearch}
+            isGlobalSearchOpen={isGlobalSearchOpen}
           />
           {isOpen && exportError && (
             <div
@@ -1000,21 +986,27 @@ const Sidebar: React.FC<SidebarProps> = ({
                       const visibleWorkspaceSessions =
                         getVisibleWorkspaceSessions(ws.id, wsSessions);
                       const workspaceListExpanded =
-                        !!expandedWorkspaceSessionLists[ws.id] ||
-                        isSearchingChats;
+                        !!expandedWorkspaceSessionLists[ws.id];
                       const hiddenWorkspaceSessionCount = Math.max(
                         wsSessions.length - WORKSPACE_SESSION_PREVIEW_LIMIT,
                         0,
                       );
-                      const isExpanded =
-                        isSearchingChats || expandedSections[ws.id];
+                      const isExpanded = expandedSections[ws.id];
                       const folderColorClass = ws.color
                         ? WORKSPACE_COLOR_MAP[ws.color]
                         : "text-blue-500";
                       const workspaceContentId = `${sidebarId}-workspace-${ws.id}`;
 
                       return (
-                        <div key={ws.id}>
+                        <div
+                          key={ws.id}
+                          data-workspace-id={ws.id}
+                          className={
+                            focusedWorkspaceId === ws.id
+                              ? "rounded-lg ring-2 ring-blue-500/60"
+                              : undefined
+                          }
+                        >
                           <div
                             className="group relative flex items-center justify-between rounded-lg py-1.5 pl-3 pr-2 transition-colors hover:bg-gray-100/50 dark:hover:bg-muted/30"
                             onContextMenu={(e) =>
@@ -1070,19 +1062,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                                   {visibleWorkspaceSessions.map(
                                     renderSessionItem,
                                   )}
-                                  {!isSearchingChats &&
-                                    renderShowAllButton({
-                                      controlId: workspaceContentId,
-                                      expanded: workspaceListExpanded,
-                                      hiddenCount: hiddenWorkspaceSessionCount,
-                                      onToggle: () =>
-                                        setExpandedWorkspaceSessionLists(
-                                          (prev) => ({
-                                            ...prev,
-                                            [ws.id]: !prev[ws.id],
-                                          }),
-                                        ),
-                                    })}
+                                  {renderShowAllButton({
+                                    controlId: workspaceContentId,
+                                    expanded: workspaceListExpanded,
+                                    hiddenCount: hiddenWorkspaceSessionCount,
+                                    onToggle: () =>
+                                      setExpandedWorkspaceSessionLists(
+                                        (prev) => ({
+                                          ...prev,
+                                          [ws.id]: !prev[ws.id],
+                                        }),
+                                      ),
+                                  })}
                                 </>
                               ) : (
                                 <div className="pl-3 pr-2 py-1.5 text-xs text-gray-400 italic">

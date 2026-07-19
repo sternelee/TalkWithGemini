@@ -36,6 +36,9 @@ describe("app config normalization", () => {
     expect(normalizeChatConfig({})).toEqual(DEFAULT_CHAT_CONFIG);
     expect(normalizeSystemSettings({})).toEqual(DEFAULT_SYSTEM_SETTINGS);
     expect(DEFAULT_SYSTEM_SETTINGS.enableHtmlVisualPrompt).toBe(true);
+    expect(DEFAULT_SYSTEM_SETTINGS.enableDestructiveToolConfirmation).toBe(
+      true,
+    );
     expect(DEFAULT_SYSTEM_SETTINGS.personality).toBe("default");
   });
 
@@ -71,6 +74,7 @@ describe("app config normalization", () => {
       historyKeepCount: 0,
       enableCodeCollapse: true,
       enableHtmlVisualPrompt: true,
+      enableDestructiveToolConfirmation: true,
     });
 
     expect(system.systemPrompt).toHaveLength(
@@ -87,6 +91,13 @@ describe("app config normalization", () => {
     );
     expect(system.enableCodeCollapse).toBe(true);
     expect(system.enableHtmlVisualPrompt).toBe(true);
+    expect(system.enableDestructiveToolConfirmation).toBe(true);
+    expect(
+      normalizeSystemSettings({ enableDestructiveToolConfirmation: "yes" }),
+    ).toMatchObject({ enableDestructiveToolConfirmation: true });
+    expect(
+      normalizeSystemSettings({ enableDestructiveToolConfirmation: false }),
+    ).toMatchObject({ enableDestructiveToolConfirmation: false });
   });
 
   it("normalizes system font size", () => {

@@ -29,6 +29,7 @@
   "linkKnowledgeAria": "关联知识库 {name}",
   "noCollectionsAvailable": "暂无可用合集。",
   "presetFiles": "预设文件",
+  "localFileMissing": "恢复后本地文件不可用",
   "removePresetFileAria": "移除预设文件 {fileName}",
   "uploadPresetFilesAria": "上传预设文件",
   "presetFilesInputAria": "工作区预设文件",

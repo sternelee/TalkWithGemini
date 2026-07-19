@@ -304,6 +304,87 @@ describe("skill service", () => {
     ]);
   });
 
+  it("discloses the English catalog fallback", async () => {
+    const englishCatalog = { ...zhCatalog, locale: "en" };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/data/skills/skills.metadata.json") {
+        return jsonResponse(englishCatalog);
+      }
+      return jsonResponse({ message: "not found" }, { status: 404 });
+    });
+    const { fetchSkillCatalogResult } =
+      await import("../services/api/skillService");
+
+    await expect(fetchSkillCatalogResult("zh")).resolves.toMatchObject({
+      status: "fallback",
+      source: "skills:en:catalog:localized-fallback",
+      data: { locale: "en" },
+      error: { retryable: true },
+    });
+  });
+
+  it("uses stale localized skill data when refresh fails", async () => {
+    const fetchedAt = Date.now() - 73 * 60 * 60 * 1000;
+    storeMock.state.skillCatalogs["zh-CN"] = zhCatalog as SkillCatalog;
+    storeMock.state.skillCatalogTimestamps["zh-CN"] = fetchedAt;
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    const { fetchSkillCatalogResult } =
+      await import("../services/api/skillService");
+
+    await expect(fetchSkillCatalogResult("zh")).resolves.toMatchObject({
+      status: "stale",
+      source: "skills:zh-CN:cache",
+      fetchedAt,
+      data: { locale: "zh-CN" },
+      error: { retryable: true },
+    });
+  });
+
+  it("preserves stale English cache state during localized fallback", async () => {
+    const fetchedAt = Date.now() - 73 * 60 * 60 * 1000;
+    storeMock.state.skillCatalogs.en = {
+      ...zhCatalog,
+      locale: "en",
+    } as SkillCatalog;
+    storeMock.state.skillCatalogTimestamps.en = fetchedAt;
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    const { fetchSkillCatalogResult } =
+      await import("../services/api/skillService");
+
+    await expect(fetchSkillCatalogResult("zh")).resolves.toMatchObject({
+      status: "stale",
+      source: "skills:en:cache:localized-fallback",
+      fetchedAt,
+      data: { locale: "en" },
+      fallbackFrom: {
+        source: "skills:zh-CN:catalog",
+        error: { retryable: true },
+      },
+    });
+  });
+
+  it("distinguishes an empty catalog from a catalog load error", async () => {
+    const emptyCatalog = { ...zhCatalog, skillCount: 0, skills: [] };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse(emptyCatalog))
+      .mockRejectedValue(new Error("offline"));
+    const { fetchSkillCatalogResult } =
+      await import("../services/api/skillService");
+
+    await expect(fetchSkillCatalogResult("zh", true)).resolves.toMatchObject({
+      status: "fresh",
+      data: { locale: "zh-CN", skills: [] },
+    });
+    await expect(fetchSkillCatalogResult("ja", true)).resolves.toMatchObject({
+      status: "error",
+      data: { locale: "ja", skills: [] },
+      error: { retryable: true },
+    });
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   it("injects all active installed skills without model selection when auto-select is disabled", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

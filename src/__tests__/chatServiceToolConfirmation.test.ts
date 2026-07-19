@@ -5,6 +5,8 @@ import type {
   ModelMetadata,
   Plugin,
   ToolCall,
+  ToolConfirmationController,
+  ToolConfirmationDecision,
 } from "../types";
 
 const mocks = vi.hoisted(() => ({
@@ -64,6 +66,27 @@ vi.mock("../lib/api/client", async () => {
 
 vi.mock("@/lib/plugin/resolve", () => ({
   getEnabledPluginFunctions: vi.fn((plugin: Plugin) => plugin.functions || []),
+  resolveEnabledPluginFunction: vi.fn(
+    (plugins: Plugin[], functionName: string, allowedPluginIds?: string[]) => {
+      const allowed = allowedPluginIds?.length
+        ? new Set(allowedPluginIds)
+        : null;
+      let resolved: {
+        plugin: Plugin;
+        functionDef: Plugin["functions"][number];
+      } | null = null;
+      for (const plugin of plugins) {
+        if (allowed && !allowed.has(plugin.id)) continue;
+        const functionDef = plugin.functions.find(
+          (candidate) => candidate.name === functionName,
+        );
+        if (!functionDef) continue;
+        if (resolved) return null;
+        resolved = { plugin, functionDef };
+      }
+      return resolved;
+    },
+  ),
 }));
 
 vi.mock("@/lib/utils/model", () => ({
@@ -77,6 +100,7 @@ vi.mock("@/lib/utils/model", () => ({
 
 vi.mock("@/lib/settings/searchRag", () => ({
   getSearchCompatibility: vi.fn(() => mocks.searchCompatibility),
+  resolveEffectiveSearchCapability: vi.fn(() => mocks.searchCompatibility),
   getSearchCompatibilityErrorMessage: vi.fn(() => "Search is unavailable"),
 }));
 
@@ -118,6 +142,14 @@ vi.mock("../services/api/searchService", () => ({
 import { createSearchProvider } from "../services/api/searchService";
 
 const encoder = new TextEncoder();
+
+function createAllowOnceController(): ToolConfirmationController {
+  return {
+    requestConfirmation: vi.fn(
+      async (): Promise<ToolConfirmationDecision> => "allow_once",
+    ),
+  };
+}
 
 function sseResponse(events: unknown[]) {
   const body = events
@@ -204,6 +236,40 @@ const writePlugin: Plugin = {
   ],
 };
 
+const destructivePlugin: Plugin = {
+  ...writePlugin,
+  functions: [
+    {
+      ...writePlugin.functions[0],
+      name: "delete_record",
+      description: "Delete a record",
+      method: "DELETE",
+      path: "/records/{id}",
+    },
+  ],
+};
+
+const externalMcpPlugin: Plugin = {
+  ...writePlugin,
+  id: "mcp-tools",
+  title: "MCP Tools",
+  source: "mcp",
+  functions: [
+    {
+      name: "query_remote_tool",
+      description: "Query an MCP tool",
+      mcpToolName: "query_remote_tool",
+      risk: "external",
+      parameters: { type: "object", properties: {} },
+    },
+  ],
+  mcp: {
+    transport: "streamable-http",
+    serverUrl: "https://mcp.example.com/mcp",
+    serverName: "example",
+  },
+};
+
 const imagePlugin: Plugin = {
   id: "openai-image-generation",
   title: "OpenAI-compatible Image Processing",
@@ -227,6 +293,7 @@ describe("chat service tool execution", () => {
     vi.restoreAllMocks();
     mocks.executePluginFunction.mockReset();
     mocks.settingsState = {
+      system: { enableDestructiveToolConfirmation: false },
       search: { provider: "google", configs: {} },
       installedPlugins: [writePlugin],
       pluginConfigs: {},
@@ -408,7 +475,11 @@ describe("chat service tool execution", () => {
     );
   });
 
-  it("executes side-effectful tool calls without runtime confirmation", async () => {
+  it("auto-executes write tools when destructive confirmation is enabled", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+    };
     mocks.executePluginFunction.mockResolvedValueOnce({ id: "record-1" });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -433,6 +504,7 @@ describe("chat service tool execution", () => {
         ]),
       );
     const updates: ToolCall[][] = [];
+    const confirmationController = createAllowOnceController();
 
     const { streamChatResponse } = await import("../services/api/chatService");
     const result = await streamChatResponse(
@@ -450,6 +522,9 @@ describe("chat service tool execution", () => {
       undefined,
       undefined,
       ["writer"],
+      undefined,
+      undefined,
+      confirmationController,
     );
 
     expect(result).toBe("Created record-1.");
@@ -460,6 +535,11 @@ describe("chat service tool execution", () => {
       undefined,
       ["writer"],
       undefined,
+      expect.objectContaining({
+        pluginId: "writer",
+        risk: "write",
+        functionFingerprint: expect.any(String),
+      }),
     );
     expect(updates.flat()).toEqual(
       expect.arrayContaining([
@@ -467,15 +547,557 @@ describe("chat service tool execution", () => {
           id: "call_write",
           status: "success",
           result: { id: "record-1" },
+          confirmation: expect.objectContaining({
+            required: false,
+            decision: "automatic",
+          }),
         }),
       ]),
     );
     expect(updates.flat()).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ status: "awaiting_confirmation" }),
-        expect.objectContaining({ status: "denied" }),
       ]),
     );
+    expect(confirmationController.requestConfirmation).not.toHaveBeenCalled();
+  });
+
+  it("auto-executes destructive tools when confirmation is disabled", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      installedPlugins: [destructivePlugin],
+    };
+    mocks.executePluginFunction.mockResolvedValueOnce({ deleted: true });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_delete",
+              name: "delete_record",
+              args: { id: "record-1" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Deleted." },
+          { type: "done" },
+        ]),
+      );
+    const updates: ToolCall[][] = [];
+    const confirmationController = createAllowOnceController();
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Delete a record",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      (toolCalls) => updates.push(toolCalls),
+      undefined,
+      undefined,
+      undefined,
+      ["writer"],
+      undefined,
+      undefined,
+      confirmationController,
+    );
+
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(1);
+    expect(confirmationController.requestConfirmation).not.toHaveBeenCalled();
+    expect(updates.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "call_delete",
+          risk: "destructive",
+          status: "success",
+          confirmation: expect.objectContaining({
+            required: false,
+            decision: "automatic",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("auto-executes a read-only plugin tool without confirmation", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      installedPlugins: [
+        {
+          ...writePlugin,
+          functions: [
+            {
+              ...writePlugin.functions[0],
+              name: "get_record",
+              method: "GET",
+              path: "/records/{id}",
+            },
+          ],
+        },
+      ],
+    };
+    mocks.executePluginFunction.mockResolvedValueOnce({ id: "record-1" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_read",
+              name: "get_record",
+              args: { id: "record-1" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ type: "content", content: "Found." }, { type: "done" }]),
+      );
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await expect(
+      streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Read a record",
+        [],
+        {},
+        () => undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ["writer"],
+      ),
+    ).resolves.toBe("Found.");
+
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-executes external MCP tools when destructive confirmation is enabled", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+      installedPlugins: [externalMcpPlugin],
+    };
+    mocks.executePluginFunction.mockResolvedValueOnce({ result: "remote" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_external",
+              name: "query_remote_tool",
+              args: { query: "status" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Remote result." },
+          { type: "done" },
+        ]),
+      );
+    const confirmationController = createAllowOnceController();
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await expect(
+      streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Query the MCP tool",
+        [],
+        {},
+        () => undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ["mcp-tools"],
+        undefined,
+        undefined,
+        confirmationController,
+      ),
+    ).resolves.toBe("Remote result.");
+
+    expect(confirmationController.requestConfirmation).not.toHaveBeenCalled();
+    expect(mocks.executePluginFunction).toHaveBeenCalledWith(
+      "query_remote_tool",
+      { query: "status" },
+      undefined,
+      ["mcp-tools"],
+      undefined,
+      expect.objectContaining({
+        pluginId: "mcp-tools",
+        risk: "external",
+        functionFingerprint: expect.any(String),
+      }),
+    );
+  });
+
+  it("fails closed and feeds an unavailable-confirmation result back without a controller", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+      installedPlugins: [destructivePlugin],
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async () =>
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_delete",
+              name: "delete_record",
+              args: { id: "record-1" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockImplementationOnce(async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.history[1].toolCalls[0]).toMatchObject({
+          status: "error",
+          confirmation: { state: "error" },
+          result: {
+            error: {
+              code: "TOOL_CONFIRMATION_UNAVAILABLE",
+            },
+          },
+        });
+        return sseResponse([
+          { type: "content", content: "I did not create the record." },
+          { type: "done" },
+        ]);
+      });
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await expect(
+      streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Delete a record",
+        [],
+        {},
+        () => undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ["writer"],
+      ),
+    ).resolves.toBe("I did not create the record.");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mocks.executePluginFunction).not.toHaveBeenCalled();
+  });
+
+  it("interrupts a pending confirmation without executing the tool", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+      installedPlugins: [destructivePlugin],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        {
+          type: "tool_call",
+          toolCall: {
+            id: "call_delete",
+            name: "delete_record",
+            args: { id: "record-1" },
+            status: "pending",
+          },
+        },
+        { type: "done" },
+      ]),
+    );
+    const updates: ToolCall[][] = [];
+    const abortController = new AbortController();
+    const confirmationController: ToolConfirmationController = {
+      requestConfirmation: vi.fn(
+        () => new Promise<ToolConfirmationDecision>(() => undefined),
+      ),
+    };
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    const response = streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Delete a record",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      (toolCalls) => updates.push(toolCalls),
+      undefined,
+      undefined,
+      abortController.signal,
+      ["writer"],
+      undefined,
+      undefined,
+      confirmationController,
+    );
+
+    await vi.waitFor(() =>
+      expect(updates.flat()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ status: "awaiting_confirmation" }),
+        ]),
+      ),
+    );
+    abortController.abort();
+
+    await expect(response).rejects.toMatchObject({ name: "AbortError" });
+    expect(mocks.executePluginFunction).not.toHaveBeenCalled();
+    expect(updates.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "error",
+          confirmation: expect.objectContaining({ state: "interrupted" }),
+          errorInfo: expect.objectContaining({
+            code: "CONFIRMATION_INTERRUPTED",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("downgrades a destructive session decision to a one-time approval", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+      installedPlugins: [destructivePlugin],
+    };
+    mocks.executePluginFunction.mockResolvedValueOnce({ deleted: true });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_delete",
+              name: "delete_record",
+              args: { id: "record-1" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Deleted." },
+          { type: "done" },
+        ]),
+      );
+    const updates: ToolCall[][] = [];
+    const grantSessionApproval = vi.fn();
+    const confirmationController: ToolConfirmationController = {
+      requestConfirmation: vi.fn(
+        async (): Promise<ToolConfirmationDecision> => "allow_session",
+      ),
+      grantSessionApproval,
+    };
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Delete a record",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      (toolCalls) => updates.push(toolCalls),
+      undefined,
+      undefined,
+      undefined,
+      ["writer"],
+      undefined,
+      undefined,
+      confirmationController,
+    );
+
+    expect(grantSessionApproval).not.toHaveBeenCalled();
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(1);
+    expect(updates.flat()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "call_delete",
+          risk: "destructive",
+          status: "success",
+          confirmation: expect.objectContaining({
+            decision: "allow_once",
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("feeds a denied destructive call back without executing it", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+      installedPlugins: [destructivePlugin],
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_delete",
+              name: "delete_record",
+              args: { id: "record-1" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]),
+      )
+      .mockImplementationOnce(async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.history[1].toolCalls[0]).toMatchObject({
+          status: "denied",
+          confirmation: { state: "denied", decision: "deny" },
+          result: { error: { code: "TOOL_CALL_DENIED" } },
+        });
+        return sseResponse([
+          { type: "content", content: "I did not delete the record." },
+          { type: "done" },
+        ]);
+      });
+    const confirmationController: ToolConfirmationController = {
+      requestConfirmation: vi.fn(
+        async (): Promise<ToolConfirmationDecision> => "deny",
+      ),
+    };
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await expect(
+      streamChatResponse(
+        "session-1",
+        "openai:gpt-4",
+        [],
+        "Delete a record",
+        [],
+        {},
+        () => undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ["writer"],
+        undefined,
+        undefined,
+        confirmationController,
+      ),
+    ).resolves.toBe("I did not delete the record.");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mocks.executePluginFunction).not.toHaveBeenCalled();
+  });
+
+  it("snapshots destructive confirmation at generation start", async () => {
+    mocks.settingsState = {
+      ...mocks.settingsState,
+      system: { enableDestructiveToolConfirmation: true },
+      installedPlugins: [destructivePlugin],
+    };
+    mocks.executePluginFunction.mockResolvedValueOnce({ deleted: true });
+    vi.spyOn(globalThis, "fetch")
+      .mockImplementationOnce(async () => {
+        mocks.settingsState = {
+          ...mocks.settingsState,
+          system: { enableDestructiveToolConfirmation: false },
+        };
+        return sseResponse([
+          {
+            type: "tool_call",
+            toolCall: {
+              id: "call_delete",
+              name: "delete_record",
+              args: { id: "record-1" },
+              status: "pending",
+            },
+          },
+          { type: "done" },
+        ]);
+      })
+      .mockResolvedValueOnce(
+        sseResponse([
+          { type: "content", content: "Deleted." },
+          { type: "done" },
+        ]),
+      );
+    const confirmationController = createAllowOnceController();
+
+    const { streamChatResponse } = await import("../services/api/chatService");
+    await streamChatResponse(
+      "session-1",
+      "openai:gpt-4",
+      [],
+      "Delete a record",
+      [],
+      {},
+      () => undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      ["writer"],
+      undefined,
+      undefined,
+      confirmationController,
+    );
+
+    expect(confirmationController.requestConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCallId: "call_delete",
+        risk: "destructive",
+      }),
+      undefined,
+    );
+    expect(mocks.executePluginFunction).toHaveBeenCalledTimes(1);
   });
 
   it("limits tool execution concurrency to four", async () => {
@@ -512,6 +1134,9 @@ describe("chat service tool execution", () => {
       undefined,
       undefined,
       ["writer"],
+      undefined,
+      undefined,
+      createAllowOnceController(),
     );
 
     expect(maxActiveExecutions).toBeLessThanOrEqual(
@@ -550,6 +1175,9 @@ describe("chat service tool execution", () => {
       undefined,
       undefined,
       ["writer"],
+      undefined,
+      undefined,
+      createAllowOnceController(),
     );
 
     expect(mocks.executePluginFunction).toHaveBeenCalledTimes(
@@ -627,6 +1255,7 @@ describe("chat service tool execution", () => {
       ["openai-image-generation"],
       undefined,
       (outputBlocks) => outputSnapshots.push(outputBlocks),
+      createAllowOnceController(),
     );
 
     expect(result).toBe("Edited.");
@@ -704,6 +1333,7 @@ describe("chat service tool execution", () => {
       ["writer"],
       undefined,
       (blocks) => outputSnapshots.push(blocks),
+      createAllowOnceController(),
     );
 
     const statuses = outputSnapshots
@@ -1203,6 +1833,9 @@ describe("chat service tool execution", () => {
       undefined,
       undefined,
       ["writer"],
+      undefined,
+      undefined,
+      createAllowOnceController(),
     );
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(

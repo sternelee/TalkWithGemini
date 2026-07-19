@@ -18,6 +18,7 @@ import {
 } from "@/lib/providers/config";
 import { OPENAI_COMPATIBLE_PROVIDER_TYPE } from "@/lib/providers/providerTypes";
 import { logDevError } from "@/lib/utils/devLogger";
+import { reportAppRestoreHydration } from "@/lib/data/appRestoreJournal";
 import {
   migrateProviderLocalSecret,
   stripProviderPlainSecret,
@@ -310,12 +311,17 @@ export const useCoreSettingsStore = create<CoreSettingsState>()(
       onRehydrateStorage: () => {
         return (state, error) => {
           if (typeof window === "undefined") return;
-          if (error) {
-            logDevError("Core settings hydration failed:", error);
-            state?.setHasHydrated(true);
-          } else if (state) {
-            state.setHasHydrated(true);
-          }
+          if (error) logDevError("Core settings hydration failed:", error);
+          void reportAppRestoreHydration("coreSettings", error).then(
+            () => state?.setHasHydrated(true),
+            (restoreError) => {
+              logDevError(
+                "Restored core settings failed startup validation:",
+                restoreError,
+              );
+              window.location.reload();
+            },
+          );
         };
       },
     },

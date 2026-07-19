@@ -53,7 +53,7 @@ describe("MCP plugin execute route", () => {
       structuredContent: { answer: "ok" },
     });
 
-    const { registerServerPlugin } =
+    const { getServerPlugin, registerServerPlugin } =
       await import("../lib/plugin/serverRegistry");
     await registerServerPlugin({
       id: "mcp:io.github/context7:1.2.3",
@@ -86,11 +86,21 @@ describe("MCP plugin execute route", () => {
       },
     });
 
+    const registeredPlugin = await getServerPlugin(
+      "mcp:io.github/context7:1.2.3",
+    );
+    const { createPluginFunctionFingerprint } =
+      await import("../lib/plugin/confirmation");
+    const expectedFingerprint = await createPluginFunctionFingerprint(
+      registeredPlugin!,
+      registeredPlugin!.functions[0],
+    );
     const { POST } = await import("../app/api/plugins/execute/route");
     const request = createRequest(
       {
         pluginId: "mcp:io.github/context7:1.2.3",
         functionName: "mcp_io_github_context7__resolve_library_id",
+        expectedFingerprint,
         args: { libraryName: "react" },
       },
       controller.signal,
@@ -112,5 +122,19 @@ describe("MCP plugin execute route", () => {
     await expect(response.json()).resolves.toEqual({
       result: { structuredContent: { answer: "ok" } },
     });
+
+    const changedResponse = await POST(
+      createRequest({
+        pluginId: "mcp:io.github/context7:1.2.3",
+        functionName: "mcp_io_github_context7__resolve_library_id",
+        expectedFingerprint: "v1:outdated-confirmation",
+        args: { libraryName: "react" },
+      }) as any,
+    );
+    expect(changedResponse.status).toBe(409);
+    await expect(changedResponse.json()).resolves.toMatchObject({
+      code: "TOOL_DEFINITION_CHANGED",
+    });
+    expect(executeMcpToolRequestMock).toHaveBeenCalledTimes(1);
   });
 });

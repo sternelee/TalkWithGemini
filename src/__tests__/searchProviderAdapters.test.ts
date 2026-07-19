@@ -177,6 +177,29 @@ describe("search provider adapters", () => {
     });
   });
 
+  it("adds Firecrawl authentication only when an optional key is configured", async () => {
+    const fetchJson = vi.fn().mockResolvedValue({
+      response: new Response(null, { status: 200 }),
+      data: { data: { web: [], images: [] } },
+    });
+
+    await runSearchProvider({
+      provider: "firecrawl",
+      query: "neo chat",
+      apiKey: "firecrawl-key",
+      baseUrl: "http://firecrawl.internal",
+      maxResultNumber: 4,
+      fetchJson,
+    });
+
+    const [url, init] = fetchJson.mock.calls[0]!;
+    expect(url).toBe("http://firecrawl.internal/v2/search");
+    expect(init.headers).toMatchObject({
+      "Content-Type": "application/json",
+      Authorization: "Bearer firecrawl-key",
+    });
+  });
+
   it("throws provider errors with the upstream status", async () => {
     const fetchJson = vi.fn().mockResolvedValue({
       response: new Response(null, { status: 503 }),

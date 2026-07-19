@@ -294,7 +294,7 @@ describe("api schemas", () => {
     ).toThrow();
   });
 
-  it("accepts optional image generation count and validates edit attachments", () => {
+  it("accepts optional image generation count and private HTTPS edit attachments", () => {
     const baseRequest = {
       provider: { type: "OpenAI", apiKeySecret: encryptedSecret },
       modelName: "gpt-image-2",
@@ -323,7 +323,7 @@ describe("api schemas", () => {
       }),
     ).toThrow();
 
-    expect(() =>
+    expect(
       ImageGenerateRequestSchema.parse({
         ...baseRequest,
         attachments: [
@@ -331,11 +331,27 @@ describe("api schemas", () => {
             id: "att_2",
             mimeType: "image/png",
             fileName: "blocked.png",
+            url: "https://127.0.0.1/private.png",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      attachments: [{ url: "https://127.0.0.1/private.png" }],
+    });
+
+    expect(() =>
+      ImageGenerateRequestSchema.parse({
+        ...baseRequest,
+        attachments: [
+          {
+            id: "att_3",
+            mimeType: "image/png",
+            fileName: "insecure.png",
             url: "http://127.0.0.1/private.png",
           },
         ],
       }),
-    ).toThrow();
+    ).toThrow(/Only HTTPS/i);
   });
 
   it("rejects simple generation requests with oversized model or prompt fields", () => {
@@ -360,8 +376,8 @@ describe("api schemas", () => {
     ).toThrow();
   });
 
-  it("rejects unsafe remote attachment URLs on chat requests", () => {
-    expect(() =>
+  it("accepts HTTPS private-network attachment URLs on chat requests", () => {
+    expect(
       ChatRequestSchema.parse({
         provider: { type: "Gemini", apiKeySecret: encryptedSecret },
         modelName: "gemini-test",
@@ -372,11 +388,13 @@ describe("api schemas", () => {
             id: "att_1",
             mimeType: "text/plain",
             fileName: "local.txt",
-            url: "http://127.0.0.1:8080/local.txt",
+            url: "https://127.0.0.1:8443/local.txt",
           },
         ],
       }),
-    ).toThrow(/Only HTTPS|Localhost|Private network/i);
+    ).toMatchObject({
+      attachments: [{ url: "https://127.0.0.1:8443/local.txt" }],
+    });
   });
 
   it("requires a voice ID for ElevenLabs speech synthesis requests", () => {

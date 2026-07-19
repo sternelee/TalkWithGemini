@@ -28,14 +28,19 @@ Run the checks before opening a pull request:
 ```bash
 pnpm check:imports
 pnpm format:check
+pnpm hygiene:artifacts
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:e2e
 pnpm build
 pnpm audit --audit-level low
 ```
 
 Use `pnpm format` to apply Prettier formatting across the repository.
+Playwright uses a dedicated development server on port 3100 by default. Set
+`NEO_CHAT_E2E_REUSE_EXISTING_SERVER=1` only when intentionally reusing a known
+Neo Chat server.
 
 ## Pull Request Guidelines
 
@@ -49,8 +54,9 @@ Use `pnpm format` to apply Prettier formatting across the repository.
 - Do not include real API keys, access passwords, provider secrets, private
   chat logs, or user files in issues, tests, screenshots, or fixtures.
 - For hosted deployment changes, consider `DEPLOYMENT_MODE=hosted`,
-  local-network proxy restrictions, shared stores, rate limits, and server-side
-  plugin registry requirements.
+  user-configured outbound URL trust boundaries, fixed-service HTTPS/host
+  allowlists, shared stores, rate limits, and server-side plugin registry
+  requirements.
 
 ## Reporting Security Issues
 

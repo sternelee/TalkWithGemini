@@ -20,9 +20,19 @@ import {
   hasPluginAuthValue,
   resolvePluginAuthValue,
 } from "../lib/security/localSecretResolvers";
+import { createPluginFunctionFingerprint } from "../lib/plugin/confirmation";
+import { getPluginFunctionRisk } from "../lib/plugin/risk";
+import type { PluginFunctionRisk } from "../types";
+
+export interface ExpectedPluginExecutionContract {
+  pluginId: string;
+  functionFingerprint: string;
+  risk: PluginFunctionRisk;
+}
 
 type PluginExecutionResponse = {
   error?: string;
+  code?: string;
   result?: any;
 };
 
@@ -49,9 +59,10 @@ async function postPluginExecutionWithLegacyFallback(
   buildPrimaryPayload: () => Promise<PluginExecutionRequestPayload>,
   buildLegacyPayload: () => Promise<PluginExecutionPayload>,
   signal?: AbortSignal,
+  allowLegacyFallback = true,
 ) {
   const response = await postPluginExecution(buildPrimaryPayload, signal);
-  if (response.status !== 404) return response;
+  if (response.status !== 404 || !allowLegacyFallback) return response;
   return postPluginExecution(buildLegacyPayload, signal);
 }
 
@@ -99,11 +110,13 @@ async function executeBackendPluginFunction(
   args: Record<string, unknown>,
   authConfig: PluginExecutionAuthConfig | undefined,
   signal?: AbortSignal,
+  expectedFingerprint?: string,
 ): Promise<any> {
   const response = await postPluginExecutionWithLegacyFallback(
     async () => ({
       pluginId: plugin.id,
       functionName: functionDef.name,
+      ...(expectedFingerprint ? { expectedFingerprint } : {}),
       args,
       authConfig,
     }),
@@ -114,6 +127,7 @@ async function executeBackendPluginFunction(
       authConfig,
     }),
     signal,
+    expectedFingerprint === undefined,
   );
 
   const data = await readJsonResponseOrThrow<PluginExecutionResponse>(
@@ -122,7 +136,7 @@ async function executeBackendPluginFunction(
   );
 
   if (data.error) {
-    return { error: data.error };
+    return { error: data.error, ...(data.code ? { code: data.code } : {}) };
   }
 
   return data.result;
@@ -138,6 +152,7 @@ export const executePluginFunction = async (
   authOverride?: any,
   allowedPluginIds?: string[],
   signal?: AbortSignal,
+  expectedContract?: ExpectedPluginExecutionContract,
 ): Promise<any> => {
   const functionNameError = getPluginExecutionFunctionNameError(functionName);
   if (functionNameError) {
@@ -173,6 +188,23 @@ export const executePluginFunction = async (
   }
 
   const { plugin: foundPlugin, functionDef: foundFn } = resolved;
+  if (expectedContract) {
+    const currentFingerprint = await createPluginFunctionFingerprint(
+      foundPlugin,
+      foundFn,
+    );
+    if (
+      foundPlugin.id !== expectedContract.pluginId ||
+      currentFingerprint !== expectedContract.functionFingerprint ||
+      getPluginFunctionRisk(foundFn) !== expectedContract.risk
+    ) {
+      return {
+        error:
+          "Plugin function definition changed before execution. Review the updated tool before trying again.",
+        code: "TOOL_DEFINITION_CHANGED",
+      };
+    }
+  }
   const config = pluginConfigs[foundPlugin.id];
 
   // --- Special Handling for Unsplash ---
@@ -205,6 +237,9 @@ export const executePluginFunction = async (
           async () => ({
             pluginId: modifiedPlugin.id,
             functionName: foundFn.name,
+            ...(expectedContract?.functionFingerprint
+              ? { expectedFingerprint: expectedContract.functionFingerprint }
+              : {}),
             args: modifiedArgs,
             authConfig: await buildAuth(),
           }),
@@ -215,6 +250,7 @@ export const executePluginFunction = async (
             authConfig: await buildAuth(),
           }),
           signal,
+          expectedContract?.functionFingerprint === undefined,
         );
 
         const data = await readJsonResponseOrThrow<PluginExecutionResponse>(
@@ -223,7 +259,10 @@ export const executePluginFunction = async (
         );
 
         if (data.error) {
-          return { error: data.error };
+          return {
+            error: data.error,
+            ...(data.code ? { code: data.code } : {}),
+          };
         }
 
         const json = data.result;
@@ -260,6 +299,7 @@ export const executePluginFunction = async (
       executionArgs,
       authConfig,
       signal,
+      expectedContract?.functionFingerprint,
     );
   } catch (e) {
     if (isAbortError(e, signal)) throw e;

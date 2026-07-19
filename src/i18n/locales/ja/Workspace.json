@@ -29,6 +29,7 @@
   "linkKnowledgeAria": "ナレッジベース {name} をリンク",
   "noCollectionsAvailable": "利用可能なコレクションはありません。",
   "presetFiles": "プリセットファイル",
+  "localFileMissing": "復元後にローカルファイルを利用できません",
   "removePresetFileAria": "プリセットファイル {fileName} を削除",
   "uploadPresetFilesAria": "プリセットファイルをアップロード",
   "presetFilesInputAria": "ワークスペースのプリセットファイル",

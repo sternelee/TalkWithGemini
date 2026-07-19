@@ -32,6 +32,7 @@ import {
 } from "@/lib/chat/reasoning";
 import { deleteFromOPFS } from "@/utils/opfs";
 import { logDevError } from "@/lib/utils/devLogger";
+import { reportAppRestoreHydration } from "@/lib/data/appRestoreJournal";
 import {
   appendMessageToActivePath,
   cloneMessageTreeWithNewIds,
@@ -771,7 +772,9 @@ export const useChatStore = create<ChatState>()(
         });
 
         // Save new messages
-        await appDb.setItem(`session_messages_${newId}`, newMessageTree);
+        await enqueueSessionMessageWrite(newId, async () => {
+          await appDb.setItem(`session_messages_${newId}`, newMessageTree);
+        });
 
         const shouldActivateDuplicate = requestId === selectSessionRequestId;
 
@@ -1460,16 +1463,31 @@ export const useChatStore = create<ChatState>()(
       onRehydrateStorage: () => {
         return (state, error) => {
           if (typeof window === "undefined") return;
-          if (error) {
-            logDevError("Chat store hydration failed:", error);
-            state?.setHasHydrated(true);
-          } else if (state) {
-            state.setHasHydrated(true);
-            // Post-hydration check: if currentSessionId exists, load its messages
-            if (state.currentSessionId) {
-              state.selectSession(state.currentSessionId);
+          if (error) logDevError("Chat store hydration failed:", error);
+          void (async () => {
+            let completionError = error;
+            if (!completionError && state?.currentSessionId) {
+              try {
+                await state.selectSession(state.currentSessionId);
+                if (useChatStore.getState().activeSessionLoadError) {
+                  completionError = new Error(
+                    "The restored current session message tree could not be loaded.",
+                  );
+                }
+              } catch (loadError) {
+                completionError = loadError;
+              }
             }
-          }
+
+            await reportAppRestoreHydration("chat", completionError);
+            state?.setHasHydrated(true);
+          })().catch((restoreError) => {
+            logDevError(
+              "Restored chat data failed startup validation:",
+              restoreError,
+            );
+            window.location.reload();
+          });
         };
       },
     },

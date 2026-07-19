@@ -1,5 +1,6 @@
 export { useChatGenerationController } from "./useChatGenerationController";
 export { useChatPanelNavigation } from "./useChatPanelNavigation";
+export { useToolConfirmationController } from "./useToolConfirmationController";
 export { useChatShellState } from "./useChatShellState";
 export { useChatThemeEffects } from "./useChatThemeEffects";
 export { useComposerCapabilityState } from "./useComposerCapabilityState";

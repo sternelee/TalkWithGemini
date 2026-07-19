@@ -67,21 +67,36 @@ describe("server plugin registry", () => {
     );
   });
 
-  it("uses the safe outbound policy for hosted shared registry requests", async () => {
+  it("allows hosted shared registry requests to private HTTPS addresses", async () => {
     vi.stubEnv("DEPLOYMENT_MODE", "hosted");
     vi.stubEnv("PLUGIN_REGISTRY_STORE", "upstash");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://127.0.0.1:8787");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response(null, { status: 200 }));
+      .mockResolvedValue(Response.json({ result: "OK" }));
 
     const { registerServerPlugin } =
       await import("../lib/plugin/serverRegistry");
 
-    await expect(registerServerPlugin(plugin)).rejects.toThrow(
-      /Private network outbound requests are blocked/i,
+    await expect(registerServerPlugin(plugin)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("https://127.0.0.1:8787/set"),
+      expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("keeps hosted shared registry requests HTTPS-only", async () => {
+    vi.stubEnv("DEPLOYMENT_MODE", "hosted");
+    vi.stubEnv("PLUGIN_REGISTRY_STORE", "upstash");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "http://127.0.0.1:8787");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "redis-secret");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const { registerServerPlugin } =
+      await import("../lib/plugin/serverRegistry");
+
+    await expect(registerServerPlugin(plugin)).rejects.toThrow(/Protocol/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

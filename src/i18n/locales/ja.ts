@@ -26,6 +26,7 @@ import ChatApp from "./ja/ChatApp.json";
 import Config from "./ja/Config.json";
 import Skill from "./ja/Skill.json";
 import About from "./ja/About.json";
+import GlobalSearch from "./ja/GlobalSearch.json";
 
 const messages = {
   Common,
@@ -56,6 +57,7 @@ const messages = {
   Config,
   Skill,
   About,
+  GlobalSearch,
 };
 
 export default messages;

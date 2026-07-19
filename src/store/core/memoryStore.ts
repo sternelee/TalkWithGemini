@@ -17,6 +17,7 @@ import {
   getAppDbStorage,
 } from "../storage/storageConfig";
 import { logDevError } from "@/lib/utils/devLogger";
+import { reportAppRestoreHydration } from "@/lib/data/appRestoreJournal";
 
 export const DEFAULT_MEMORY_SETTINGS: MemorySettings = {
   enabled: true,
@@ -250,12 +251,17 @@ export const useMemoryStore = create<MemoryState>()(
       }),
       onRehydrateStorage: () => (state, error) => {
         if (typeof window === "undefined") return;
-        if (error) {
-          logDevError("Memory hydration failed:", error);
-          state?.setHasHydrated(true);
-        } else if (state) {
-          state.setHasHydrated(true);
-        }
+        if (error) logDevError("Memory hydration failed:", error);
+        void reportAppRestoreHydration("memory", error).then(
+          () => state?.setHasHydrated(true),
+          (restoreError) => {
+            logDevError(
+              "Restored memory data failed startup validation:",
+              restoreError,
+            );
+            window.location.reload();
+          },
+        );
       },
     },
   ),

@@ -29,6 +29,7 @@
   "linkKnowledgeAria": "Link knowledge base {name}",
   "noCollectionsAvailable": "No collections available.",
   "presetFiles": "Preset Files",
+  "localFileMissing": "Local file unavailable after restore",
   "removePresetFileAria": "Remove preset file {fileName}",
   "uploadPresetFilesAria": "Upload preset files",
   "presetFilesInputAria": "Workspace preset files",

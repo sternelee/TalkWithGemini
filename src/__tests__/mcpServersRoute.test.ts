@@ -58,6 +58,10 @@ describe("MCP servers route", () => {
     expect(registryUrl.searchParams.get("search")).toBe("context");
     expect(registryUrl.searchParams.get("version")).toBe("latest");
     expect(registryUrl.searchParams.get("limit")).toBe("100");
+    expect(safeFetchJsonMock.mock.calls[0]?.[2]?.policy).toMatchObject({
+      allowedProtocols: ["https:"],
+      allowedHosts: ["registry.modelcontextprotocol.io"],
+    });
     await expect(response.json()).resolves.toMatchObject({
       nextCursor: "next-cursor",
       plugins: [

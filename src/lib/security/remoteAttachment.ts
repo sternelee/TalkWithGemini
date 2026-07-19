@@ -5,18 +5,18 @@ export function getRemoteAttachmentUrlError(value: string): string | null {
   if (!trimmed) return "Remote file URL is required";
 
   try {
-    validateOutboundUrl(trimmed, getSafeUrlPolicy("plugin"));
+    validateOutboundUrl(trimmed, {
+      ...getSafeUrlPolicy("image"),
+      allowedProtocols: ["https:"],
+    });
     return null;
   } catch (error) {
     if (error instanceof Error) {
-      if (/Protocol|Plain HTTP/i.test(error.message)) {
+      if (/Protocol/i.test(error.message)) {
         return "Only HTTPS file URLs are supported.";
       }
       if (/credentials/i.test(error.message)) {
         return "Remove embedded credentials from the URL.";
-      }
-      if (/Localhost|Private network/i.test(error.message)) {
-        return "Localhost and private network file URLs are blocked.";
       }
       return error.message;
     }

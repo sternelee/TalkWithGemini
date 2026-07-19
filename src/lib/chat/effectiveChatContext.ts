@@ -22,7 +22,7 @@ import {
   hasRagVectorStore,
 } from "../security/localSecretResolvers";
 import {
-  getSearchCompatibility,
+  resolveEffectiveSearchCapability,
   type SearchCompatibilityResult,
 } from "../settings/searchRag";
 import { buildDiagramPromptInstruction } from "./diagramPrompt";
@@ -233,10 +233,11 @@ export function resolveEffectiveChatContext(
 
   const searchConfig =
     search.provider === "google" ? undefined : search.configs[search.provider];
-  const searchCompatibility = getSearchCompatibility({
+  const searchCompatibility = resolveEffectiveSearchCapability({
     searchProvider: search.provider,
     searchConfig,
     modelProviderType: provider?.type,
+    selectedModel,
   });
   const modelCapabilities = getModelCapabilities({
     selectedModel,

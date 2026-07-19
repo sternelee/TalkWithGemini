@@ -10,7 +10,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { useLocale, useTranslations } from "next-intl";
 import { toPng } from "html-to-image";
-import type { Attachment, Message } from "@/types";
+import type { Attachment, Message, ToolConfirmationDecision } from "@/types";
 import MarkdownRenderer from "../content/MarkdownRenderer";
 import Tooltip from "../ui/Tooltip";
 import Artifact from "../content/Artifact";
@@ -101,6 +101,13 @@ interface MessageItemProps {
   onVersionChange?: (id: string, direction: "prev" | "next") => void;
   isLast: boolean;
   isTyping?: boolean;
+  onToolConfirmationDecision?: (
+    toolCallId: string,
+    decision: ToolConfirmationDecision,
+  ) => void;
+  onRevokeToolSessionApproval?: (
+    toolCall: NonNullable<Message["toolCalls"]>[number],
+  ) => void;
 }
 
 type CopyStatus = "idle" | "copied" | "error";
@@ -291,6 +298,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
   onSubmitUserEdit,
   onVersionChange,
   isTyping = false,
+  onToolConfirmationDecision,
+  onRevokeToolSessionApproval,
 }) => {
   const t = useTranslations("Message");
   const locale = useLocale();
@@ -1298,6 +1307,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     displayedContent={message.content}
                     searchSources={readingMode === "message" ? sources : []}
                     onFileClick={handleFileClick}
+                    onToolConfirmationDecision={onToolConfirmationDecision}
+                    onRevokeToolSessionApproval={onRevokeToolSessionApproval}
                   />
                 )}
               </div>
@@ -1475,6 +1486,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
                   searchSources={sources}
                   onFileClick={handleFileClick}
                   onImageCached={persistCachedOutputImage}
+                  onToolConfirmationDecision={onToolConfirmationDecision}
+                  onRevokeToolSessionApproval={onRevokeToolSessionApproval}
                 />
               )}
             </>

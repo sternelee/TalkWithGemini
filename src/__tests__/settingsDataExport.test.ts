@@ -15,13 +15,41 @@ describe("settings data export", () => {
       resolve(process.cwd(), "src/store/core/settingsStore.ts"),
       "utf8",
     );
+    const messageRenderer = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/content/MessageOutputRenderer.tsx",
+      ),
+      "utf8",
+    );
+    const workspaceSettings = readFileSync(
+      resolve(
+        process.cwd(),
+        "src/components/layout/WorkspaceSettingsModal.tsx",
+      ),
+      "utf8",
+    );
 
     expect(systemSettings).toContain("handleExportAllData");
-    expect(settingsStore).toContain("createBrowserAppExportPayload");
+    expect(settingsStore).toContain("createBrowserAppBackup");
+    expect(settingsStore).toContain("restoreBrowserAppBackup");
     expect(en.System.exportAllData).toBeTruthy();
     expect(zh.System.exportAllData).toBeTruthy();
     expect(en.System.exportError).toBeTruthy();
     expect(zh.System.exportError).toBeTruthy();
+    expect(en.System.restoreAllData).toBeTruthy();
+    expect(zh.System.restoreAllData).toBeTruthy();
+    expect(ja.System.restoreAllData).toBeTruthy();
+    expect(systemSettings).toContain("handleRestoreAllData");
+    expect(systemSettings).toContain("restoreCredentialChecklistTitle");
+    expect(en.System.restoreCredentialProviders).toBeTruthy();
+    expect(zh.System.restoreCredentialPlugins).toBeTruthy();
+    expect(ja.System.restoreCredentialRag).toBeTruthy();
+    expect(messageRenderer).toContain("image.localFileMissing");
+    expect(workspaceSettings).toContain("file.localFileMissing");
+    expect(en.Message.localFileMissing).toBeTruthy();
+    expect(zh.Workspace.localFileMissing).toBeTruthy();
+    expect(ja.Workspace.localFileMissing).toBeTruthy();
   });
 
   it("uses one personality dropdown instead of separate style and tone controls", () => {

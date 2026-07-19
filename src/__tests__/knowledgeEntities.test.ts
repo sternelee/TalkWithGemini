@@ -111,4 +111,42 @@ describe("knowledge entity normalization", () => {
       collections.filter((collection) => collection.id === "same"),
     ).toHaveLength(1);
   });
+
+  it("migrates legacy knowledge paths without inventing binary originals", () => {
+    const textFile = normalizeKnowledgeFile({
+      id: "text",
+      name: "notes.txt",
+      size: 5,
+      type: "text/plain",
+      uploadedAt: 1,
+      status: "saved",
+      path: "opfs://knowledge/notes.txt",
+    });
+    const binaryFile = normalizeKnowledgeFile({
+      id: "pdf",
+      name: "report.pdf",
+      size: 5,
+      type: "application/pdf",
+      uploadedAt: 1,
+      status: "saved",
+      path: "opfs://knowledge/report.pdf",
+    });
+
+    expect(textFile).toMatchObject({
+      sourcePath: "opfs://knowledge/notes.txt",
+      contentPath: "opfs://knowledge/notes.txt",
+      contentKind: "source_text",
+      storageStatus: "saved",
+      indexStatus: "not_indexed",
+    });
+    expect(binaryFile).toMatchObject({
+      contentPath: "opfs://knowledge/report.pdf",
+      contentKind: "extracted_text",
+      sourceMissing: true,
+      storageStatus: "saved",
+      indexStatus: "not_indexed",
+    });
+    expect(binaryFile?.sourcePath).toBeUndefined();
+    expect(normalizeKnowledgeFile(binaryFile)).toEqual(binaryFile);
+  });
 });

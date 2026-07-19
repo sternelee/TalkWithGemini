@@ -15,6 +15,7 @@ export async function GET() {
       {
         policy: {
           ...getSafeUrlPolicy("pluginManifest"),
+          allowedProtocols: ["https:"],
           allowedHosts: ["api.apis.guru"],
         },
         timeoutMs: 20_000,

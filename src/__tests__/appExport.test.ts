@@ -28,6 +28,7 @@ import {
   collectReferencedOpfsUrls,
   createAppExportPayload,
   createBrowserAppExportPayload,
+  scrubAppExportValue,
 } from "../lib/data/appExport";
 import { STORAGE_VERSION } from "../store/storage/storageConfig";
 import { enqueueSessionMessageWrite } from "../store/sessionMessagePersistence";
@@ -67,15 +68,21 @@ describe("app export helpers", () => {
       memory: { memories: [{ id: "mem-1" }] },
     });
 
-    expect(APP_EXPORT_VERSION).toBe(2);
+    expect(APP_EXPORT_VERSION).toBe(3);
     expect(payload).toEqual({
       exportVersion: APP_EXPORT_VERSION,
       storageVersion: STORAGE_VERSION,
       exportedAt: "2026-07-01T00:00:00.000Z",
       metadata: {
         opfs: {
-          mode: "references-only",
-          includesBlobs: false,
+          mode: "bundled",
+          includesBlobs: true,
+        },
+        security: {
+          credentialsIncluded: false,
+          excluded: expect.arrayContaining([
+            expect.stringContaining("credentials"),
+          ]),
         },
       },
       data: {
@@ -92,6 +99,172 @@ describe("app export helpers", () => {
         memory: { memories: [{ id: "mem-1" }] },
       },
     });
+  });
+
+  it("removes plaintext credentials, encrypted envelopes, and transient caches", () => {
+    const scrubbed = scrubAppExportValue({
+      providers: [
+        {
+          id: "provider-1",
+          apiKey: "plain-key",
+          apiKeySecret: {
+            v: 1,
+            alg: "A256GCM",
+            keyId: "key-id",
+            iv: "iv",
+            ciphertext: "ciphertext",
+            context: "provider",
+          },
+        },
+      ],
+      pluginConfigs: {
+        demo: {
+          auth: {
+            type: "bearer",
+            value: "plain-token",
+            localValueSecret: {
+              v: 1,
+              alg: "A256GCM",
+              keyId: "key-id",
+              iv: "iv",
+              ciphertext: "ciphertext",
+              context: "plugin",
+            },
+          },
+        },
+      },
+      installedPlugins: [{ id: "demo" }],
+      marketPlugins: [{ id: "cached" }],
+      modelMetadata: { cached: { id: "cached" } },
+    });
+
+    expect(scrubbed).toEqual({
+      providers: [{ id: "provider-1" }],
+      pluginConfigs: { demo: { auth: { type: "bearer" } } },
+      installedPlugins: [{ id: "demo" }],
+    });
+    expect(JSON.stringify(scrubbed)).not.toContain("ciphertext");
+    expect(JSON.stringify(scrubbed)).not.toContain("plain-key");
+    expect(JSON.stringify(scrubbed)).not.toContain("plain-token");
+  });
+
+  it("scrubs configured URLs and arbitrary headers without changing content URLs", () => {
+    const chapterUrl =
+      "https://docs.example.com/chapter?author=ada&design=systems#author-section";
+    const scrubbed = scrubAppExportValue({
+      settings: {
+        pluginConfigs: {
+          demo: {
+            baseUrl:
+              "https://user:pass@example.com/api?keep=1&access_token=token&api_token=api-token&auth_token=auth-token&bearer_token=bearer-token&x-api-key=x-api-secret&subscription-key=subscription-secret&key=google-key&X-Amz-Credential=aws-credential&X-Amz-Security-Token=aws-session#access_token=fragment",
+            headers: { "X-Custom-Tenant-Secret": "must-not-export" },
+          },
+        },
+        installedPlugins: [
+          {
+            id: "schema-demo",
+            baseUrl:
+              "https://plugin-user:plugin-pass@plugin.example.com/api?token=plugin-secret",
+            functions: [
+              {
+                name: "call",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    token: { type: "string" },
+                    headers: { type: "object" },
+                  },
+                },
+              },
+            ],
+            mcp: {
+              serverUrl: "https://mcp.example.com?token=mcp-secret",
+              headers: { "X-Arbitrary-Auth": "must-not-export" },
+            },
+          },
+        ],
+      },
+      sessionMessages: {
+        s1: {
+          nodesById: {
+            m1: {
+              message: {
+                content: chapterUrl,
+                toolCalls: [
+                  {
+                    result: {
+                      secret: "business-result",
+                      credentials: "business-label",
+                      url: chapterUrl,
+                    },
+                  },
+                ],
+                attachments: [
+                  {
+                    id: "temporary",
+                    fileName: "temporary.txt",
+                    mimeType: "text/plain",
+                    url: "blob:https://app.example/id",
+                  },
+                  {
+                    id: "signed",
+                    fileName: "signed.txt",
+                    mimeType: "text/plain",
+                    url: "https://files.example/signed.txt?X-Amz-Credential=credential&X-Amz-Signature=signature",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    }) as any;
+
+    const serialized = JSON.stringify(scrubbed);
+    expect(serialized).not.toContain("must-not-export");
+    expect(serialized).not.toContain("user:pass");
+    expect(serialized).not.toContain("access_token");
+    expect(serialized).not.toContain("google-key");
+    expect(serialized).not.toContain("api-token");
+    expect(serialized).not.toContain("auth-token");
+    expect(serialized).not.toContain("bearer-token");
+    expect(serialized).not.toContain("x-api-secret");
+    expect(serialized).not.toContain("subscription-secret");
+    expect(serialized).not.toContain("aws-credential");
+    expect(serialized).not.toContain("aws-session");
+    expect(serialized).not.toContain("mcp-secret");
+    expect(serialized).not.toContain("plugin-secret");
+    expect(serialized).not.toContain("plugin-user");
+    expect(serialized).not.toContain("blob:https://");
+    expect(
+      scrubbed.settings.installedPlugins[0].functions[0].parameters.properties,
+    ).toEqual({
+      token: { type: "string" },
+      headers: { type: "object" },
+    });
+    expect(scrubbed.settings.installedPlugins[0].mcp.headers).toBeUndefined();
+    expect(scrubbed.sessionMessages.s1.nodesById.m1.message.content).toBe(
+      chapterUrl,
+    );
+    expect(
+      scrubbed.sessionMessages.s1.nodesById.m1.message.toolCalls[0].result,
+    ).toEqual({
+      secret: "business-result",
+      credentials: "business-label",
+      url: chapterUrl,
+    });
+    expect(
+      scrubbed.sessionMessages.s1.nodesById.m1.message.attachments[0],
+    ).toMatchObject({ localFileMissing: true });
+    expect(
+      scrubbed.sessionMessages.s1.nodesById.m1.message.attachments[1],
+    ).toMatchObject({
+      localFileMissing: true,
+      localFileError: expect.stringContaining("credential-bearing"),
+    });
+    expect(
+      scrubbed.sessionMessages.s1.nodesById.m1.message.attachments[1].url,
+    ).toBeUndefined();
   });
 
   it("exports every stored session message tree, including orphans", async () => {
@@ -207,8 +380,16 @@ describe("app export helpers", () => {
         workspaces: [
           {
             files: [
-              { url: "opfs://workspaces/w1/preset.txt" },
-              { url: "https://example.com/remote.txt" },
+              {
+                fileName: "preset.txt",
+                mimeType: "text/plain",
+                url: "opfs://workspaces/w1/preset.txt",
+              },
+              {
+                fileName: "remote.txt",
+                mimeType: "text/plain",
+                url: "https://example.com/remote.txt",
+              },
             ],
           },
         ],
@@ -218,12 +399,15 @@ describe("app export helpers", () => {
               {
                 attachments: [
                   {
+                    fileName: "attachment.txt",
+                    mimeType: "text/plain",
                     url: "opfs://chat/s1/attachment.txt",
                     displayCache: {
                       opfsUrl: "opfs://images/generated/display-cache.png",
                     },
                   },
                 ],
+                content: "opfs://chat/s1/mentioned-only.txt",
                 outputBlocks: [
                   {
                     type: "image",
@@ -242,7 +426,13 @@ describe("app export helpers", () => {
       knowledge: {
         collections: [
           {
-            files: [{ path: "opfs://knowledge-base/c1/local.md" }],
+            files: [
+              {
+                name: "local.md",
+                status: "saved",
+                path: "opfs://knowledge-base/c1/local.md",
+              },
+            ],
           },
         ],
       },
@@ -250,8 +440,6 @@ describe("app export helpers", () => {
 
     expect([...referenced].sort()).toEqual([
       "opfs://chat/s1/attachment.txt",
-      "opfs://images/generated/display-cache.png",
-      "opfs://images/generated/output-block.png",
       "opfs://knowledge-base/c1/local.md",
       "opfs://workspaces/w1/preset.txt",
     ]);

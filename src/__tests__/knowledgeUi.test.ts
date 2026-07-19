@@ -25,4 +25,31 @@ describe("knowledge UI composition", () => {
     );
     expect(selectionModal).not.toContain("{file.status}");
   });
+
+  it("keeps original-file recovery separate from extracted-text editing", () => {
+    const knowledgeBase = readFileSync(
+      resolve(process.cwd(), "src/components/knowledge/KnowledgeBase.tsx"),
+      "utf8",
+    );
+
+    expect(knowledgeBase).toContain("getStorageDisplayStatus");
+    expect(knowledgeBase).toContain("getIndexDisplayStatus");
+    expect(knowledgeBase).toContain("file.contentPath || file.path");
+    expect(knowledgeBase).toContain("handleDownloadOriginal");
+    expect(knowledgeBase).toContain("reparseFile(");
+    expect(knowledgeBase).toContain("selectOriginalAria");
+  });
+
+  it("supports locating a collection and file from global search", () => {
+    const knowledgeBase = readFileSync(
+      resolve(process.cwd(), "src/components/knowledge/KnowledgeBase.tsx"),
+      "utf8",
+    );
+
+    expect(knowledgeBase).toContain("initialCollectionId?: string");
+    expect(knowledgeBase).toContain("initialFileId?: string");
+    expect(knowledgeBase).toContain("data-knowledge-file-id={file.id}");
+    expect(knowledgeBase).toContain("scrollIntoView({");
+    expect(knowledgeBase).toContain("setHighlightedFileId");
+  });
 });

@@ -20,8 +20,13 @@ Use the pinned package manager (`pnpm@10.30.3`), preferably through Corepack:
 - `corepack pnpm build` creates the production Next.js build.
 - `corepack pnpm lint` runs ESLint with Next.js core-web-vitals and TypeScript
   rules.
+- `corepack pnpm format:check` checks repository formatting with Prettier.
+- `corepack pnpm check:imports` rejects disallowed long relative imports.
+- `corepack pnpm hygiene:artifacts` checks generated artifact hygiene.
 - `corepack pnpm typecheck` runs `tsc --noEmit`.
 - `corepack pnpm test` runs the Vitest suite.
+- `corepack pnpm test:e2e` runs Playwright smoke tests on an isolated port 3100
+  server by default.
 - `corepack pnpm build:worker` builds the OpenNext Cloudflare Worker output.
 
 ## Coding Style & Naming Conventions
@@ -42,9 +47,11 @@ while iterating, for example:
 corepack pnpm exec vitest run src/__tests__/pluginConfig.test.ts
 ```
 
-Before a pull request, run `format:check`, `lint`, `typecheck`, `test`, and
-`build`. Add `build:worker` when Cloudflare, runtime environment, or deployment
-code changes.
+Before a pull request, run `check:imports`, `format:check`,
+`hygiene:artifacts`, `lint`, `typecheck`, `test`, `test:e2e`, and `build`. Add
+`build:worker` when Cloudflare, runtime environment, or deployment code changes.
+Playwright reuses an existing server only when
+`NEO_CHAT_E2E_REUSE_EXISTING_SERVER=1` is set explicitly.
 
 ## Commit & Pull Request Guidelines
 
@@ -62,3 +69,10 @@ Use `.env.local` for local secrets and keep `.env.example` plus
 passwords, private chat logs, generated user files, or real provider responses.
 For Cloudflare deploys, preserve dashboard variables with the existing
 `--keep-vars` deployment flow.
+
+## Search Integration Invariants
+
+Firecrawl search must remain available without an API key through its public
+service. An API key is optional and only raises the request rate; the adapter
+must send its authorization header only when a key exists. Treat an explicit
+non-default Firecrawl Base URL as self-hosted configuration.

@@ -81,7 +81,10 @@ export function isIndexedKnowledgeFileAttachment(
   knowledgeCollections: any[],
 ): boolean {
   const file = getKnowledgeFile(attachment, knowledgeCollections);
-  return file?.status === "indexed" && typeof file.ragId === "string";
+  return (
+    (file?.indexStatus === "indexed" || file?.status === "indexed") &&
+    typeof file.ragId === "string"
+  );
 }
 
 function getIndexedKnowledgeFileSelectors(
@@ -96,7 +99,10 @@ function getIndexedKnowledgeFileSelectors(
     if (!fileData) continue;
 
     const file = getKnowledgeFile(attachment, knowledgeCollections);
-    if (file?.status !== "indexed" || typeof file.ragId !== "string") {
+    if (
+      (file?.indexStatus || file?.status) !== "indexed" ||
+      typeof file.ragId !== "string"
+    ) {
       continue;
     }
 
@@ -358,9 +364,10 @@ export const processLocalKBAttachments = async (
   const addedFileKeys = new Set<string>();
 
   const readKnowledgeFile = async (file: any) => {
-    if (!file.path) return null;
+    const contentPath = file.contentPath || file.path;
+    if (!contentPath) return null;
     return withResolvedObjectUrl({
-      source: file.path,
+      source: contentPath,
       resolveObjectUrl: resolveOPFSUrl,
       read: async (blobUrl) => {
         const response = await fetch(blobUrl);
@@ -373,7 +380,7 @@ export const processLocalKBAttachments = async (
     collectionParts: string[] | null,
     file: any,
   ) => {
-    const fileKey = file.id || file.path || file.name;
+    const fileKey = file.id || file.contentPath || file.path || file.name;
     if (!fileKey || addedFileKeys.has(fileKey)) return false;
     addedFileKeys.add(fileKey);
 

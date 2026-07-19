@@ -40,6 +40,7 @@ import {
   normalizeModelMetadataMap,
 } from "@/lib/providers/metadata";
 import { logDevError } from "@/lib/utils/devLogger";
+import { reportAppRestoreHydration } from "@/lib/data/appRestoreJournal";
 import {
   normalizeRAGConfig,
   normalizeSearchConfig,
@@ -66,9 +67,14 @@ import {
   type BrowserAppDataSource,
 } from "@/lib/data/clearAppData";
 import {
-  createBrowserAppExportPayload,
-  type AppExportPayload,
-} from "@/lib/data/appExport";
+  createBrowserAppBackup,
+  inspectBrowserAppBackup,
+  restoreBrowserAppBackup,
+  type BrowserAppBackup,
+  type AppBackupOperationOptions,
+  type BrowserBackupInspection,
+  type BrowserRestoreResult,
+} from "@/lib/data/appBackup";
 import {
   hasDocumentParseCredential,
   hasRagToken,
@@ -186,7 +192,14 @@ interface SettingsState {
   resetAgent: (identifier: string) => void;
 
   // Data Management
-  exportAllData: () => Promise<AppExportPayload>;
+  exportAllData: (
+    options?: AppBackupOperationOptions,
+  ) => Promise<BrowserAppBackup>;
+  inspectBackupFile: (file: Blob) => Promise<BrowserBackupInspection>;
+  restoreAllData: (
+    file: Blob,
+    options?: AppBackupOperationOptions,
+  ) => Promise<BrowserRestoreResult>;
   clearDataSources: (sources: BrowserAppDataSource[]) => Promise<void>;
   clearAllData: () => Promise<void>;
 }
@@ -1201,7 +1214,10 @@ export const useSettingsStore = create<SettingsState>()(
         }),
 
       // Data Management
-      exportAllData: async () => createBrowserAppExportPayload(),
+      exportAllData: async (options) => createBrowserAppBackup(options),
+      inspectBackupFile: async (file) => inspectBrowserAppBackup(file),
+      restoreAllData: async (file, options) =>
+        restoreBrowserAppBackup(file, options),
       clearDataSources: async (sources) => {
         await clearBrowserAppDataSources({ sources, rag: get().rag });
         if (typeof window !== "undefined") {
@@ -1326,12 +1342,17 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       onRehydrateStorage: () => (state, error) => {
         if (typeof window === "undefined") return;
-        if (error) {
-          logDevError("Settings hydration failed:", error);
-          state?.setHasHydrated(true);
-        } else if (state) {
-          state.setHasHydrated(true);
-        }
+        if (error) logDevError("Settings hydration failed:", error);
+        void reportAppRestoreHydration("settings", error).then(
+          () => state?.setHasHydrated(true),
+          (restoreError) => {
+            logDevError(
+              "Restored settings failed startup validation:",
+              restoreError,
+            );
+            window.location.reload();
+          },
+        );
       },
     },
   ),

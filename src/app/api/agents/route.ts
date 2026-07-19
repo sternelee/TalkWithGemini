@@ -27,7 +27,11 @@ export async function GET(request?: NextRequest | Request) {
       `${API_URL}/${indexFile}`,
       { method: "GET" },
       {
-        policy: getSafeUrlPolicy("agent"),
+        policy: {
+          ...getSafeUrlPolicy("agent"),
+          allowedProtocols: ["https:"],
+          allowedHosts: ["registry.npmmirror.com"],
+        },
         timeoutMs: 20_000,
         maxResponseBytes: 5 * 1024 * 1024,
       },

@@ -23,17 +23,20 @@ describe("MCP client transport safety", () => {
     );
   });
 
-  it("keeps plain HTTP blocked even for private MCP servers", async () => {
+  it("allows plain HTTP for private MCP servers", async () => {
     const fetchMock = vi.fn(async () => new Response("ok"));
     vi.stubGlobal("fetch", fetchMock);
 
     const { createSafeMcpFetch } = await import("../lib/mcp/client");
     const safeFetch = createSafeMcpFetch();
 
-    await expect(safeFetch("http://192.168.1.10/mcp")).rejects.toThrow(
-      /Protocol|HTTP/i,
+    await expect(
+      (await safeFetch("http://192.168.1.10/mcp")).text(),
+    ).resolves.toBe("ok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://192.168.1.10/mcp",
+      expect.objectContaining({ redirect: "manual" }),
     );
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("follows validated MCP redirects manually", async () => {
@@ -62,27 +65,32 @@ describe("MCP client transport safety", () => {
     );
   });
 
-  it("rejects unsafe MCP redirects before the SDK follows them", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+  it("allows MCP redirects from HTTPS to a configured HTTP target", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
         new Response(null, {
           status: 302,
           headers: { location: "http://93.184.216.34/mcp" },
         }),
-    );
+      )
+      .mockResolvedValueOnce(new Response("ok"));
     vi.stubGlobal("fetch", fetchMock);
 
     const { createSafeMcpFetch } = await import("../lib/mcp/client");
     const safeFetch = createSafeMcpFetch();
 
-    await expect(safeFetch("https://93.184.216.34/mcp")).rejects.toThrow(
-      /Protocol|HTTP/i,
-    );
+    const response = await safeFetch("https://93.184.216.34/mcp");
+
+    await expect(response.text()).resolves.toBe("ok");
     expect(fetchMock).toHaveBeenCalledWith(
       "https://93.184.216.34/mcp",
       expect.objectContaining({ redirect: "manual" }),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      "http://93.184.216.34/mcp",
+    );
   });
 
   it("limits MCP response bodies before the SDK parses them", async () => {

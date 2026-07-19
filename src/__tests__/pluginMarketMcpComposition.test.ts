@@ -24,7 +24,12 @@ describe("PluginMarket MCP composition", () => {
     expect(pluginMarket).toContain('plugin.source !== "mcp"');
     expect(pluginMarket).toContain('t("mcp")');
     expect(pluginMarket).toContain('t("plugins")');
-
+    expect(pluginMarket).not.toContain(
+      "shadow-[0_10px_30px_rgba(15,23,42,0.08)]",
+    );
+    expect(pluginMarket).not.toContain(
+      "shadow-[0_8px_18px_rgba(37,99,235,0.24)]",
+    );
     const sourceTabsIndex = pluginMarket.indexOf(
       'aria-label={t("sourceTabsAria")}',
     );

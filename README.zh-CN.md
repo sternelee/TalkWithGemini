@@ -20,9 +20,24 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178c6" />
 </p>
 
-Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.js、React、TypeScript 和 Zustand 构建。它把多供应商模型、助理预设、纯文本技能、OpenAPI 风格插件工具、远程 streamable HTTP MCP 服务器、联网搜索、知识库 RAG、本地记忆、语音、生成媒体、富消息渲染、引用和可编辑产物整合到一个干净的工作台中。
+Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.js、React、TypeScript 和 Zustand 构建。它把多供应商模型、助理预设、纯文本技能、OpenAPI 风格插件工具、远程 streamable HTTP MCP 服务器、联网与本地全局搜索、知识库 RAG、版本化备份恢复、本地记忆、语音、生成媒体、富消息渲染、引用和可编辑产物整合到一个干净的工作台中。
 
-它适合想使用现代 AI 工作台、同时保持本地数据所有权的用户。默认情况下，对话历史、工作区元数据、技能、插件配置、记忆和文件都保存在浏览器内；服务端路由作为受控代理，连接模型供应商、搜索、RAG、文档解析、语音、插件与 MCP 执行和部署健康检查。
+它适合想使用现代 AI 工作台、同时保持本地数据所有权的用户。默认情况下，对话历史、工作区元数据、技能、插件配置、记忆、搜索索引和文件都保存在浏览器内；服务端路由作为受控代理，连接模型供应商、联网搜索、RAG、文档解析、语音、插件与 MCP 执行和部署健康检查。
+
+## v2.3.0 亮点
+
+- 新增本地全局搜索中心，可搜索活跃对话分支、附件、工作区、知识库和记忆，
+  支持筛选、增量索引、结果直达，以及 `Ctrl`/`Cmd` + `K` 快捷键。
+- 新增版本 3 ZIP 备份与事务式恢复，覆盖本地应用数据和已引用 OPFS 文件，
+  提供完整性校验、回滚恢复、旧版 v2 JSON 兼容，并明确排除凭据。
+- 完善知识库恢复流程：保留原文件与可编辑提取内容，分离存储/索引状态，
+  支持重试、重解析、重建索引、取消、对账和按文件并发保护。
+- 新增可选的破坏性工具授权，支持仅允许一次或拒绝，并加入风险下限、参数
+  脱敏、稳定函数指纹、非破坏性会话授权和插件/MCP 服务端 fail-closed 校验。
+- 显式展示市场与部署失败状态，统一有效搜索能力，保持 Firecrawl 无密钥可用，
+  并允许受信任的自托管用户配置 HTTP/私网 endpoint。
+- 修复 OpenAI Responses 多轮历史、跨域图片显示/导出、模型消息下载进度、搜索
+  设置持久化和恢复/清理写入竞态，并新增导入规范检查与隔离的 Playwright E2E。
 
 ## v2.2.0 亮点
 
@@ -54,10 +69,12 @@ Neo Chat 是一个可自托管、本地优先的 AI 对话应用，基于 Next.j
 - 本地优先的会话、分支、置顶对话、工作区、工作区文件和助理指令。
 - 支持 LobeHub Agent Registry 助理预设，也支持本地自定义助理。
 - 支持纯文本技能：本地化公共目录、安装/卸载、编辑内置技能、本地自定义技能、自动选择和工作区预设。
-- 支持 OpenAPI 风格插件工具和 remote streamable HTTP MCP 服务器，两者共用已安装/启用插件控制、插件鉴权和服务端执行链路。
+- 支持 OpenAPI 风格插件工具和 remote streamable HTTP MCP 服务器，两者共用已安装/启用插件控制、插件鉴权、服务端执行、传输层风险下限和可选的破坏性调用确认。
 - 内置网页阅读、天气、Unsplash 搜索、Agnes/Google 图片处理、OpenAI 兼容图片处理、OpenAI Responses 图片处理、Agnes 视频生成工具。Agnes 图片处理支持图生图编辑，Agnes 视频生成支持公开图片 URL 生成视频和插件级模型 ID。图片处理插件和模型原生图片输出保持分离。
 - 支持 Google 原生 Google Search、OpenAI Web Search，以及 Tavily、Firecrawl、Exa、Bocha、SearXNG 等外部搜索。
-- 知识库 RAG 支持 OPFS 文件存储、Mineru/LlamaParse 文档解析和可选向量索引。
+- 支持本地全局搜索活跃对话分支、附件、工作区、知识库和记忆，并提供来源/日期/角色筛选和结果直达。
+- 知识库 RAG 支持保留原文件、编辑提取内容、Mineru/LlamaParse 文档解析、可选向量索引，以及解析或索引失败后的恢复操作。
+- 支持本地元数据和已引用 OPFS 文件的版本化 ZIP 备份与事务式恢复，不包含凭据和外部服务数据。
 - 支持本地记忆、可选记忆搜索、后台记忆提取和记忆整合。
 - 支持浏览器语音 API、ElevenLabs、Mimo 或兼容配置的语音输入输出。
 - 支持 Markdown、安全内联 HTML 视觉块、GFM 表格、数学公式、代码高亮、Mermaid 图、思维导图、引用、推理、工具调用、图片、音频和产物渲染。
@@ -212,7 +229,7 @@ Neo Chat 默认本地优先：
 
 - 核心设置、供应商记录、已选模型和供应商 API key 存在浏览器 `localStorage`。
 - 对话元数据、消息、应用设置、已安装插件、已安装/自定义技能、技能目录缓存、助理、知识库元数据和本地记忆通过 `localforage` 存在 IndexedDB。
-- 上传的对话文件、工作区文件和知识库文件存在浏览器 OPFS。用户发送和模型生成的图片还会保存 OPFS 显示缓存，并在运行期通过 `blob:` URL 渲染；原始消息数据仍用于模型请求和导出。
+- 上传的对话与工作区文件、知识库原文件与提取文本，以及图片显示缓存保存在浏览器 OPFS。运行期 `blob:` URL 不会持久化；版本 3 ZIP 备份会打包已引用的应用自有 OPFS 文件，但不包含凭据和远程服务数据。
 - 用户输入的密钥会先在浏览器中加密成 BYOK envelope，再发送给 API 路由。
 
 重要服务端配置：
@@ -349,15 +366,17 @@ flowchart LR
 - 为代理上游提供 URL 安全门；
 - 通过已注册插件 ID 和函数名执行插件；
 - 通过 `/api/health` 输出部署健康状态；
-- 在 hosted 模式检查共享存储和本地网络限制。
+- 在 hosted 模式检查共享存储和固定服务的网络边界。
 
 ## 技能、插件、搜索、RAG 与语音
 
 技能是纯文本的提示词上下文模块。应用会从 `public/data/skills` 加载本地化元数据目录，只在需要时获取完整技能定义，并把已安装、已编辑和自定义技能保存在本地。活跃技能可以手动选择，也可以来自工作区预设，或在发送消息时自动选择。
 
-插件是可执行工具，可以来自 OpenAPI manifest、内置定义，或从官方 MCP Registry 发现的 remote streamable HTTP MCP 服务器。启用的插件函数会以 tool 形式暴露给兼容模型，再由服务端插件路由执行。MCP v1 只支持远程 streamable HTTP：stdio、npm、Docker、本地进程 transport 和 OAuth 登录流暂不支持。MCP server URL 必须使用 HTTPS；本地和自托管部署允许调用 localhost 或局域网 HTTPS MCP endpoint，hosted 部署默认阻止这些目标，除非显式开启本地网络代理。内置图片处理插件结果保留在工具详情和压缩后的对话历史中，由模型决定是否以及如何在后续回复中引用生成或编辑后的图片。OpenAI 兼容 Images API 和 OpenAI Responses 图片处理是两个独立插件，便于分别管理密钥和启用状态。受支持的内置媒体插件提供插件级 API Base URL 与 Model ID 字段、可选图片数量参数、Agnes 图生图编辑，以及基于公开 HTTPS 图片 URL 的 Agnes 图生视频；Agnes 视频仍保持显式 `create_video` / `get_video_result` 两步流程。工具调用编排使用较高但有边界的循环上限，既允许多步任务，也避免递归工具调用失控。
+插件是可执行工具，可以来自 OpenAPI manifest、内置定义，或从官方 MCP Registry 发现的 remote streamable HTTP MCP 服务器。启用的插件函数会以 tool 形式暴露给兼容模型，再由服务端插件路由执行。MCP v1 只支持远程 streamable HTTP：stdio、npm、Docker、本地进程 transport 和 OAuth 登录流暂不支持。用户配置的 MCP server URL 可使用 HTTP 或 HTTPS，并可在任一部署模式下指向 localhost 或私网；官方 Registry 本身仍保持 HTTPS-only。内置图片处理插件结果保留在工具详情和压缩后的对话历史中，由模型决定是否以及如何在后续回复中引用生成或编辑后的图片。OpenAI 兼容 Images API 和 OpenAI Responses 图片处理是两个独立插件，便于分别管理密钥和启用状态。受支持的内置媒体插件提供插件级 API Base URL 与 Model ID 字段、可选图片数量参数、Agnes 图生图编辑，以及基于公开 HTTPS 图片 URL 的 Agnes 图生视频；Agnes 视频仍保持显式 `create_video` / `get_video_result` 两步流程。工具调用编排使用较高但有边界的循环上限，既允许多步任务，也避免递归工具调用失控。
 
-搜索可以使用 Google 模型的原生 Google Search、OpenAI Web Search，也可以对包括 Anthropic 在内的其他模型族使用外部搜索供应商。知识库 RAG 会把源文件存在 OPFS，可选使用 Mineru 或 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。
+搜索可以使用 Google 模型的原生 Google Search、OpenAI Web Search，也可以对包括 Anthropic 在内的其他模型族使用外部搜索供应商。Firecrawl 公共服务无需 API key 即可使用，配置 key 只会提高请求速率。独立的本地全局搜索中心会在浏览器内存中索引活跃对话分支、附件、工作区、知识库和记忆，并排除推理、工具 payload 和凭据。
+
+知识库 RAG 会分别保留上传原文件和可编辑、可索引的提取文本，可选使用 Mineru 或 LlamaParse 解析文档，并可把 chunks 索引到外部向量服务。失败文件可以重试、重新解析、重建索引、取消或对账，不会丢弃仍可使用的原文件。
 
 语音流程支持浏览器语音 API 和外部供应商。将 `DEFAULT_VOICE_PROVIDER` 设为 `elevenlabs` 或 `mimo` 可启用服务端默认语音供应商；留空则默认使用浏览器原生语音。默认模型值为空会禁用对应的 STT 或 TTS 能力，用户级密钥也可以由 UI 本地保存。
 
@@ -367,11 +386,11 @@ flowchart LR
 
 Neo Chat 适合自托管，但不是开箱即用的公共 SaaS 安全边界。
 
-- `DEPLOYMENT_MODE=local` 允许本地和私有网络代理目标，适合私有部署。
-- `DEPLOYMENT_MODE=hosted` 默认阻止 localhost、私有网络和平文 HTTP 代理目标，除非显式覆盖。
+- 用户配置的 Provider、搜索、RAG、插件和 MCP 目标在任一部署模式下都可使用 HTTP 和私网地址。
+- 固定 Registry 与内置服务继续使用 HTTPS 和域名白名单；媒体代理的 HTTP 开关仍由 `ALLOW_LOCAL_NETWORK_PROXY` 控制。
 - BYOK envelope 防止用户输入的明文密钥出现在请求体中。
 - API schema 会拒绝未知高风险字段和过大的 payload。
-- 插件执行仍然通过服务端代理和校验，但运行时工具调用不再弹出用户确认窗口。
+- 插件执行仍然通过服务端代理和校验。工具调用默认自动执行；可在系统设置中选择仅让破坏性调用暂停，等待单次允许或拒绝。破坏性授权不会在本会话持久化。
 - `ACCESS_PASSWORD` 是部署门禁，不是账号系统。
 
 如果要把 Neo Chat 作为公共多用户服务提供，请先补齐账号认证、租户隔离、服务端密钥存储、配额、审计日志、滥用控制和供应商费用控制。
@@ -383,10 +402,13 @@ Neo Chat 适合自托管，但不是开箱即用的公共 SaaS 安全边界。
 质量检查：
 
 ```bash
+pnpm check:imports
 pnpm format:check
+pnpm hygiene:artifacts
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:e2e
 pnpm build
 pnpm audit --audit-level low
 ```
@@ -399,6 +421,9 @@ pnpm build            # 生产构建
 pnpm start            # 启动生产服务
 pnpm format           # 使用 Prettier 格式化仓库
 pnpm format:check     # 检查仓库格式
+pnpm check:imports    # 拒绝不允许的长相对导入路径
+pnpm hygiene:artifacts # 检查生成产物卫生
+pnpm test:e2e         # 在 3100 端口运行隔离的 Playwright 冒烟测试
 pnpm build:worker     # 构建 Cloudflare Workers
 pnpm worker:size      # 检查 Worker gzip 体积预算
 pnpm worker:dry-run   # 校验 Worker 部署但不发布
@@ -416,6 +441,7 @@ src/lib/              服务端/客户端领域逻辑与安全门
 src/services/         模型、搜索、语音、RAG、插件 service clients
 src/store/            Zustand stores 和持久化迁移
 src/__tests__/        Vitest 工具、路由和工作流测试
+e2e/                  Playwright 浏览器冒烟测试
 docs/                 部署和可靠性说明
 ```
 

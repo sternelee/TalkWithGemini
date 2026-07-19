@@ -18,7 +18,7 @@ describe("MCP registry normalization", () => {
               { type: "sse", url: "https://mcp.example.com/sse" },
               {
                 type: "streamable-http",
-                url: "https://mcp.example.com/mcp",
+                url: "http://192.168.1.10/mcp",
               },
             ],
             repository: { url: "https://github.com/example/context7" },
@@ -50,7 +50,7 @@ describe("MCP registry normalization", () => {
       auth: { type: "none", required: false },
       mcp: {
         transport: "streamable-http",
-        serverUrl: "https://mcp.example.com/mcp",
+        serverUrl: "http://192.168.1.10/mcp",
         serverName: "io.github/context7",
         serverVersion: "1.2.3",
         toolNameMap: {},

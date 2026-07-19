@@ -11,10 +11,8 @@ vi.mock("@/lib/security/safeFetch", () => ({
 
 vi.mock("@/lib/security/urlPolicy", () => ({
   getSafeUrlPolicy: () => ({
-    allowHttp: false,
-    allowLocalHttp: false,
-    allowLocalhost: false,
-    allowPrivateNetwork: false,
+    context: "pluginManifest",
+    allowedProtocols: ["http:", "https:"],
   }),
 }));
 
@@ -71,6 +69,7 @@ describe("plugin list route", () => {
         timeoutMs: 20_000,
         maxResponseBytes: MARKET_LIMITS.maxPluginListResponseBytes,
         policy: expect.objectContaining({
+          allowedProtocols: ["https:"],
           allowedHosts: ["api.apis.guru"],
         }),
       }),

@@ -74,7 +74,7 @@ import {
   selectChatAttachmentFiles,
 } from "@/lib/utils/chatAttachmentFiles";
 import {
-  getSearchCompatibility,
+  resolveEffectiveSearchCapability,
   getSearchProviderLabel,
   type SearchCompatibilityReason,
 } from "@/lib/settings/searchRag";
@@ -126,7 +126,7 @@ const iconButtonFocusClass =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-background";
 
 const iconButtonBaseClass =
-  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg";
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg";
 
 const loadChatService = () => import("@/services/api/chatService");
 
@@ -364,12 +364,13 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           ? undefined
           : search.configs[search.provider];
 
-      return getSearchCompatibility({
+      return resolveEffectiveSearchCapability({
         searchProvider: search.provider,
         searchConfig,
         modelProviderType: selectedModelProvider?.type,
+        selectedModel,
       });
-    }, [search, selectedModelProvider?.type]);
+    }, [search, selectedModel, selectedModelProvider?.type]);
 
     const getSearchUnavailableMessage = (
       reason: SearchCompatibilityReason | undefined,
@@ -381,6 +382,8 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           return t("searchUnavailableGoogleGemini");
         case "model_builtin_search_unsupported":
           return t("searchUnavailableModelBuiltIn");
+        case "missing_server_default":
+          return t("searchUnavailableServerDefault");
         case "missing_search_api_key":
           return t("searchUnavailableApiKey", {
             provider: getSearchProviderLabel(searchCompatibility.provider),
@@ -1782,7 +1785,7 @@ const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
                       aria-label={t("selectModelAria", {
                         model: currentModelName,
                       })}
-                      className={`group inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:w-auto md:max-w-52 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground ${iconButtonFocusClass}`}
+                      className={`group ${iconButtonBaseClass} gap-1.5 px-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 md:w-auto md:max-w-52 dark:text-muted-foreground dark:hover:bg-accent/50 dark:hover:text-foreground ${iconButtonFocusClass}`}
                       disabled={isInputBusy}
                     >
                       {/* Mobile: Just Icon */}

@@ -1,4 +1,10 @@
-import type { Attachment, Session, SessionConfig, Workspace } from "@/types";
+import type {
+  Attachment,
+  Session,
+  SessionConfig,
+  ToolSessionApproval,
+  Workspace,
+} from "@/types";
 import { ATTACHMENT_LIMITS, CHAT_ENTITY_LIMITS } from "@/config/limits";
 import { normalizePluginIdRefs } from "../plugin/config";
 import { normalizeSkillIdRefs } from "../skills";
@@ -94,8 +100,14 @@ function normalizeAttachment(attachment: unknown): Attachment | null {
     typeof raw.url === "string"
       ? raw.url.trim().slice(0, ATTACHMENT_LIMITS.maxUrlChars)
       : undefined;
+  const localFileMissing = raw.localFileMissing === true;
+  const localFileError = localFileMissing
+    ? trimString(raw.localFileError, 500)
+    : "";
 
-  if (!fileName || !mimeType || (!data && !url)) return null;
+  if (!fileName || !mimeType || (!data && !url && !localFileMissing)) {
+    return null;
+  }
 
   return {
     id,
@@ -103,6 +115,12 @@ function normalizeAttachment(attachment: unknown): Attachment | null {
     mimeType,
     ...(data ? { data } : {}),
     ...(url ? { url } : {}),
+    ...(localFileMissing
+      ? {
+          localFileMissing: true,
+          ...(localFileError ? { localFileError } : {}),
+        }
+      : {}),
   };
 }
 
@@ -220,6 +238,49 @@ function normalizeSessionMemoryContext(
   };
 }
 
+function normalizeToolApprovals(value: unknown): ToolSessionApproval[] {
+  if (!Array.isArray(value)) return [];
+  const approvals: ToolSessionApproval[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const approval = candidate as Partial<ToolSessionApproval>;
+    if (approval.risk !== "write" && approval.risk !== "external") continue;
+
+    const pluginId = trimString(approval.pluginId, 160);
+    const functionName = trimString(approval.functionName, 160);
+    const functionFingerprint = trimString(
+      approval.functionFingerprint,
+      65_536,
+    );
+    const approvedAt = Number(approval.approvedAt);
+    if (
+      !pluginId ||
+      !functionName ||
+      !functionFingerprint ||
+      !Number.isFinite(approvedAt) ||
+      approvedAt < 0
+    ) {
+      continue;
+    }
+
+    const key = `${pluginId}\u0000${functionName}\u0000${approval.risk}\u0000${functionFingerprint}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    approvals.push({
+      pluginId,
+      functionName,
+      risk: approval.risk,
+      functionFingerprint,
+      approvedAt: Math.floor(approvedAt),
+    });
+    if (approvals.length >= 100) break;
+  }
+
+  return approvals;
+}
+
 export function normalizeSessionConfig(
   config?: SessionConfig,
 ): SessionConfig | undefined {
@@ -229,10 +290,12 @@ export function normalizeSessionConfig(
     activeSkills: rawActiveSkills,
     reasoningMode: rawReasoningMode,
     useReasoning: rawUseReasoning,
+    toolApprovals: rawToolApprovals,
     ...rest
   } = config;
   const activePlugins = normalizePluginIdRefs(rawActivePlugins);
   const activeSkills = normalizeSkillIdRefs(rawActiveSkills, []);
+  const toolApprovals = normalizeToolApprovals(rawToolApprovals);
   const hasReasoningConfig =
     rawReasoningMode !== undefined || rawUseReasoning !== undefined;
   const reasoningMode = hasReasoningConfig
@@ -249,6 +312,7 @@ export function normalizeSessionConfig(
       : {}),
     ...(activePlugins.length > 0 ? { activePlugins } : {}),
     ...(activeSkills.length > 0 ? { activeSkills } : {}),
+    ...(toolApprovals.length > 0 ? { toolApprovals } : {}),
   };
 }
 

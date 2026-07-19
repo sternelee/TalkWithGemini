@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef, useId } from "react";
 import { createPortal } from "react-dom";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Search,
   Download,
@@ -25,8 +25,8 @@ import {
 } from "lucide-react";
 import { useSettingsStore } from "@/store/core/settingsStore";
 import {
-  fetchApiGuruList,
-  fetchMcpServerPage,
+  fetchApiGuruListResult,
+  fetchMcpServerPageResult,
   getCachedPlugins,
   installPlugin,
   installCustomPlugin,
@@ -51,6 +51,8 @@ import {
   encryptLocalSecret,
   LOCAL_SECRET_CONTEXTS,
 } from "@/lib/security/localSecrets";
+import type { MarketLoadResult } from "@/lib/market/loadResult";
+import MarketLoadNotice from "@/components/ui/MarketLoadNotice";
 
 interface PluginMarketProps {
   onClose: () => void;
@@ -1221,6 +1223,7 @@ const PluginDetailsModal = ({
 const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   const t = useTranslations("Plugin");
   const tConfig = useTranslations("Config");
+  const locale = useLocale();
   const {
     installedPlugins,
     activePlugins,
@@ -1239,11 +1242,14 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
   );
   const [availablePlugins, setAvailablePlugins] = useState<Plugin[]>([]);
   const [activeSource, setActiveSource] = useState<MarketSource>("plugins");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [installingIds, setInstallingIds] = useState<string[]>([]);
   const [marketError, setMarketError] = useState<string | null>(null);
+  const [marketLoadResult, setMarketLoadResult] = useState<
+    MarketLoadResult<unknown> | undefined
+  >();
   const [selectedPluginForDetails, setSelectedPluginForDetails] =
     useState<Plugin | null>(null);
   const [showCustomPluginModal, setShowCustomPluginModal] = useState(false);
@@ -1283,6 +1289,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     const cachedPlugins = getCachedPlugins();
     if (cachedPlugins.length > 0) {
       setAvailablePlugins(cachedPlugins);
+      setMarketLoadResult(undefined);
       setIsLoading(false);
       return;
     }
@@ -1292,13 +1299,16 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       pluginListRequestRef.current = requestId;
       setAvailablePlugins([]);
       setIsLoading(true);
+      setMarketError(null);
+      setMarketLoadResult(undefined);
       try {
-        const list = await fetchApiGuruList();
+        const result = await fetchApiGuruListResult();
         if (
           isMountedRef.current &&
           pluginListRequestRef.current === requestId
         ) {
-          setAvailablePlugins(list);
+          setAvailablePlugins(result.data);
+          setMarketLoadResult(result);
         }
       } catch {
         if (
@@ -1329,8 +1339,9 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       setAvailablePlugins([]);
       setIsLoading(true);
       setMarketError(null);
+      setMarketLoadResult(undefined);
       try {
-        const page = await fetchMcpServerPage({
+        const result = await fetchMcpServerPageResult({
           cursor: mcpPageCursors[currentPage - 1] || "",
           search: searchTerm,
           limit: ITEMS_PER_PAGE,
@@ -1339,8 +1350,9 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
           isMountedRef.current &&
           pluginListRequestRef.current === requestId
         ) {
-          setAvailablePlugins(page.plugins);
-          setMcpNextCursor(page.nextCursor || "");
+          setAvailablePlugins(result.data.plugins);
+          setMcpNextCursor(result.data.nextCursor || "");
+          setMarketLoadResult(result);
         }
       } catch {
         if (
@@ -1370,21 +1382,28 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
     try {
       let list: Plugin[];
       let nextCursor = "";
+      let result: MarketLoadResult<unknown>;
       if (activeSource === "mcp") {
-        const page = await fetchMcpServerPage({
+        const pageResult = await fetchMcpServerPageResult({
           forceRefresh: true,
           cursor: mcpPageCursors[currentPage - 1] || "",
           search: searchTerm,
           limit: ITEMS_PER_PAGE,
         });
-        list = page.plugins;
-        nextCursor = page.nextCursor || "";
+        list = pageResult.data.plugins;
+        nextCursor = pageResult.data.nextCursor || "";
+        result = pageResult;
       } else {
-        list = await fetchApiGuruList(true);
+        const pluginResult = await fetchApiGuruListResult(true);
+        list = pluginResult.data;
+        result = pluginResult;
       }
 
       if (isMountedRef.current && pluginListRequestRef.current === requestId) {
-        setAvailablePlugins(list);
+        if (result.status !== "error") {
+          setAvailablePlugins(list);
+        }
+        setMarketLoadResult(result);
         if (activeSource === "mcp") {
           setMcpNextCursor(nextCursor);
         }
@@ -1583,6 +1602,21 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       : totalPages > 1;
   const isNextPageDisabled =
     activeSource === "mcp" ? !mcpNextCursor : currentPage === totalPages;
+  const marketNoticeMessage = (() => {
+    if (marketLoadResult?.status === "stale") {
+      const time = marketLoadResult.fetchedAt
+        ? new Date(marketLoadResult.fetchedAt).toLocaleString(locale)
+        : t("unknownCacheTime");
+      return t("staleData", { time });
+    }
+    if (marketLoadResult?.status === "fallback") {
+      return t("mcpDirectFallback");
+    }
+    if (marketLoadResult?.status === "error") {
+      return t("loadFailed");
+    }
+    return "";
+  })();
 
   return (
     <div className="flex flex-col h-full w-full relative overflow-hidden animate-in fade-in duration-300">
@@ -1669,9 +1703,21 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
         </div>
       ) : null}
 
+      {marketNoticeMessage ? (
+        <div className="mx-6 mt-4">
+          <MarketLoadNotice
+            status={marketLoadResult?.status}
+            message={marketNoticeMessage}
+            retryLabel={t("retry")}
+            onRetry={() => void handleRefresh()}
+            isRetrying={isRefreshing}
+          />
+        </div>
+      ) : null}
+
       <div className="mx-auto flex w-full max-w-7xl shrink-0 justify-center px-6 pt-5">
         <div
-          className="grid w-full max-w-[360px] grid-cols-2 rounded-2xl border border-gray-200/80 bg-white/70 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-border dark:bg-muted/50 dark:shadow-none"
+          className="grid w-full max-w-[360px] grid-cols-2 rounded-2xl border border-gray-200/80 bg-white/70 p-1.5 backdrop-blur-xl dark:border-border dark:bg-muted/50"
           role="tablist"
           aria-label={t("sourceTabsAria")}
         >
@@ -1685,9 +1731,9 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                 setActiveSource(tab.value);
                 setSelectedCategories([]);
               }}
-              className={`relative rounded-xl px-5 py-2.5 text-sm font-semibold transition-[background-color,color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 active:scale-[0.98] ${
+              className={`relative rounded-xl px-5 py-2.5 text-sm font-semibold transition-[background-color,color,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 active:scale-[0.98] ${
                 activeSource === tab.value
-                  ? "bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.24)] ring-1 ring-inset ring-white/35 dark:bg-blue-500 dark:shadow-[0_8px_20px_rgba(59,130,246,0.18)]"
+                  ? "bg-blue-600 text-white ring-1 ring-inset ring-white/35 dark:bg-blue-500"
                   : "text-gray-500 hover:bg-gray-100/80 hover:text-gray-900 dark:text-muted-foreground dark:hover:bg-accent/80 dark:hover:text-foreground"
               }`}
             >
@@ -1726,7 +1772,7 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
       </div>
 
       {/* Content Grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-10 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-4 pb-10 custom-scrollbar">
         <div className="max-w-7xl mx-auto flex flex-col min-h-full">
           {/* Installed Section */}
           <div className="mb-8 shrink-0">
@@ -2045,11 +2091,18 @@ const PluginMarket: React.FC<PluginMarketProps> = ({ onClose }) => {
                   })}
                 </div>
 
-                {paginatedPlugins.length === 0 && (
-                  <div className="text-center py-12 text-gray-400">
-                    <p>{t("noPluginsFound")}</p>
-                  </div>
-                )}
+                {paginatedPlugins.length === 0 &&
+                  marketLoadResult &&
+                  ["fresh", "cache", "fallback"].includes(
+                    marketLoadResult.status,
+                  ) && (
+                    <div
+                      data-testid="plugin-market-empty"
+                      className="text-center py-12 text-gray-400"
+                    >
+                      <p>{t("noPluginsFound")}</p>
+                    </div>
+                  )}
 
                 {/* Pagination Controls */}
                 {showPagination && (

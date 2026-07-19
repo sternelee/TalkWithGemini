@@ -71,6 +71,7 @@ export async function GET(request: Request) {
         {
           policy: {
             ...getSafeUrlPolicy("pluginManifest"),
+            allowedProtocols: ["https:"],
             allowedHosts: ["registry.modelcontextprotocol.io"],
           },
           timeoutMs: 20_000,

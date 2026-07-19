@@ -35,6 +35,20 @@ describe("image preview normalization", () => {
     expect(preview?.currentIndex).toBe(0);
   });
 
+  it("keeps HTTPS images from localhost and private-network targets", () => {
+    expect(
+      normalizeImagePreviewState([
+        { url: "https://localhost/private.png" },
+        { url: "https://192.168.1.10/image.png" },
+      ]),
+    ).toMatchObject({
+      images: [
+        { url: "https://localhost/private.png" },
+        { url: "https://192.168.1.10/image.png" },
+      ],
+    });
+  });
+
   it("caps preview image count and trims display text", () => {
     const preview = normalizeImagePreviewState(
       Array.from(
@@ -62,7 +76,7 @@ describe("image preview normalization", () => {
 
   it("returns null when no safe image remains", () => {
     expect(
-      normalizeImagePreviewState([{ url: "https://localhost/private.png" }]),
+      normalizeImagePreviewState([{ url: "http://localhost/private.png" }]),
     ).toBeNull();
   });
 });

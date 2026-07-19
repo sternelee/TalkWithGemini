@@ -22,7 +22,7 @@ import { v7 as uuidv7 } from "uuid";
 import { useLocale, useTranslations } from "next-intl";
 import { LobeAgent, LobeAgentMeta } from "@/types";
 import {
-  getAgents,
+  getAgentsResult,
   getAgentDetail,
   getCachedAgentsForLocale,
 } from "@/services/api/agentService";
@@ -42,6 +42,8 @@ import { createStreamingReplacement } from "@/lib/utils/streamingText";
 import { MARKET_LIMITS } from "@/config/limits";
 import { normalizeLocalAgent } from "@/lib/market/agents";
 import { logDevError } from "@/lib/utils/devLogger";
+import type { MarketLoadResult } from "@/lib/market/loadResult";
+import MarketLoadNotice from "@/components/ui/MarketLoadNotice";
 
 interface AssistantHubProps {
   onClose: () => void;
@@ -920,9 +922,12 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
   } = useSettingsStore();
 
   const [apiAgents, setApiAgents] = useState<LobeAgent[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [marketLoadResult, setMarketLoadResult] = useState<
+    MarketLoadResult<unknown> | undefined
+  >();
 
   // Modal State
   const [editingAgent, setEditingAgent] = useState<LobeAgent | undefined>(
@@ -956,6 +961,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
     const cachedAgents = getCachedAgentsForLocale(locale);
     if (cachedAgents.length > 0) {
       setApiAgents(cachedAgents);
+      setMarketLoadResult(undefined);
       setIsLoading(false);
       return;
     }
@@ -964,10 +970,12 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
       const requestId = agentListRequestRef.current + 1;
       agentListRequestRef.current = requestId;
       setIsLoading(true);
+      setMarketLoadResult(undefined);
       try {
-        const list = await getAgents(false, locale);
+        const result = await getAgentsResult(false, locale);
         if (isMountedRef.current && agentListRequestRef.current === requestId) {
-          setApiAgents(list);
+          setApiAgents(result.data);
+          setMarketLoadResult(result);
         }
       } catch (error) {
         if (agentListRequestRef.current === requestId) {
@@ -987,9 +995,12 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
     agentListRequestRef.current = requestId;
     setIsRefreshing(true);
     try {
-      const list = await getAgents(true, locale); // Force refresh
+      const result = await getAgentsResult(true, locale);
       if (isMountedRef.current && agentListRequestRef.current === requestId) {
-        setApiAgents(list);
+        if (result.status !== "error") {
+          setApiAgents(result.data);
+        }
+        setMarketLoadResult(result);
       }
     } catch (error) {
       if (agentListRequestRef.current === requestId) {
@@ -1208,6 +1219,17 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
     onSelect(agent);
   };
 
+  const marketNoticeMessage = (() => {
+    if (marketLoadResult?.status === "stale") {
+      const time = marketLoadResult.fetchedAt
+        ? new Date(marketLoadResult.fetchedAt).toLocaleString(locale)
+        : t("unknownCacheTime");
+      return t("staleData", { time });
+    }
+    if (marketLoadResult?.status === "error") return t("loadFailed");
+    return "";
+  })();
+
   return (
     <div className="flex flex-col h-full w-full relative overflow-hidden animate-in fade-in duration-300">
       {showEditor && (
@@ -1263,6 +1285,18 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
         </div>
       </div>
 
+      {marketNoticeMessage ? (
+        <div className="mx-6 mt-4">
+          <MarketLoadNotice
+            status={marketLoadResult?.status}
+            message={marketNoticeMessage}
+            retryLabel={t("retry")}
+            onRetry={() => void handleRefresh()}
+            isRetrying={isRefreshing}
+          />
+        </div>
+      ) : null}
+
       {/* Search Bar */}
       <div className="mx-auto flex w-full max-w-7xl shrink-0 gap-3 px-6 pb-6 pt-6">
         <div className="group relative min-w-0 flex-1">
@@ -1292,7 +1326,7 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
       </div>
 
       {/* Content Grid */}
-      <div className="flex-1 overflow-y-auto px-6 pb-10 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-4 pb-10 custom-scrollbar">
         <div className="max-w-7xl mx-auto flex flex-col min-h-full gap-8">
           {/* Local Assistants Section */}
           <div>
@@ -1439,11 +1473,15 @@ const AssistantHub: React.FC<AssistantHubProps> = ({ onClose, onSelect }) => {
                   ))}
                 </div>
 
-                {paginatedApiAgents.length === 0 && (
-                  <div className="text-center py-12 text-gray-400">
-                    <p>{t("noAssistantsFound")}</p>
-                  </div>
-                )}
+                {paginatedApiAgents.length === 0 &&
+                  marketLoadResult &&
+                  ["fresh", "cache", "fallback"].includes(
+                    marketLoadResult.status,
+                  ) && (
+                    <div className="text-center py-12 text-gray-400">
+                      <p>{t("noAssistantsFound")}</p>
+                    </div>
+                  )}
 
                 {/* Pagination Controls */}
                 {totalPages > 1 && (

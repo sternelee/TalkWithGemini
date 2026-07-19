@@ -110,6 +110,24 @@ describe("plugin market service cache", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns a valid cached first MCP page without fetching", async () => {
+    storeMock.state.marketMcpServers = [pluginA];
+    storeMock.state.marketMcpServersTimestamp = Date.now();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchMcpServerPageResult } =
+      await import("../services/api/pluginService");
+    const result = await fetchMcpServerPageResult({ limit: 20 });
+
+    expect(result).toMatchObject({
+      status: "cache",
+      source: "mcp:cache",
+      data: { plugins: [expect.objectContaining(pluginA)] },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("keeps cached plugins fresh for 72 hours", async () => {
     storeMock.state.marketPlugins = [pluginA];
     storeMock.state.marketPluginsTimestamp = Date.now() - 48 * 60 * 60 * 1000;
@@ -168,6 +186,58 @@ describe("plugin market service cache", () => {
 
     expect(plugins).toHaveLength(1);
     expect(plugins[0]).toMatchObject(pluginA);
+  });
+
+  it("reports stale plugin data separately from an empty market", async () => {
+    const fetchedAt = Date.now() - 73 * 60 * 60 * 1000;
+    storeMock.state.marketPlugins = [pluginA];
+    storeMock.state.marketPluginsTimestamp = fetchedAt;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ error: "failed" }, { status: 500 })),
+    );
+
+    const { fetchApiGuruListResult } =
+      await import("../services/api/pluginService");
+    const result = await fetchApiGuruListResult();
+
+    expect(result).toMatchObject({
+      status: "stale",
+      source: "plugins:cache",
+      fetchedAt,
+      data: [expect.objectContaining(pluginA)],
+      error: { retryable: true },
+    });
+  });
+
+  it("distinguishes a fresh empty plugin market from a load error", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ plugins: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: "failed" }, { status: 500 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchApiGuruListResult } =
+      await import("../services/api/pluginService");
+    await expect(fetchApiGuruListResult(true)).resolves.toMatchObject({
+      status: "fresh",
+      source: "plugins:api",
+      data: [],
+    });
+    await expect(fetchApiGuruListResult()).resolves.toMatchObject({
+      status: "cache",
+      source: "plugins:cache",
+      data: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(fetchApiGuruListResult(true)).resolves.toMatchObject({
+      status: "stale",
+      source: "plugins:cache",
+      data: [],
+      error: { retryable: true },
+    });
   });
 
   it("reuses an in-flight plugin list request", async () => {
@@ -276,13 +346,14 @@ describe("plugin market service cache", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { fetchMcpServerPage } =
+    const { fetchMcpServerPageResult } =
       await import("../services/api/pluginService");
-    const page = await fetchMcpServerPage({
+    const result = await fetchMcpServerPageResult({
       cursor: "start-cursor",
       search: "context",
       limit: 1,
     });
+    const page = result.data;
 
     const requestUrl = new URL(
       String(getFetchCalls(fetchMock)[0]?.[0]),
@@ -348,13 +419,14 @@ describe("plugin market service cache", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const { fetchMcpServerPage } =
+    const { fetchMcpServerPageResult } =
       await import("../services/api/pluginService");
-    const page = await fetchMcpServerPage({
+    const result = await fetchMcpServerPageResult({
       cursor: "start-cursor",
       search: "context",
       limit: 1,
     });
+    const page = result.data;
 
     const requestUrl = new URL(
       String(getFetchCalls(fetchMock)[0]?.[0]),
@@ -366,6 +438,11 @@ describe("plugin market service cache", () => {
     expect(requestUrl.searchParams.get("limit")).toBe("1");
     const directUrl = new URL(String(getFetchCalls(fetchMock)[1]?.[0]));
     expect(directUrl.origin).toBe("https://registry.modelcontextprotocol.io");
+    expect(result).toMatchObject({
+      status: "fallback",
+      source: "mcp:registry-direct",
+      error: { retryable: true },
+    });
     expect(page).toEqual({
       plugins: [
         expect.objectContaining({
@@ -450,7 +527,7 @@ describe("plugin market service cache", () => {
       await import("../services/api/pluginService");
     const plugin = await installCustomMcpServer({
       name: "Private Docs",
-      serverUrl: "https://mcp.example.com/mcp",
+      serverUrl: "http://192.168.1.10/mcp",
     });
 
     const [, requestInit] = getFetchCalls(fetchMock)[0];
@@ -465,7 +542,7 @@ describe("plugin market service cache", () => {
         auth: { type: "none", required: false },
         mcp: {
           transport: "streamable-http",
-          serverUrl: "https://mcp.example.com/mcp",
+          serverUrl: "http://192.168.1.10/mcp",
           serverName: "Private Docs",
           serverVersion: "custom",
           toolNameMap: {},

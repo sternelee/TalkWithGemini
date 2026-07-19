@@ -6,62 +6,43 @@ import Tooltip from "../ui/Tooltip";
 
 interface SidebarSearchProps {
   isOpen: boolean;
-  inputId: string;
-  inputRef: React.Ref<HTMLInputElement>;
-  value: string;
-  onChange: (value: string) => void;
-  onCollapsedSearchClick: () => void;
+  onOpenGlobalSearch: () => void;
+  isGlobalSearchOpen: boolean;
 }
 
 const SidebarSearch: React.FC<SidebarSearchProps> = ({
   isOpen,
-  inputId,
-  inputRef,
-  value,
-  onChange,
-  onCollapsedSearchClick,
+  onOpenGlobalSearch,
+  isGlobalSearchOpen,
 }) => {
   const t = useTranslations("Sidebar");
 
   return (
     <div className="px-3 pb-2 shrink-0">
-      {isOpen ? (
-        <div className="relative animate-in fade-in duration-300">
+      <Tooltip
+        content={t("globalSearch")}
+        position="right"
+        className={isOpen ? "w-full" : "w-full justify-center"}
+      >
+        <button
+          type="button"
+          aria-label={t("openGlobalSearch")}
+          aria-current={isGlobalSearchOpen ? "page" : undefined}
+          onClick={onOpenGlobalSearch}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-[color,background-color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 ${
+            isGlobalSearchOpen
+              ? "bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400"
+              : "text-gray-600 dark:text-muted-foreground hover:bg-gray-100/80 dark:hover:bg-muted/60"
+          } ${isOpen ? "w-full" : "w-10 justify-center px-0"}`}
+        >
           <Search
-            className="absolute left-3 top-2.5 text-gray-400"
-            size={16}
+            size={18}
+            className={`shrink-0 ${isGlobalSearchOpen ? "text-cyan-500" : "text-gray-500"}`}
             aria-hidden="true"
           />
-          <input
-            id={inputId}
-            ref={inputRef}
-            type="text"
-            name="sidebar-chat-search"
-            aria-label={t("searchChats")}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder={t("searchChatsPlaceholder")}
-            className="w-full rounded-lg border border-gray-200/50 bg-white/40 py-2 pl-9 pr-3 text-sm text-gray-700 transition-[border-color,box-shadow,background-color] placeholder-gray-500 focus:bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-500/40 dark:border-border dark:bg-muted/40 dark:text-foreground dark:focus:bg-muted/60"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-          />
-        </div>
-      ) : (
-        <Tooltip
-          content={t("search")}
-          position="right"
-          className="justify-center"
-        >
-          <button
-            type="button"
-            aria-label={t("searchChats")}
-            onClick={onCollapsedSearchClick}
-            className="flex items-center justify-center rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 dark:hover:bg-muted/60"
-          >
-            <Search size={18} aria-hidden="true" />
-          </button>
-        </Tooltip>
-      )}
+          {isOpen && <span className="truncate">{t("globalSearch")}</span>}
+        </button>
+      </Tooltip>
     </div>
   );
 };

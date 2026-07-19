@@ -136,6 +136,13 @@ describe("chat entity normalization", () => {
           mimeType: "text/plain",
           url: "opfs://workspace/bad.txt",
         },
+        {
+          id: "missing",
+          fileName: "restored.txt",
+          mimeType: "text/plain",
+          localFileMissing: true,
+          localFileError: "The file was not included in the backup.",
+        },
       ],
       color: "not-a-color",
       activePlugins: ["reader", "reader"],
@@ -152,10 +159,16 @@ describe("chat entity normalization", () => {
       CHAT_ENTITY_LIMITS.maxWorkspaceSystemPromptChars,
     );
     expect(workspace.knowledgeCollectionIds).toEqual(["kb1", "kb2"]);
-    expect(workspace.files).toHaveLength(1);
+    expect(workspace.files).toHaveLength(2);
     expect(workspace.files[0]?.fileName).toHaveLength(
       ATTACHMENT_LIMITS.maxFileNameChars,
     );
+    expect(workspace.files[1]).toMatchObject({
+      id: "missing",
+      fileName: "restored.txt",
+      localFileMissing: true,
+      localFileError: "The file was not included in the backup.",
+    });
     expect(workspace.color).toBe("blue");
     expect(workspace.activePlugins).toEqual(["reader"]);
     expect(workspace.activeSkills).toEqual(["meeting-minutes"]);

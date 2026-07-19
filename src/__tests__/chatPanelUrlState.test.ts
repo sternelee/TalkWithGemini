@@ -52,6 +52,19 @@ describe("chat panel URL state", () => {
     expect(state.needsReplace).toBe(false);
   });
 
+  it("round-trips the global search panel without serializing query text", () => {
+    const params = setChatPanelUrlState(new URLSearchParams("keep=1"), {
+      panel: "search",
+    });
+    const state = parseChatPanelUrlState(params);
+
+    expect(params.get("panel")).toBe("search");
+    expect(params.has("settingsTab")).toBe(false);
+    expect(params.has("query")).toBe(false);
+    expect(state.panel).toBe("search");
+    expect(state.needsReplace).toBe(false);
+  });
+
   it("removes panel params when returning to chat", () => {
     const params = setChatPanelUrlState(
       new URLSearchParams("panel=settings&settingsTab=voice&keep=1"),

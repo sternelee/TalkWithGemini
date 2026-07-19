@@ -135,6 +135,10 @@ export function normalizeSystemSettings(
       typeof raw.enableHtmlVisualPrompt === "boolean"
         ? raw.enableHtmlVisualPrompt
         : defaults.enableHtmlVisualPrompt,
+    enableDestructiveToolConfirmation:
+      typeof raw.enableDestructiveToolConfirmation === "boolean"
+        ? raw.enableDestructiveToolConfirmation
+        : defaults.enableDestructiveToolConfirmation,
     fontSize: normalizeFontSize(raw.fontSize, defaults.fontSize),
   };
 }

@@ -1,4 +1,4 @@
-import type { Plugin, PluginFunction } from "@/types";
+import type { Plugin, PluginConfig, PluginFunction } from "@/types";
 
 export interface ResolvedPluginFunction {
   plugin: Plugin;
@@ -11,7 +11,6 @@ export function resolvePluginFunction(
   allowedPluginIds?: string[],
 ): ResolvedPluginFunction | null {
   const allowed = allowedPluginIds?.length ? new Set(allowedPluginIds) : null;
-
   for (const plugin of installedPlugins) {
     if (allowed && !allowed.has(plugin.id)) continue;
 
@@ -46,6 +45,29 @@ export function getEnabledPluginFunctions(
   }
 
   return functionsToAdd;
+}
+
+export function resolveEnabledPluginFunction(
+  installedPlugins: Plugin[],
+  functionName: string,
+  allowedPluginIds?: string[],
+  pluginConfigs: Record<string, PluginConfig | undefined> = {},
+): ResolvedPluginFunction | null {
+  const allowed = allowedPluginIds?.length ? new Set(allowedPluginIds) : null;
+  let resolved: ResolvedPluginFunction | null = null;
+
+  for (const plugin of installedPlugins) {
+    if (allowed && !allowed.has(plugin.id)) continue;
+    const functionDef = getEnabledPluginFunctions(
+      plugin,
+      pluginConfigs[plugin.id],
+    ).find((fn) => fn.name === functionName);
+    if (!functionDef) continue;
+    if (resolved) return null;
+    resolved = { plugin, functionDef };
+  }
+
+  return resolved;
 }
 
 export function getPluginFunctionNameCollisions(

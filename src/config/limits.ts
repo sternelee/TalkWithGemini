@@ -324,6 +324,15 @@ export const PLUGIN_EXECUTION_LIMITS = {
   maxToolCallIdChars: 200,
 } as const;
 
+export const GLOBAL_SEARCH_LIMITS = {
+  maxDocuments: 50_000,
+  maxMetadataDocuments: 100_000,
+  maxSingleContentChars: 100_000,
+  maxTotalContentChars: 5_000_000,
+  yieldEveryDocuments: 25,
+  maxResults: 100,
+} as const;
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];

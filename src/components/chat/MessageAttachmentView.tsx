@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { FileText, Library } from "lucide-react";
+import { AlertTriangle, FileText, Library } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { Attachment } from "@/types";
 import { isOPFSUrl, resolveOPFSUrl } from "@/utils/opfs";
@@ -69,6 +69,30 @@ const MessageAttachmentView: React.FC<MessageAttachmentViewProps> = ({
     enableCacheBackfill: true,
     onCacheReady: onAttachmentCached,
   });
+
+  if (attachment.localFileMissing) {
+    return (
+      <div
+        role="status"
+        aria-label={t("localFileMissingAria", {
+          fileName: attachment.fileName,
+        })}
+        className={`${documentCardClass} cursor-default border-amber-200 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/20`}
+      >
+        <div className="rounded-lg bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+          <AlertTriangle size={18} aria-hidden="true" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium">
+            {attachment.fileName}
+          </span>
+          <span className="text-xs text-amber-700 dark:text-amber-300">
+            {t("localFileMissing")}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   if (
     isKnowledgeCollectionAttachment(attachment) ||

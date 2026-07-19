@@ -11,10 +11,9 @@ vi.mock("@/lib/security/safeFetch", () => ({
 
 vi.mock("@/lib/security/urlPolicy", () => ({
   getSafeUrlPolicy: () => ({
-    allowHttp: false,
-    allowLocalHttp: false,
-    allowLocalhost: false,
-    allowPrivateNetwork: false,
+    context: "agent",
+    allowedProtocols: ["https:"],
+    allowedHosts: ["registry.npmmirror.com"],
   }),
 }));
 
@@ -69,7 +68,12 @@ describe("agent list route", () => {
     expect(safeFetchJsonMock).toHaveBeenCalledWith(
       "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public/index.zh-CN.json",
       { method: "GET" },
-      expect.any(Object),
+      expect.objectContaining({
+        policy: expect.objectContaining({
+          allowedProtocols: ["https:"],
+          allowedHosts: ["registry.npmmirror.com"],
+        }),
+      }),
     );
     expect(body).toMatchObject({
       agents: [
@@ -165,7 +169,12 @@ describe("agent detail route", () => {
     expect(safeFetchJsonMock).toHaveBeenCalledWith(
       "https://registry.npmmirror.com/@lobehub/agents-index/v1/files/public/agent-1.zh-CN.json",
       { method: "GET" },
-      expect.any(Object),
+      expect.objectContaining({
+        policy: expect.objectContaining({
+          allowedProtocols: ["https:"],
+          allowedHosts: ["registry.npmmirror.com"],
+        }),
+      }),
     );
   });
 

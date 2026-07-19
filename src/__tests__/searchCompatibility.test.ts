@@ -3,6 +3,7 @@ import {
   getSearchCompatibility,
   getSearchCompatibilityErrorMessage,
   getSearchProviderLabel,
+  resolveEffectiveSearchCapability,
 } from "../lib/settings/searchRag";
 
 describe("search compatibility", () => {
@@ -16,6 +17,7 @@ describe("search compatibility", () => {
       enabled: true,
       mode: "gemini-google",
       provider: "google",
+      source: "model_builtin",
     });
 
     expect(
@@ -27,6 +29,7 @@ describe("search compatibility", () => {
       enabled: true,
       mode: "openai-web",
       provider: "google",
+      source: "model_builtin",
     });
 
     const result = getSearchCompatibility({
@@ -65,10 +68,11 @@ describe("search compatibility", () => {
       enabled: true,
       mode: "external",
       provider: "tavily",
+      source: "client_api_key",
     });
   });
 
-  it("allows Firecrawl search without a key while accepting an optional key", () => {
+  it("allows keyless Firecrawl and identifies optional authentication", () => {
     expect(
       getSearchCompatibility({
         searchProvider: "firecrawl",
@@ -79,6 +83,18 @@ describe("search compatibility", () => {
       enabled: true,
       mode: "external",
       provider: "firecrawl",
+      source: "public_service",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "firecrawl",
+        searchConfig: { baseUrl: "not-a-url" },
+        modelProviderType: "OpenAI",
+      }),
+    ).toMatchObject({
+      enabled: false,
+      reason: "missing_search_base_url",
     });
 
     expect(
@@ -91,6 +107,49 @@ describe("search compatibility", () => {
       enabled: true,
       mode: "external",
       provider: "firecrawl",
+      source: "client_api_key",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "firecrawl",
+        searchConfig: { baseUrl: "https://firecrawl.internal" },
+        modelProviderType: "OpenAI",
+      }),
+    ).toEqual({
+      enabled: true,
+      mode: "external",
+      provider: "firecrawl",
+      source: "self_hosted",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "firecrawl",
+        searchConfig: {
+          apiKey: "firecrawl-key",
+          baseUrl: "https://firecrawl.internal",
+        },
+        modelProviderType: "OpenAI",
+      }),
+    ).toEqual({
+      enabled: true,
+      mode: "external",
+      provider: "firecrawl",
+      source: "self_hosted",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "firecrawl",
+        searchConfig: { baseUrl: "https://api.firecrawl.dev/" },
+        modelProviderType: "OpenAI",
+      }),
+    ).toEqual({
+      enabled: true,
+      mode: "external",
+      provider: "firecrawl",
+      source: "public_service",
     });
   });
 
@@ -107,5 +166,73 @@ describe("search compatibility", () => {
     });
 
     expect(getSearchProviderLabel("searxng")).toBe("SearXNG");
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "searxng",
+        searchConfig: { baseUrl: "localhost:8080" },
+        modelProviderType: "Google",
+      }),
+    ).toMatchObject({
+      enabled: false,
+      reason: "missing_search_base_url",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "searxng",
+        searchConfig: { baseUrl: "http://localhost:8080" },
+        modelProviderType: "Google",
+      }),
+    ).toMatchObject({ enabled: true, source: "self_hosted" });
+  });
+
+  it("discloses server-default capability without exposing configuration", () => {
+    expect(
+      getSearchCompatibility({
+        searchProvider: "default",
+        searchConfig: { serverAvailable: true },
+        modelProviderType: "Anthropic",
+      }),
+    ).toEqual({
+      enabled: true,
+      mode: "external",
+      provider: "default",
+      source: "server_default",
+    });
+
+    expect(
+      getSearchCompatibility({
+        searchProvider: "default",
+        searchConfig: { serverAvailable: false },
+        modelProviderType: "Anthropic",
+      }),
+    ).toMatchObject({
+      enabled: false,
+      reason: "missing_server_default",
+    });
+  });
+
+  it("requires the complete selected model at capability boundaries", () => {
+    expect(
+      resolveEffectiveSearchCapability({
+        searchProvider: "tavily",
+        searchConfig: { apiKey: "tvly-key" },
+        modelProviderType: "OpenAI",
+        selectedModel: "",
+      }),
+    ).toMatchObject({
+      enabled: false,
+      reason: "missing_model_provider",
+    });
+
+    expect(
+      resolveEffectiveSearchCapability({
+        searchProvider: "tavily",
+        searchConfig: { apiKey: "tvly-key" },
+        modelProviderType: "OpenAI",
+        selectedModel: "provider-id:gpt-5",
+      }),
+    ).toMatchObject({ enabled: true, source: "client_api_key" });
   });
 });

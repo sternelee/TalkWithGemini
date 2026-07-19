@@ -3,7 +3,13 @@
 import React, { useMemo } from "react";
 import { ImageOff } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { Attachment, Message, MessageOutputBlock, Source } from "@/types";
+import type {
+  Attachment,
+  Message,
+  MessageOutputBlock,
+  Source,
+  ToolConfirmationDecision,
+} from "@/types";
 import { getMessageOutputBlocks } from "@/lib/chat/messageOutputBlocks";
 import type { MarkdownGeneratedFile } from "@/lib/utils/markdownFiles";
 import { useUIStore } from "@/store/core/uiStore";
@@ -30,6 +36,13 @@ interface MessageOutputRendererProps {
   hideReasoning?: boolean;
   hideToolCalls?: boolean;
   onImageCached?: (image: Attachment) => void;
+  onToolConfirmationDecision?: (
+    toolCallId: string,
+    decision: ToolConfirmationDecision,
+  ) => void;
+  onRevokeToolSessionApproval?: (
+    toolCall: NonNullable<Message["toolCalls"]>[number],
+  ) => void;
 }
 
 const isMemorySearchTool = (name: string | undefined) =>
@@ -59,12 +72,29 @@ const GeneratedImageBlock: React.FC<{
   image: Attachment;
   onImageCached?: (image: Attachment) => void;
 }> = ({ image, onImageCached }) => {
+  const t = useTranslations("Message");
   const openImagePreview = useUIStore((state) => state.openImagePreview);
   const src = useAttachmentDisplayUrl(image, {
     enableCacheBackfill: true,
     onCacheReady: onImageCached,
   });
   const canPreview = Boolean(src);
+
+  if (image.localFileMissing) {
+    return (
+      <div
+        role="status"
+        aria-label={t("localFileMissingAria", { fileName: image.fileName })}
+        className="my-3 flex h-40 w-72 max-w-full flex-col items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-4 text-center text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200"
+      >
+        <ImageOff size={24} aria-hidden="true" />
+        <span className="max-w-full truncate text-sm font-medium">
+          {image.fileName}
+        </span>
+        <span className="text-xs">{t("localFileMissing")}</span>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -137,6 +167,8 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
   hideReasoning = false,
   hideToolCalls = false,
   onImageCached,
+  onToolConfirmationDecision,
+  onRevokeToolSessionApproval,
 }) => {
   const t = useTranslations("Message");
   const blocks = useMemo(() => {
@@ -217,7 +249,11 @@ const MessageOutputRenderer: React.FC<MessageOutputRendererProps> = ({
                   <MemorySearchBlock toolCalls={memoryToolCalls} />
                 ) : null}
                 {otherToolCalls.length > 0 ? (
-                  <ToolCallBlock toolCalls={otherToolCalls} />
+                  <ToolCallBlock
+                    toolCalls={otherToolCalls}
+                    onConfirmationDecision={onToolConfirmationDecision}
+                    onRevokeSessionApproval={onRevokeToolSessionApproval}
+                  />
                 ) : null}
               </React.Fragment>
             );

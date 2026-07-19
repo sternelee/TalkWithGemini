@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RAGConfig } from "../types";
 
 const {
@@ -86,7 +86,34 @@ vi.mock("../lib/api/client", async () => {
 
 const { clearBrowserAppData, clearBrowserAppDataSources } =
   await import("../lib/data/clearAppData");
+const { APP_RESTORE_WRITE_LOCK_KEY, runWithAppDataWriteLock } =
+  await import("../lib/data/appRestoreJournal");
 const { deleteOPFSDirectory } = await import("../utils/opfs");
+
+function createLocalStorage(initial: Record<string, string> = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    removeItem: vi.fn((key: string) => values.delete(key)),
+  };
+}
+
+function createSerialWebLocks() {
+  let tail: Promise<unknown> = Promise.resolve();
+  return {
+    request: vi.fn((...args: unknown[]) => {
+      const callback = args[args.length - 1] as () => unknown;
+      const current = tail.then(callback);
+      tail = current.then(
+        () => undefined,
+        () => undefined,
+      );
+      return current;
+    }),
+  };
+}
 
 const ragConfig: RAGConfig = {
   enabled: true,
@@ -136,6 +163,13 @@ describe("clear app data", () => {
         },
       }),
     );
+  });
+
+  afterEach(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage?.removeItem?.(APP_RESTORE_WRITE_LOCK_KEY);
+    }
+    vi.unstubAllGlobals();
   });
 
   it("cleans persisted RAG vectors and OPFS directories before clearing storage", async () => {
@@ -231,6 +265,93 @@ describe("clear app data", () => {
     });
   });
 
+  it("does not clear data while a restore write gate is active", async () => {
+    const values = new Map([[APP_RESTORE_WRITE_LOCK_KEY, "restore-1"]]);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: vi.fn((key: string) => values.get(key) ?? null),
+        setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+        removeItem: vi.fn((key: string) => values.delete(key)),
+      },
+    });
+
+    await expect(
+      clearBrowserAppDataSources({ sources: ["chats"], rag: ragConfig }),
+    ).rejects.toThrow("writes are paused");
+    expect(appDbMock.removeItem).not.toHaveBeenCalled();
+  });
+
+  it("drains accepted Web Lock writes and rejects writes requested after clear", async () => {
+    const localStorage = createLocalStorage();
+    const locks = createSerialWebLocks();
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("navigator", { locks });
+    const writeCompleted = vi.fn();
+    const lateWrite = vi.fn();
+    let releaseWrite: (() => void) | undefined;
+    let markWriteStarted: (() => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => {
+      markWriteStarted = resolve;
+    });
+    const acceptedWrite = runWithAppDataWriteLock(async () => {
+      markWriteStarted?.();
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      writeCompleted();
+    });
+    await writeStarted;
+
+    const clear = clearBrowserAppDataSources({
+      sources: ["chats"],
+      rag: ragConfig,
+    });
+    await expect(runWithAppDataWriteLock(lateWrite)).rejects.toThrow(
+      "writes are paused",
+    );
+    const queuedCrossContextWrite = locks.request(
+      "neo-chat-app-data",
+      { mode: "shared" },
+      async () => {
+        if (localStorage.getItem(APP_RESTORE_WRITE_LOCK_KEY)) {
+          throw new Error("cross-context write gate is active");
+        }
+        lateWrite();
+      },
+    );
+    const crossContextResult = expect(queuedCrossContextWrite).rejects.toThrow(
+      "cross-context write gate is active",
+    );
+    expect(appDbMock.removeItem).not.toHaveBeenCalled();
+
+    releaseWrite?.();
+    await Promise.all([acceptedWrite, clear, crossContextResult]);
+
+    expect(writeCompleted).toHaveBeenCalledTimes(1);
+    expect(lateWrite).not.toHaveBeenCalled();
+    expect(writeCompleted.mock.invocationCallOrder[0]).toBeLessThan(
+      appDbMock.removeItem.mock.invocationCallOrder[0],
+    );
+    expect(localStorage.values.get(APP_RESTORE_WRITE_LOCK_KEY)).toMatch(
+      /^clear-/,
+    );
+  });
+
+  it("releases its persistent write gate when clear fails", async () => {
+    const localStorage = createLocalStorage();
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("navigator", { locks: createSerialWebLocks() });
+    appDbMock.removeItem.mockRejectedValueOnce(
+      new Error("simulated clear failure"),
+    );
+
+    await expect(
+      clearBrowserAppDataSources({ sources: ["chats"], rag: ragConfig }),
+    ).rejects.toThrow("simulated clear failure");
+
+    expect(localStorage.values.has(APP_RESTORE_WRITE_LOCK_KEY)).toBe(false);
+  });
+
   it("clears chat metadata and per-session message records when requested", async () => {
     appDbMock.keys.mockResolvedValueOnce([
       "neo-chat-storage",
@@ -252,16 +373,15 @@ describe("clear app data", () => {
   });
 
   it("clears the synchronous font preference with settings", async () => {
-    const removeItem = vi.fn();
-    vi.stubGlobal("window", { localStorage: { removeItem } });
+    const localStorage = createLocalStorage();
+    vi.stubGlobal("window", { localStorage });
 
     await clearBrowserAppDataSources({
       sources: ["settings"],
       rag: ragConfig,
     });
 
-    expect(removeItem).toHaveBeenCalledWith("neo-chat-font-size");
-    vi.unstubAllGlobals();
+    expect(localStorage.removeItem).toHaveBeenCalledWith("neo-chat-font-size");
   });
 
   it("clears knowledge metadata, vectors, and OPFS knowledge files when requested", async () => {

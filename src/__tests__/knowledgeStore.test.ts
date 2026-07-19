@@ -7,6 +7,8 @@ const {
   getSettingsStateMock,
   getSafeOPFSPathMock,
   listOPFSDirectoryMock,
+  parseDocumentFileMock,
+  resolveOPFSBlobMock,
   saveToOPFSMock,
   upsertToRAGMock,
   withResolvedObjectUrlMock,
@@ -19,6 +21,22 @@ const {
     url.startsWith("opfs://") ? url.slice("opfs://".length) : null,
   ),
   listOPFSDirectoryMock: vi.fn((): Promise<string[]> => Promise.resolve([])),
+  parseDocumentFileMock: vi.fn(
+    (
+      file: File,
+      options: {
+        provider: string;
+        apiKey?: string;
+        useDefault?: boolean;
+        signal?: AbortSignal;
+      },
+    ) => {
+      void file;
+      void options;
+      return Promise.resolve("parsed text");
+    },
+  ),
+  resolveOPFSBlobMock: vi.fn(() => Promise.resolve(new Blob(["source"]))),
   saveToOPFSMock: vi.fn(() => Promise.resolve("opfs://saved/file.txt")),
   upsertToRAGMock: vi.fn(() => Promise.resolve(true)),
   withResolvedObjectUrlMock: vi.fn(() => Promise.resolve("reindexed text")),
@@ -29,6 +47,7 @@ vi.mock("@/utils/opfs", () => ({
   deleteFromOPFS: deleteFromOPFSMock,
   getSafeOPFSPath: getSafeOPFSPathMock,
   listOPFSDirectory: listOPFSDirectoryMock,
+  resolveOPFSBlob: resolveOPFSBlobMock,
   resolveOPFSUrl: vi.fn(() => Promise.resolve("blob:opfs-file")),
   saveToOPFS: saveToOPFSMock,
   writeToOPFS: writeToOPFSMock,
@@ -40,7 +59,7 @@ vi.mock("@/services/api/ragService", () => ({
 }));
 
 vi.mock("@/services/api/docParseService", () => ({
-  parseDocumentFile: vi.fn(() => Promise.resolve("parsed text")),
+  parseDocumentFile: parseDocumentFileMock,
   parseDocumentWithLlama: vi.fn(() => Promise.resolve("parsed text")),
 }));
 
@@ -138,12 +157,15 @@ describe("knowledge store resource cleanup", () => {
         makeCollection([
           {
             id: "file-1",
-            name: "notes.txt",
+            name: "notes.pdf",
             size: 12,
-            type: "text/plain",
+            type: "application/pdf",
             uploadedAt: 1,
             status: "indexed",
-            path: "opfs://knowledge-base/collection-1/notes.txt",
+            sourcePath: "opfs://knowledge-base/collection-1/source/notes.pdf",
+            contentPath: "opfs://knowledge-base/collection-1/content/notes.txt",
+            path: "opfs://knowledge-base/collection-1/content/notes.txt",
+            contentKind: "extracted_text",
             ragId: "file-1",
             ragChunkCount: 3,
           },
@@ -164,7 +186,10 @@ describe("knowledge store resource cleanup", () => {
 
     expect(useKnowledgeStore.getState().collections).toEqual([]);
     expect(deleteFromOPFSMock).toHaveBeenCalledWith(
-      "opfs://knowledge-base/collection-1/notes.txt",
+      "opfs://knowledge-base/collection-1/source/notes.pdf",
+    );
+    expect(deleteFromOPFSMock).toHaveBeenCalledWith(
+      "opfs://knowledge-base/collection-1/content/notes.txt",
     );
     expect(deleteFromOPFSMock).toHaveBeenCalledWith(
       "opfs://knowledge-base/collection-1/local.txt",
@@ -275,7 +300,7 @@ describe("knowledge store resource cleanup", () => {
       .getState()
       .updateFileContent("collection-1", "file-1", "updated text");
 
-    expect(writeToOPFSMock).not.toHaveBeenCalled();
+    expect(writeToOPFSMock).toHaveBeenCalledWith(path, "updated text");
     expect(deleteFromOPFSMock).toHaveBeenCalledWith(path);
     expect(deleteFromRAGMock).toHaveBeenCalledWith(
       ["file-1_0"],
@@ -317,7 +342,7 @@ describe("knowledge store resource cleanup", () => {
       [{ id: "file-1_0", data: "fresh local text", metadata: {} }],
       "collection-1",
     );
-    expect(writeToOPFSMock).toHaveBeenCalledWith(path, "fresh local text");
+    expect(writeToOPFSMock).not.toHaveBeenCalled();
     expect(useKnowledgeStore.getState().collections[0]?.files[0]).toMatchObject(
       {
         status: "indexed",
@@ -326,6 +351,144 @@ describe("knowledge store resource cleanup", () => {
         error: undefined,
       },
     );
+  });
+
+  it("serializes an edit behind an in-flight re-index for the same file", async () => {
+    getSettingsStateMock.mockReturnValue({
+      rag: {
+        enabled: true,
+        token: "token",
+        url: "https://rag.example",
+        llamaParseApiKey: "",
+        chunkSize: 512,
+      },
+    });
+    const path = "opfs://knowledge-base/collection-1/local.txt";
+    useKnowledgeStore.setState({
+      collections: [
+        makeCollection([
+          {
+            id: "file-1",
+            name: "local.txt",
+            size: 12,
+            type: "text/plain",
+            uploadedAt: 1,
+            status: "indexed",
+            path,
+            ragId: "file-1",
+            ragChunkCount: 1,
+          },
+        ]),
+      ],
+    });
+
+    let resolveFirstUpsert!: (success: boolean) => void;
+    const firstUpsert = new Promise<boolean>((resolve) => {
+      resolveFirstUpsert = resolve;
+    });
+    withResolvedObjectUrlMock
+      .mockResolvedValueOnce("old indexed text")
+      .mockResolvedValueOnce("new edited text");
+    upsertToRAGMock
+      .mockImplementationOnce(() => firstUpsert)
+      .mockResolvedValueOnce(true);
+
+    const oldReindex = useKnowledgeStore
+      .getState()
+      .reindexFile("collection-1", "file-1");
+    await vi.waitFor(() => expect(upsertToRAGMock).toHaveBeenCalledTimes(1));
+
+    const edit = useKnowledgeStore
+      .getState()
+      .updateFileContent("collection-1", "file-1", "new edited text");
+    await Promise.resolve();
+
+    expect(writeToOPFSMock).not.toHaveBeenCalled();
+    expect(upsertToRAGMock).toHaveBeenCalledTimes(1);
+
+    resolveFirstUpsert(true);
+    await Promise.all([oldReindex, edit]);
+
+    expect(writeToOPFSMock).toHaveBeenCalledWith(path, "new edited text");
+    expect(upsertToRAGMock).toHaveBeenNthCalledWith(
+      1,
+      [{ id: "file-1_0", data: "old indexed text", metadata: {} }],
+      "collection-1",
+    );
+    expect(upsertToRAGMock).toHaveBeenNthCalledWith(
+      2,
+      [{ id: "file-1_0", data: "new edited text", metadata: {} }],
+      "collection-1",
+    );
+    expect(useKnowledgeStore.getState().collections[0]?.files[0]).toMatchObject(
+      {
+        indexStatus: "indexed",
+        ragId: "file-1",
+        ragChunkCount: 1,
+      },
+    );
+  });
+
+  it("allows re-indexing different files in parallel", async () => {
+    getSettingsStateMock.mockReturnValue({
+      rag: {
+        enabled: true,
+        token: "token",
+        url: "https://rag.example",
+        llamaParseApiKey: "",
+        chunkSize: 512,
+      },
+    });
+    useKnowledgeStore.setState({
+      collections: [
+        makeCollection([
+          {
+            id: "file-1",
+            name: "one.txt",
+            size: 3,
+            type: "text/plain",
+            uploadedAt: 1,
+            status: "saved",
+            path: "opfs://knowledge-base/collection-1/one.txt",
+          },
+          {
+            id: "file-2",
+            name: "two.txt",
+            size: 3,
+            type: "text/plain",
+            uploadedAt: 1,
+            status: "saved",
+            path: "opfs://knowledge-base/collection-1/two.txt",
+          },
+        ]),
+      ],
+    });
+
+    const upsertResolvers: Array<(success: boolean) => void> = [];
+    const deferredUpsert = () =>
+      new Promise<boolean>((resolve) => {
+        upsertResolvers.push(resolve);
+      });
+    upsertToRAGMock
+      .mockImplementationOnce(deferredUpsert)
+      .mockImplementationOnce(deferredUpsert);
+
+    const first = useKnowledgeStore
+      .getState()
+      .reindexFile("collection-1", "file-1");
+    const second = useKnowledgeStore
+      .getState()
+      .reindexFile("collection-1", "file-2");
+
+    await vi.waitFor(() => expect(upsertToRAGMock).toHaveBeenCalledTimes(2));
+    for (const resolve of upsertResolvers) resolve(true);
+    await Promise.all([first, second]);
+
+    expect(
+      useKnowledgeStore
+        .getState()
+        .collections[0]?.files.every((file) => file.indexStatus === "indexed"),
+    ).toBe(true);
   });
 
   it("does not rebuild a RAG index while RAG is not configured", async () => {
@@ -375,7 +538,7 @@ describe("knowledge store resource cleanup", () => {
         name: "Answer.md",
         type: "text/markdown",
       }),
-      "knowledge-base/collection-1",
+      "knowledge-base/collection-1/source",
     );
     expect(upsertToRAGMock).toHaveBeenCalledWith(
       [expect.objectContaining({ data: "# Answer" })],
@@ -386,7 +549,187 @@ describe("knowledge store resource cleanup", () => {
         name: "Answer.md",
         status: "indexed",
         path: "opfs://saved/file.txt",
+        sourcePath: "opfs://saved/file.txt",
+        contentPath: "opfs://saved/file.txt",
         ragChunkCount: 1,
+      },
+    );
+  });
+
+  it("preserves a binary source separately from its extracted text", async () => {
+    const sourcePath = "opfs://knowledge-base/collection-1/source/file.pdf";
+    const contentPath =
+      "opfs://knowledge-base/collection-1/content/file.extracted.txt";
+    saveToOPFSMock
+      .mockResolvedValueOnce(sourcePath)
+      .mockResolvedValueOnce(contentPath);
+    useKnowledgeStore.setState({ collections: [makeCollection()] });
+
+    const source = new File(["pdf bytes"], "report.pdf", {
+      type: "application/pdf",
+    });
+    await useKnowledgeStore.getState().uploadFiles("collection-1", [source]);
+
+    expect(saveToOPFSMock).toHaveBeenNthCalledWith(
+      1,
+      source,
+      "knowledge-base/collection-1/source",
+    );
+    expect(saveToOPFSMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        name: "report.extracted.txt",
+        type: "text/plain",
+      }),
+      "knowledge-base/collection-1/content",
+    );
+    expect(parseDocumentFileMock).toHaveBeenCalledWith(
+      source,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(useKnowledgeStore.getState().collections[0]?.files[0]).toMatchObject(
+      {
+        sourcePath,
+        contentPath,
+        path: contentPath,
+        contentKind: "extracted_text",
+        storageStatus: "saved",
+        indexStatus: "not_indexed",
+        status: "saved",
+      },
+    );
+  });
+
+  it("keeps local source and content when RAG indexing fails", async () => {
+    getSettingsStateMock.mockReturnValue({
+      rag: {
+        enabled: true,
+        token: "token",
+        url: "https://rag.example",
+        llamaParseApiKey: "",
+        chunkSize: 512,
+      },
+    });
+    const sourcePath = "opfs://knowledge-base/collection-1/source/report.pdf";
+    const contentPath = "opfs://knowledge-base/collection-1/content/report.txt";
+    saveToOPFSMock
+      .mockResolvedValueOnce(sourcePath)
+      .mockResolvedValueOnce(contentPath);
+    upsertToRAGMock.mockResolvedValueOnce(false);
+    useKnowledgeStore.setState({ collections: [makeCollection()] });
+
+    await useKnowledgeStore
+      .getState()
+      .uploadFiles("collection-1", [
+        new File(["pdf"], "report.pdf", { type: "application/pdf" }),
+      ]);
+
+    expect(useKnowledgeStore.getState().collections[0]?.files[0]).toMatchObject(
+      {
+        sourcePath,
+        contentPath,
+        storageStatus: "saved",
+        indexStatus: "error",
+        status: "error",
+        indexError: "Failed to upload to Vector DB.",
+      },
+    );
+    expect(deleteFromOPFSMock).not.toHaveBeenCalledWith(sourcePath);
+    expect(deleteFromOPFSMock).not.toHaveBeenCalledWith(contentPath);
+  });
+
+  it("aborts document parsing before removing an in-flight upload", async () => {
+    parseDocumentFileMock.mockImplementationOnce(
+      (
+        _file: File,
+        options: {
+          provider: string;
+          apiKey?: string;
+          useDefault?: boolean;
+          signal?: AbortSignal;
+        },
+      ) =>
+        new Promise<string>((_resolve, reject) => {
+          options.signal?.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("cancelled");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true },
+          );
+        }),
+    );
+    useKnowledgeStore.setState({ collections: [makeCollection()] });
+
+    const uploadPromise = useKnowledgeStore
+      .getState()
+      .uploadFiles("collection-1", [
+        new File(["pdf"], "report.pdf", { type: "application/pdf" }),
+      ]);
+    await vi.waitFor(() => expect(parseDocumentFileMock).toHaveBeenCalled());
+    const fileId = useKnowledgeStore.getState().collections[0]?.files[0]?.id;
+    expect(fileId).toBeTruthy();
+
+    await useKnowledgeStore
+      .getState()
+      .cancelUpload("collection-1", fileId as string);
+    await uploadPromise;
+
+    const parseOptions = parseDocumentFileMock.mock.calls[0]?.[1];
+    expect(parseOptions.signal?.aborted).toBe(true);
+    expect(useKnowledgeStore.getState().collections[0]?.files).toEqual([]);
+  });
+
+  it("reparses from the preserved source without replacing it", async () => {
+    const sourcePath = "opfs://knowledge-base/collection-1/source/report.pdf";
+    const oldContentPath =
+      "opfs://knowledge-base/collection-1/content/report-old.txt";
+    const newContentPath =
+      "opfs://knowledge-base/collection-1/content/report-new.txt";
+    saveToOPFSMock.mockResolvedValueOnce(newContentPath);
+    parseDocumentFileMock.mockResolvedValueOnce("updated extracted text");
+    useKnowledgeStore.setState({
+      collections: [
+        makeCollection([
+          {
+            id: "file-1",
+            name: "report.pdf",
+            size: 10,
+            type: "application/pdf",
+            uploadedAt: 1,
+            status: "saved",
+            sourcePath,
+            contentPath: oldContentPath,
+            path: oldContentPath,
+            contentKind: "extracted_text",
+            storageStatus: "saved",
+            indexStatus: "not_indexed",
+            contentEditedAt: 2,
+          },
+        ]),
+      ],
+    });
+
+    await useKnowledgeStore.getState().reparseFile("collection-1", "file-1");
+
+    expect(resolveOPFSBlobMock).toHaveBeenCalledWith(sourcePath);
+    expect(parseDocumentFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "report.pdf", type: "application/pdf" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(deleteFromOPFSMock).toHaveBeenCalledWith(oldContentPath);
+    expect(deleteFromOPFSMock).not.toHaveBeenCalledWith(sourcePath);
+    expect(useKnowledgeStore.getState().collections[0]?.files[0]).toMatchObject(
+      {
+        sourcePath,
+        contentPath: newContentPath,
+        path: newContentPath,
+        contentKind: "extracted_text",
+        storageStatus: "saved",
+        indexStatus: "not_indexed",
+        contentEditedAt: undefined,
       },
     );
   });

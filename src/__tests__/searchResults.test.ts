@@ -71,7 +71,7 @@ describe("search result normalization", () => {
     ).toEqual([{ title: "Knowledge", url: "#", content: "chunk" }]);
   });
 
-  it("filters and caps image results to public remote images", () => {
+  it("filters and caps image results to HTTPS remote images", () => {
     const images = normalizeImageSources([
       {
         url: "http://example.com/insecure.png",
@@ -93,10 +93,11 @@ describe("search result normalization", () => {
       },
     ]);
 
-    expect(images).toHaveLength(1);
+    expect(images).toHaveLength(2);
     expect(images[0]?.url).toBe("https://example.com/image.png");
     expect(images[0]?.description).toHaveLength(
       SEARCH_RESULT_LIMITS.maxImageDescriptionChars,
     );
+    expect(images[1]?.url).toBe("https://127.0.0.1/private.png");
   });
 });

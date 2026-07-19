@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Brain,
   Check,
@@ -46,7 +46,11 @@ function formatDate(timestamp: number | undefined, locale: string): string {
   }).format(new Date(timestamp));
 }
 
-const MemorySettings = () => {
+interface MemorySettingsProps {
+  focusMemoryId?: string;
+}
+
+const MemorySettings = ({ focusMemoryId }: MemorySettingsProps) => {
   const t = useTranslations("Memory");
   const locale = useLocale();
   const {
@@ -66,6 +70,17 @@ const MemorySettings = () => {
   const [dreamError, setDreamError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusMemoryId) return;
+    setQuery("");
+    requestAnimationFrame(() => {
+      const target = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-memory-id]"),
+      ).find((element) => element.dataset.memoryId === focusMemoryId);
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, [focusMemoryId]);
 
   const typeOptions = useMemo(
     () =>
@@ -368,7 +383,12 @@ const MemorySettings = () => {
             {filteredMemories.map((memory) => (
               <article
                 key={memory.id}
-                className="rounded-xl border border-gray-200 bg-white p-4 dark:border-border dark:bg-card"
+                data-memory-id={memory.id}
+                className={`rounded-xl border bg-white p-4 dark:bg-card ${
+                  focusMemoryId === memory.id
+                    ? "border-cyan-500 ring-2 ring-cyan-500/40"
+                    : "border-gray-200 dark:border-border"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">

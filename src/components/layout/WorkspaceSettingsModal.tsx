@@ -16,6 +16,7 @@ import {
   Check,
   Loader2,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Workspace, Attachment } from "@/types";
@@ -850,15 +851,34 @@ const WorkspaceSettingsModal: React.FC<WorkspaceSettingsModalProps> = ({
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center justify-between p-2 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-xs"
+                    className={`flex items-center justify-between rounded-lg border p-2 text-xs ${
+                      file.localFileMissing
+                        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200"
+                        : "border-gray-200 bg-gray-50 dark:border-border dark:bg-muted"
+                    }`}
                   >
                     <div className="flex min-w-0 items-center gap-2 truncate">
-                      <FileText
-                        size={14}
-                        className="shrink-0 text-blue-500"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">{file.fileName}</span>
+                      {file.localFileMissing ? (
+                        <AlertTriangle
+                          size={14}
+                          className="shrink-0"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <FileText
+                          size={14}
+                          className="shrink-0 text-blue-500"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span className="min-w-0 truncate">
+                        {file.fileName}
+                        {file.localFileMissing ? (
+                          <span className="ml-2 font-medium">
+                            {t("localFileMissing")}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
                     <button
                       type="button"

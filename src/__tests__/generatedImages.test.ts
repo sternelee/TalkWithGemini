@@ -86,7 +86,11 @@ describe("generated image attachment normalization", () => {
         url: "https://localhost/generated.png",
         fileName: "localhost.png",
       }),
-    ).toBeNull();
+    ).toMatchObject({
+      mimeType: "image/png",
+      url: "https://localhost/generated.png",
+      fileName: "localhost.png",
+    });
     expect(
       normalizeGeneratedImageAttachment({
         mimeType: "image/png",
